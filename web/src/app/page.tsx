@@ -128,9 +128,17 @@ export default function Home() {
     };
 
     recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-      if (event.error === "not-allowed") setError("Microphone access denied.");
-      else if (event.error === "no-speech") setError("No speech detected.");
-      else setError(`Speech error: ${event.error}`);
+      if (event.error === "not-allowed") {
+        setError("Microphone access denied.");
+      } else if (event.error === "no-speech") {
+        setError("No speech detected.");
+      } else if (event.error === "service-not-allowed" || event.error === "network") {
+        // Browser STT unavailable on this device — auto-switch to Whisper
+        setSttProvider("whisper");
+        setError("Browser STT unavailable on this device. Switched to Whisper. Tap mic again.");
+      } else {
+        setError(`Speech error: ${event.error}`);
+      }
       setIsListening(false);
     };
 
