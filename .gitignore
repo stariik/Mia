@@ -1,0 +1,30 @@
+# API keys
+.env
+.env.local
+.env*.local
+
+# Dependencies
+node_modules/
+
+# Next.js
+.next/
+out/
+
+# React Native
+mobile/android/app/build/
+mobile/ios/Pods/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Spike test outputs
+spike/output/
+spike/samples/
+
+# Claude memory
+.claude/
