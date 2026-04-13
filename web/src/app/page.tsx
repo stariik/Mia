@@ -53,6 +53,7 @@ export default function Home() {
       setError(null);
 
       try {
+        // Start streaming request
         const chatRes = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -63,29 +64,64 @@ export default function Home() {
         });
 
         if (!chatRes.ok) {
-          const err = await chatRes.json();
-          throw new Error(err.error || "Chat failed");
+          const errText = await chatRes.text();
+          let errMsg = "Chat failed";
+          try { errMsg = JSON.parse(errText).error || errMsg; } catch {}
+          throw new Error(errMsg);
         }
 
-        const { reply } = await chatRes.json();
-        const assistantMsg: Message = { role: "assistant", content: reply, timestamp: Date.now() };
-        setMessages([...newMessages, assistantMsg]);
+        // Read the SSE stream
+        const reader = chatRes.body!.getReader();
+        const decoder = new TextDecoder();
+        let fullReply = "";
+
+        // Create a placeholder assistant message that we update as text streams in
+        const assistantMsg: Message = { role: "assistant", content: "", timestamp: Date.now() };
+        const streamMessages = [...newMessages, assistantMsg];
+        setMessages(streamMessages);
         setIsThinking(false);
 
-        setIsSpeaking(true);
-        try {
-          if (ttsProvider === "camb") {
-            await speakWithCamb(reply);
-          } else if (ttsProvider === "openai") {
-            await speakWithOpenAI(reply);
-          } else {
-            await speakWithBrowser(reply);
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split("\n");
+
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              const data = line.slice(6);
+              if (data === "[DONE]") break;
+              try {
+                const { content } = JSON.parse(data);
+                if (content) {
+                  fullReply += content;
+                  // Update the assistant message in-place
+                  assistantMsg.content = fullReply;
+                  setMessages([...newMessages, { ...assistantMsg }]);
+                }
+              } catch {}
+            }
           }
-        } catch (ttsErr: unknown) {
-          const msg = ttsErr instanceof Error ? ttsErr.message : "TTS failed";
-          setError(`TTS failed: ${msg}`);
-        } finally {
-          setIsSpeaking(false);
+        }
+
+        // Start TTS with the full reply
+        if (fullReply) {
+          setIsSpeaking(true);
+          try {
+            if (ttsProvider === "camb") {
+              await speakWithCamb(fullReply);
+            } else if (ttsProvider === "openai") {
+              await speakWithOpenAI(fullReply);
+            } else {
+              await speakWithBrowser(fullReply);
+            }
+          } catch (ttsErr: unknown) {
+            const msg = ttsErr instanceof Error ? ttsErr.message : "TTS failed";
+            setError(`TTS failed: ${msg}`);
+          } finally {
+            setIsSpeaking(false);
+          }
         }
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Something failed";

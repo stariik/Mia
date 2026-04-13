@@ -18,18 +18,35 @@ export async function POST(request: Request) {
       { role: "user" as const, content: message },
     ];
 
-    const completion = await openai.chat.completions.create({
+    const stream = await openai.chat.completions.create({
       model: "gpt-4o",
       messages,
       temperature: 0.7,
       max_tokens: 300,
+      stream: true,
     });
 
-    const reply = completion.choices[0].message.content;
+    const encoder = new TextEncoder();
 
-    return Response.json({
-      reply,
-      usage: completion.usage,
+    const readable = new ReadableStream({
+      async start(controller) {
+        for await (const chunk of stream) {
+          const content = chunk.choices[0]?.delta?.content;
+          if (content) {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content })}\n\n`));
+          }
+        }
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+
+    return new Response(readable, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
     });
   } catch (error: unknown) {
     const message =
