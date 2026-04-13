@@ -199,13 +199,34 @@ export default function Home() {
 
   // ── TTS providers ───────────────────────────────────────────
   const speakWithCamb = async (text: string) => {
-    const res = await fetch("/api/synthesize-camb", {
+    // Step 1: Submit task
+    const submitRes = await fetch("/api/synthesize-camb", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text }),
     });
-    if (!res.ok) throw new Error((await res.json()).error || "Camb.ai TTS failed");
-    await playAudioBlob(await res.blob());
+    if (!submitRes.ok) throw new Error((await submitRes.json()).error || "Camb.ai submit failed");
+    const { taskId } = await submitRes.json();
+
+    // Step 2: Poll from client
+    let status = "PENDING";
+    let runId: number | null = null;
+    let attempts = 0;
+    while (status === "PENDING" && attempts < 40) {
+      await new Promise((r) => setTimeout(r, 1500));
+      attempts++;
+      const pollRes = await fetch(`/api/synthesize-camb/status?taskId=${taskId}`);
+      if (!pollRes.ok) throw new Error("Camb.ai poll failed");
+      const data = await pollRes.json();
+      status = data.status;
+      runId = data.runId;
+    }
+    if (status !== "SUCCESS" || !runId) throw new Error(`Camb.ai TTS failed: ${status}`);
+
+    // Step 3: Download audio
+    const audioRes = await fetch(`/api/synthesize-camb/audio?runId=${runId}`);
+    if (!audioRes.ok) throw new Error("Camb.ai audio download failed");
+    await playAudioBlob(await audioRes.blob());
   };
 
   const speakWithOpenAI = async (text: string) => {
