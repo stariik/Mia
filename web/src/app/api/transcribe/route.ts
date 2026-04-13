@@ -9,11 +9,12 @@ export async function POST(request: Request) {
       return Response.json({ error: "Audio file is required" }, { status: 400 });
     }
 
-    // Whisper doesn't support Georgian (ka) as forced language,
-    // so we let it auto-detect.
+    // Whisper doesn't support Georgian (ka) as forced language.
+    // Providing a Georgian prompt biases the model toward Georgian transcription.
     const transcription = await openai.audio.transcriptions.create({
       model: "whisper-1",
       file: audioFile,
+      prompt: "გამარჯობა, ეს არის ქართულენოვანი საუბარი. მომხმარებელი საუბრობს ქართულად.",
     });
 
     return Response.json({
