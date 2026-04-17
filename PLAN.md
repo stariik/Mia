@@ -57,7 +57,7 @@ A mobile AI assistant that speaks Georgian (ქართული). Users intera
 | Mobile        | React Native CLI, TypeScript   | Cross-platform, native module access |
 | STT           | OpenAI Whisper API             | Best Georgian support available  |
 | LLM           | GPT-4o-mini (simple) / GPT-4o (complex) | Function calling, cost balance |
-| TTS           | OpenAI TTS → Google Cloud TTS (ka-GE) → Camb.ai | Swappable, Google has explicit Georgian support |
+| TTS           | Camb.ai → OpenAI TTS | Swappable. Note: Google Cloud TTS has **no Georgian voices** (confirmed 2026-04-17 — voices list returns empty for ka-GE). |
 | Weather       | OpenWeatherMap (free tier)     | 1000 calls/day free              |
 | Auth (later)  | Firebase Auth                  | Easy, cross-platform             |
 | Payments (later) | RevenueCat or Stripe        | Mobile subscription handling     |
@@ -357,9 +357,10 @@ voice-ai/
 ## Optional / Backup
 | API | Purpose | When needed |
 |-----|---------|-------------|
-| **Google Cloud TTS** | Best documented Georgian (ka-GE) TTS with WaveNet voices | If OpenAI TTS Georgian quality is bad — **most reliable fallback** |
-| **Camb.ai API Key** | Alternative TTS | If both OpenAI and Google fail |
-| **LOVO AI API Key** | Third backup TTS | Last resort |
+| **Google Cloud STT** | Georgian speech-to-text (ka-GE) — confirmed working | Alternative to Whisper; same API key works for STT |
+| ~~Google Cloud TTS~~ | ~~Georgian text-to-speech~~ | **Not viable — no ka-GE voices** (confirmed 2026-04-17) |
+| **ElevenLabs** | Multilingual TTS that handles Georgian | If Camb.ai quality is insufficient |
+| **LOVO AI API Key** | Backup TTS | Last resort |
 | Spotify Web API | Richer music control | Step 2, if basic intents aren't enough |
 
 ## Deployment Note (Step 2)

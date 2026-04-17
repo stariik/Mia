@@ -9,7 +9,7 @@ type Message = {
 };
 
 type TTSProvider = "camb" | "openai" | "browser";
-type STTProvider = "browser" | "whisper";
+type STTProvider = "browser" | "whisper" | "google";
 
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -19,7 +19,7 @@ export default function Home() {
   const [currentTranscript, setCurrentTranscript] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [ttsProvider, setTtsProvider] = useState<TTSProvider>("camb");
-  const [sttProvider, setSttProvider] = useState<STTProvider>("browser");
+  const [sttProvider, setSttProvider] = useState<STTProvider>("google");
   const [openaiVoice, setOpenaiVoice] = useState("nova");
   const [speechLang, setSpeechLang] = useState("ka-GE");
   const [showSettings, setShowSettings] = useState(false);
@@ -129,7 +129,7 @@ export default function Home() {
         setIsThinking(false);
       }
     },
-    [ttsProvider]
+    [ttsProvider, openaiVoice]
   );
 
   // ── STT: Browser ────────────────────────────────────────────
@@ -183,8 +183,8 @@ export default function Home() {
     recognition.start();
   }, [speechLang, handleUserMessage]);
 
-  // ── STT: Whisper ────────────────────────────────────────────
-  const startWhisperListening = useCallback(async () => {
+  // ── STT: Upload-based (Whisper or Google) ───────────────────
+  const startUploadListening = useCallback(async (endpoint: string, providerLabel: string) => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream, {
@@ -210,13 +210,13 @@ export default function Home() {
         try {
           const formData = new FormData();
           formData.append("audio", audioBlob, "recording.webm");
-          const res = await fetch("/api/transcribe", { method: "POST", body: formData });
+          const res = await fetch(endpoint, { method: "POST", body: formData });
           if (!res.ok) throw new Error((await res.json()).error || "Transcription failed");
           const { text } = await res.json();
           if (text?.trim()) handleUserMessage(text.trim());
           else { setCurrentTranscript(""); setError("Empty transcription."); }
         } catch (err: unknown) {
-          setError(err instanceof Error ? err.message : "Whisper failed");
+          setError(err instanceof Error ? err.message : `${providerLabel} failed`);
           setCurrentTranscript("");
         }
       };
@@ -231,13 +231,17 @@ export default function Home() {
 
   const startListening = useCallback(() => {
     setError(null);
-    if (sttProvider === "whisper") startWhisperListening();
+    if (sttProvider === "whisper") startUploadListening("/api/transcribe", "Whisper");
+    else if (sttProvider === "google") startUploadListening("/api/transcribe-google", "Google STT");
     else startBrowserListening();
-  }, [sttProvider, startWhisperListening, startBrowserListening]);
+  }, [sttProvider, startUploadListening, startBrowserListening]);
 
   const stopListening = useCallback(() => {
-    if (sttProvider === "whisper" && mediaRecorderRef.current) mediaRecorderRef.current.stop();
-    else recognitionRef.current?.stop();
+    if ((sttProvider === "whisper" || sttProvider === "google") && mediaRecorderRef.current) {
+      mediaRecorderRef.current.stop();
+    } else {
+      recognitionRef.current?.stop();
+    }
     setIsListening(false);
   }, [sttProvider]);
 
@@ -384,6 +388,7 @@ export default function Home() {
                   >
                     <option value="browser">Browser</option>
                     <option value="whisper">Whisper</option>
+                    <option value="google">Google Cloud (ka-GE)</option>
                   </select>
                 </div>
 
@@ -432,11 +437,12 @@ export default function Home() {
                     </select>
                   </div>
                 )}
+
               </div>
 
               <div className="mt-2 pt-2 border-t border-border/30 flex items-center gap-2 text-[10px] text-muted font-mono">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-                Pipeline: {sttProvider === "browser" ? `Browser (${speechLang})` : "Whisper"} &rarr; GPT-4o &rarr; {ttsProvider === "camb" ? "Camb.ai" : ttsProvider === "openai" ? "OpenAI TTS" : "Browser TTS"}
+                Pipeline: {sttProvider === "browser" ? `Browser (${speechLang})` : sttProvider === "whisper" ? "Whisper" : "Google STT"} &rarr; GPT-4o &rarr; {ttsProvider === "camb" ? "Camb.ai" : ttsProvider === "openai" ? "OpenAI TTS" : "Browser TTS"}
               </div>
             </div>
           </div>
@@ -509,7 +515,7 @@ export default function Home() {
                   <p className="text-sm text-foreground/70">{currentTranscript}</p>
                 </div>
                 <p className="text-[10px] text-accent mt-1 text-right font-mono animate-pulse">
-                  {sttProvider === "whisper" ? "transcribing..." : "listening..."}
+                  {sttProvider === "browser" ? "listening..." : "transcribing..."}
                 </p>
               </div>
             </div>
