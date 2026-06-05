@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Network security policy for Mia.
+
+  Production: HTTPS everywhere. Mixed-content (plain HTTP) is rejected by
+  default — the <base-config> below sets cleartextTrafficPermitted="false".
+
+  Development: dev backend runs on the laptop's LAN at HTTP. We allow
+  cleartext ONLY to the explicit dev hostnames/IPs below so a release build
+  pointed at HTTPS prod stays secure.
+
+  When you swap the mobile/.env API_BASE_URL to a fixed laptop IP via DHCP
+  reservation, add that single address here too.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <domain-config cleartextTrafficPermitted="true">
+        <!-- Common dev LAN subnets. Android matches by exact host so we list
+             the IPs you actually use. Add yours here if it differs. -->
+        <domain includeSubdomains="false">192.168.68.50</domain>
+        <domain includeSubdomains="false">192.168.68.54</domain>
+        <domain includeSubdomains="false">192.168.68.56</domain>
+        <domain includeSubdomains="false">192.168.68.59</domain>
+        <domain includeSubdomains="false">192.168.1.50</domain>
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">10.0.2.2</domain>
+    </domain-config>
+</network-security-config>
