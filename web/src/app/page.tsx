@@ -1,65 +1,128 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
-
-type Message = {
-  role: "user" | "assistant";
-  content: string;
-  timestamp: number;
-};
-
-type TTSProvider = "camb" | "openai" | "browser";
-type STTProvider = "browser" | "whisper" | "google";
+import { useRef, useCallback, useEffect, useState } from "react";
+import { useConversationStore, Message } from "@/stores/conversationStore";
+import {
+  useVoiceStore,
+  TTSProvider,
+  STTProvider,
+} from "@/stores/voiceStore";
+import { webPlatform } from "@/lib/tools/platform/web";
+import type { ClientToolCall } from "@/lib/tools/types";
+import { ActiveTimers } from "@/components/ActiveTimers";
+import { ActiveAlarms } from "@/components/ActiveAlarms";
 
 export default function Home() {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [isListening, setIsListening] = useState(false);
-  const [isThinking, setIsThinking] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  const [currentTranscript, setCurrentTranscript] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [ttsProvider, setTtsProvider] = useState<TTSProvider>("camb");
-  const [sttProvider, setSttProvider] = useState<STTProvider>("google");
-  const [openaiVoice, setOpenaiVoice] = useState("nova");
-  const [speechLang, setSpeechLang] = useState("ka-GE");
+  const messages = useConversationStore((s) => s.messages);
+  const addMessage = useConversationStore((s) => s.addMessage);
+  const updateLastAssistant = useConversationStore((s) => s.updateLastAssistant);
+
+  const {
+    isListening,
+    isThinking,
+    isSpeaking,
+    currentTranscript,
+    error,
+    ttsProvider,
+    sttProvider,
+    openaiVoice,
+    speechLang,
+    setListening,
+    setThinking,
+    setSpeaking,
+    setTranscript,
+    setError,
+    setTtsProvider,
+    setSttProvider,
+    setOpenaiVoice,
+    setSpeechLang,
+  } = useVoiceStore();
+
   const [showSettings, setShowSettings] = useState(false);
+  const [textInput, setTextInput] = useState("");
 
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const messagesRef = useRef<Message[]>([]);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
   useEffect(() => {
-    messagesRef.current = messages;
-  }, [messages]);
-
-  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // ── Execute client-side tool calls (timer/alarm etc.) ────────
+  const runClientToolCalls = useCallback(async (calls: ClientToolCall[]) => {
+    for (const call of calls) {
+      try {
+        if (call.name === "set_timer") {
+          const seconds = Number(call.args.duration_seconds);
+          const label =
+            typeof call.args.label === "string" ? call.args.label : "";
+          if (Number.isFinite(seconds) && seconds > 0) {
+            await webPlatform.scheduleTimer({
+              id: call.id,
+              label,
+              durationSeconds: seconds,
+            });
+          }
+        } else if (call.name === "set_alarm") {
+          const hour = Number(call.args.hour);
+          const minute = Number.isFinite(Number(call.args.minute))
+            ? Number(call.args.minute)
+            : 0;
+          const dayOffset = Number.isFinite(Number(call.args.day_offset))
+            ? Number(call.args.day_offset)
+            : 0;
+          const label =
+            typeof call.args.label === "string" ? call.args.label : "";
+
+          if (Number.isFinite(hour) && hour >= 0 && hour <= 23) {
+            const when = new Date();
+            when.setDate(when.getDate() + dayOffset);
+            when.setHours(hour, minute, 0, 0);
+            // If user said "at X" without a day offset and that time has
+            // already passed today, roll forward to tomorrow.
+            if (dayOffset === 0 && when.getTime() <= Date.now()) {
+              when.setDate(when.getDate() + 1);
+            }
+            await webPlatform.scheduleAlarm({
+              id: call.id,
+              label,
+              ringsAt: when.getTime(),
+            });
+          }
+        }
+      } catch (e) {
+        console.error("Client tool failed", call.name, e);
+      }
+    }
+  }, []);
 
   // ── Core: handle user message ───────────────────────────────
   const handleUserMessage = useCallback(
     async (text: string) => {
       if (!text.trim()) return;
 
-      setCurrentTranscript("");
+      setTranscript("");
       const userMsg: Message = { role: "user", content: text, timestamp: Date.now() };
-      const currentMessages = messagesRef.current;
-      const newMessages = [...currentMessages, userMsg];
-      setMessages(newMessages);
-      setIsThinking(true);
+      addMessage(userMsg);
+
+      const historyForRequest = useConversationStore
+        .getState()
+        .messages.slice(-11, -1) // last 10 before the one we just added
+        .map(({ role, content }) => ({ role, content }));
+
+      setThinking(true);
       setError(null);
 
       try {
-        // Start streaming request
         const chatRes = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             message: text,
-            history: currentMessages.slice(-10).map(({ role, content }) => ({ role, content })),
+            history: historyForRequest,
           }),
         });
 
@@ -70,66 +133,82 @@ export default function Home() {
           throw new Error(errMsg);
         }
 
-        // Read the SSE stream
         const reader = chatRes.body!.getReader();
         const decoder = new TextDecoder();
         let fullReply = "";
+        let assistantAdded = false;
+        let buffer = "";
 
-        // Create a placeholder assistant message that we update as text streams in
-        const assistantMsg: Message = { role: "assistant", content: "", timestamp: Date.now() };
-        const streamMessages = [...newMessages, assistantMsg];
-        setMessages(streamMessages);
-        setIsThinking(false);
+        const ensureAssistant = () => {
+          if (!assistantAdded) {
+            addMessage({ role: "assistant", content: "", timestamp: Date.now() });
+            setThinking(false);
+            assistantAdded = true;
+          }
+        };
 
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
 
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split("\n");
+          buffer += decoder.decode(value, { stream: true });
+          const events = buffer.split("\n\n");
+          buffer = events.pop() ?? "";
 
-          for (const line of lines) {
-            if (line.startsWith("data: ")) {
-              const data = line.slice(6);
-              if (data === "[DONE]") break;
-              try {
-                const { content } = JSON.parse(data);
-                if (content) {
-                  fullReply += content;
-                  // Update the assistant message in-place
-                  assistantMsg.content = fullReply;
-                  setMessages([...newMessages, { ...assistantMsg }]);
-                }
-              } catch {}
-            }
+          for (const evt of events) {
+            const line = evt.trim();
+            if (!line.startsWith("data:")) continue;
+            const data = line.slice(5).trim();
+            if (data === "[DONE]") continue;
+
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.content) {
+                ensureAssistant();
+                fullReply += parsed.content;
+                updateLastAssistant(fullReply);
+              } else if (parsed.toolCalls) {
+                await runClientToolCalls(parsed.toolCalls as ClientToolCall[]);
+              } else if (parsed.error) {
+                setError(parsed.error);
+              }
+            } catch {}
           }
         }
 
-        // Start TTS with the full reply
         if (fullReply) {
-          setIsSpeaking(true);
+          setSpeaking(true);
           try {
-            if (ttsProvider === "camb") {
-              await speakWithCamb(fullReply);
-            } else if (ttsProvider === "openai") {
-              await speakWithOpenAI(fullReply);
-            } else {
-              await speakWithBrowser(fullReply);
-            }
+            if (ttsProvider === "camb") await speakWithCamb(fullReply);
+            else if (ttsProvider === "openai") await speakWithOpenAI(fullReply);
+            else await speakWithBrowser(fullReply);
           } catch (ttsErr: unknown) {
             const msg = ttsErr instanceof Error ? ttsErr.message : "TTS failed";
             setError(`TTS failed: ${msg}`);
           } finally {
-            setIsSpeaking(false);
+            setSpeaking(false);
           }
+        } else {
+          setThinking(false);
         }
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Something failed";
         setError(message);
-        setIsThinking(false);
+        setThinking(false);
       }
     },
-    [ttsProvider, openaiVoice]
+    [
+      addMessage,
+      updateLastAssistant,
+      runClientToolCalls,
+      setTranscript,
+      setThinking,
+      setError,
+      setSpeaking,
+      ttsProvider,
+      openaiVoice,
+      speechLang,
+    ]
   );
 
   // ── STT: Browser ────────────────────────────────────────────
@@ -148,8 +227,8 @@ export default function Home() {
     recognition.interimResults = true;
 
     recognition.onstart = () => {
-      setIsListening(true);
-      setCurrentTranscript("");
+      setListening(true);
+      setTranscript("");
     };
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
@@ -157,7 +236,7 @@ export default function Home() {
       for (let i = 0; i < event.results.length; i++) {
         transcript += event.results[i][0].transcript;
       }
-      setCurrentTranscript(transcript);
+      setTranscript(transcript);
       if (event.results[event.results.length - 1].isFinal) {
         handleUserMessage(transcript);
       }
@@ -169,19 +248,18 @@ export default function Home() {
       } else if (event.error === "no-speech") {
         setError("No speech detected.");
       } else if (event.error === "service-not-allowed" || event.error === "network") {
-        // Browser STT unavailable on this device — auto-switch to Whisper
         setSttProvider("whisper");
         setError("Browser STT unavailable on this device. Switched to Whisper. Tap mic again.");
       } else {
         setError(`Speech error: ${event.error}`);
       }
-      setIsListening(false);
+      setListening(false);
     };
 
-    recognition.onend = () => setIsListening(false);
+    recognition.onend = () => setListening(false);
     recognitionRef.current = recognition;
     recognition.start();
-  }, [speechLang, handleUserMessage]);
+  }, [speechLang, handleUserMessage, setError, setListening, setTranscript, setSttProvider]);
 
   // ── STT: Upload-based (Whisper or Google) ───────────────────
   const startUploadListening = useCallback(async (endpoint: string, providerLabel: string) => {
@@ -196,16 +274,76 @@ export default function Home() {
       chunksRef.current = [];
       mediaRecorderRef.current = mediaRecorder;
 
+      // Voice activity detection — auto-stop after silence.
+      let vadCleanup: (() => void) | null = null;
+      try {
+        const AudioCtx =
+          window.AudioContext ||
+          (window as unknown as { webkitAudioContext?: typeof AudioContext })
+            .webkitAudioContext;
+        if (AudioCtx) {
+          const audioCtx = new AudioCtx();
+          const source = audioCtx.createMediaStreamSource(stream);
+          const analyser = audioCtx.createAnalyser();
+          analyser.fftSize = 512;
+          source.connect(analyser);
+
+          const buffer = new Float32Array(analyser.fftSize);
+          const SILENCE_RMS = 0.015;
+          const SILENCE_AFTER_SPEECH_MS = 1500;
+          const MAX_TOTAL_MS = 30_000;
+          const NO_SPEECH_TIMEOUT_MS = 6_000;
+
+          let hasSpoken = false;
+          let lastSoundAt = Date.now();
+          const startedAt = Date.now();
+
+          const intervalId = setInterval(() => {
+            analyser.getFloatTimeDomainData(buffer);
+            let sum = 0;
+            for (let i = 0; i < buffer.length; i++) sum += buffer[i] * buffer[i];
+            const rms = Math.sqrt(sum / buffer.length);
+
+            const now = Date.now();
+            if (rms > SILENCE_RMS) {
+              lastSoundAt = now;
+              hasSpoken = true;
+            }
+
+            const elapsed = now - startedAt;
+            const silent = now - lastSoundAt;
+
+            const shouldStop =
+              elapsed >= MAX_TOTAL_MS ||
+              (hasSpoken && silent >= SILENCE_AFTER_SPEECH_MS) ||
+              (!hasSpoken && elapsed >= NO_SPEECH_TIMEOUT_MS);
+
+            if (shouldStop && mediaRecorder.state === "recording") {
+              mediaRecorder.stop();
+            }
+          }, 100);
+
+          vadCleanup = () => {
+            clearInterval(intervalId);
+            try { source.disconnect(); } catch {}
+            audioCtx.close().catch(() => {});
+          };
+        }
+      } catch {
+        // VAD unavailable — manual-stop still works.
+      }
+
       mediaRecorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
 
       mediaRecorder.onstop = async () => {
+        vadCleanup?.();
         stream.getTracks().forEach((t) => t.stop());
         const audioBlob = new Blob(chunksRef.current, { type: "audio/webm" });
 
-        setIsListening(false);
-        setCurrentTranscript("Transcribing...");
+        setListening(false);
+        setTranscript("Transcribing...");
 
         try {
           const formData = new FormData();
@@ -214,27 +352,27 @@ export default function Home() {
           if (!res.ok) throw new Error((await res.json()).error || "Transcription failed");
           const { text } = await res.json();
           if (text?.trim()) handleUserMessage(text.trim());
-          else { setCurrentTranscript(""); setError("Empty transcription."); }
+          else { setTranscript(""); setError("Empty transcription."); }
         } catch (err: unknown) {
           setError(err instanceof Error ? err.message : `${providerLabel} failed`);
-          setCurrentTranscript("");
+          setTranscript("");
         }
       };
 
       mediaRecorder.start();
-      setIsListening(true);
-      setCurrentTranscript("");
+      setListening(true);
+      setTranscript("");
     } catch {
       setError("Microphone access denied.");
     }
-  }, [handleUserMessage]);
+  }, [handleUserMessage, setListening, setTranscript, setError]);
 
   const startListening = useCallback(() => {
     setError(null);
     if (sttProvider === "whisper") startUploadListening("/api/transcribe", "Whisper");
     else if (sttProvider === "google") startUploadListening("/api/transcribe-google", "Google STT");
     else startBrowserListening();
-  }, [sttProvider, startUploadListening, startBrowserListening]);
+  }, [sttProvider, startUploadListening, startBrowserListening, setError]);
 
   const stopListening = useCallback(() => {
     if ((sttProvider === "whisper" || sttProvider === "google") && mediaRecorderRef.current) {
@@ -242,12 +380,11 @@ export default function Home() {
     } else {
       recognitionRef.current?.stop();
     }
-    setIsListening(false);
-  }, [sttProvider]);
+    setListening(false);
+  }, [sttProvider, setListening]);
 
   // ── TTS providers ───────────────────────────────────────────
   const speakWithCamb = async (text: string) => {
-    // Step 1: Submit task
     const submitRes = await fetch("/api/synthesize-camb", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -256,7 +393,6 @@ export default function Home() {
     if (!submitRes.ok) throw new Error((await submitRes.json()).error || "Camb.ai submit failed");
     const { taskId } = await submitRes.json();
 
-    // Step 2: Poll from client
     let status = "PENDING";
     let runId: number | null = null;
     let attempts = 0;
@@ -271,7 +407,6 @@ export default function Home() {
     }
     if (status !== "SUCCESS" || !runId) throw new Error(`Camb.ai TTS failed: ${status}`);
 
-    // Step 3: Download audio
     const audioRes = await fetch(`/api/synthesize-camb/audio?runId=${runId}`);
     if (!audioRes.ok) throw new Error("Camb.ai audio download failed");
     await playAudioBlob(await audioRes.blob());
@@ -315,11 +450,9 @@ export default function Home() {
   const stopSpeaking = () => {
     window.speechSynthesis?.cancel();
     if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
-    setIsSpeaking(false);
+    setSpeaking(false);
   };
 
-  // ── Text input ──────────────────────────────────────────────
-  const [textInput, setTextInput] = useState("");
   const handleTextSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (textInput.trim()) { handleUserMessage(textInput.trim()); setTextInput(""); }
@@ -353,7 +486,7 @@ export default function Home() {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-base font-semibold tracking-tight">ნიკა</h1>
+                <h1 className="text-base font-semibold tracking-tight">Mia</h1>
                 <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 uppercase tracking-wider">
                   dev
                 </span>
@@ -457,6 +590,12 @@ export default function Home() {
         </div>
       </div>
 
+      {/* ── Active Timers ──────────────────────────────────── */}
+      <ActiveTimers />
+
+      {/* ── Active Alarms ──────────────────────────────────── */}
+      <ActiveAlarms />
+
       {/* ── Messages ───────────────────────────────────────── */}
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto px-4 py-6 space-y-1">
@@ -472,7 +611,7 @@ export default function Home() {
               </div>
               <h2 className="text-lg font-semibold mb-1">გამარჯობა!</h2>
               <p className="text-sm text-muted max-w-xs">
-                მე ვარ ნიკა, შენი ქართულენოვანი ხმოვანი ასისტენტი. დააჭირე მიკროფონს ან დაწერე შეტყობინება.
+                მე ვარ Mia, შენი ქართულენოვანი ხმოვანი ასისტენტი. დააჭირე მიკროფონს ან დაწერე შეტყობინება.
               </p>
               <div className="mt-6 flex flex-wrap gap-2 justify-center">
                 {["გამარჯობა, როგორ ხარ?", "რა ამინდია?", "მომიყევი რამე"].map((q) => (
@@ -501,7 +640,7 @@ export default function Home() {
                   <p className="text-sm leading-relaxed">{msg.content}</p>
                 </div>
                 <p className={`text-[10px] text-muted mt-1 ${msg.role === "user" ? "text-right" : ""} font-mono`}>
-                  {msg.role === "user" ? "You" : "ნიკა"} &middot; {formatTime(msg.timestamp)}
+                  {msg.role === "user" ? "You" : "Mia"} &middot; {formatTime(msg.timestamp)}
                 </p>
               </div>
             </div>
@@ -627,8 +766,8 @@ export default function Home() {
         {/* Footer info */}
         <div className="border-t border-border/30">
           <div className="max-w-2xl mx-auto px-4 py-1.5 flex items-center justify-between text-[10px] text-muted/50 font-mono">
-            <span>nika v0.1.0-alpha</span>
-            <span>GPT-4o &middot; {ttsProvider} &middot; {sttProvider}</span>
+            <span>mia v0.1.0-alpha</span>
+            <span>GPT-4o-mini &middot; {ttsProvider} &middot; {sttProvider}</span>
           </div>
         </div>
       </footer>

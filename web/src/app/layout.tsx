@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ნიკა - Georgian Voice AI",
+  title: "Mia - Georgian Voice AI",
   description: "Georgian-speaking voice AI assistant",
 };
 

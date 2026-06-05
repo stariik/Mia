@@ -10,11 +10,19 @@ export async function POST(request: Request) {
     }
 
     // Whisper doesn't support Georgian (ka) as forced language.
-    // Providing a Georgian prompt biases the model toward Georgian transcription.
+    // The prompt biases the model toward Georgian + the vocabulary our assistant
+    // handles (weather, time, timer, alarm, city names).
     const transcription = await openai.audio.transcriptions.create({
       model: "whisper-1",
       file: audioFile,
-      prompt: "გამარჯობა, ეს არის ქართულენოვანი საუბარი. მომხმარებელი საუბრობს ქართულად.",
+      prompt:
+        "ეს არის ქართულენოვანი საუბარი ქართულ ხმოვან ასისტენტთან, სახელად Mia. " +
+        "მომხმარებელი საუბრობს ქართულად და შეიძლება ჰკითხოს ამინდი, დრო, თარიღი, " +
+        "ან დაიყენოს ტაიმერი ან მაღვიძარა. " +
+        "ქალაქები: თბილისი, ბათუმი, ქუთაისი, რუსთავი, გორი, ფოთი, ზუგდიდი, ახალციხე, თელავი, მცხეთა, ბორჯომი, გუდაური, ბაკურიანი. " +
+        "დროის სიტყვები: საათი, წუთი, წამი, დილა, საღამო, ღამე, შუადღე, დღეს, ხვალ, ზეგ, ნახევარი. " +
+        "ამინდის სიტყვები: ამინდი, ცივა, ცხელა, წვიმა, თოვლი, ქარი, მზიანი, ღრუბლიანი, გრადუსი. " +
+        "მაგალითები: რა ამინდია თბილისში, რომელი საათია, დამიყენე ტაიმერი ხუთ წუთზე, ხვალ დილის შვიდ საათზე დამიყენე მაღვიძარა.",
     });
 
     return Response.json({
