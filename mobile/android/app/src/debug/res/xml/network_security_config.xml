@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  DEBUG-ONLY network security policy (resource overlay — replaces the strict
+  main config in debug builds only). Allows cleartext HTTP to the dev laptop /
+  emulator hosts so the local Next.js backend works. Add your LAN IP here if
+  it differs. Release builds never see this file.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">192.168.68.50</domain>
+        <domain includeSubdomains="false">192.168.68.54</domain>
+        <domain includeSubdomains="false">192.168.68.56</domain>
+        <domain includeSubdomains="false">192.168.68.59</domain>
+        <domain includeSubdomains="false">192.168.1.50</domain>
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">10.0.2.2</domain>
+    </domain-config>
+</network-security-config>

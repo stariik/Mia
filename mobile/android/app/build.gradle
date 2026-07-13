@@ -74,18 +74,31 @@ def enableProguardInReleaseBuilds = true
  */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
+// Release signing: read from android/keystore.properties (gitignored). If the
+// file is missing (fresh clone / CI without secrets) we fall back to the debug
+// keystore so local release builds still work — but that artifact must NEVER
+// be uploaded to Play. See LAUNCH-CHECKLIST.md.
+def keystorePropertiesFile = file("../keystore.properties")
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
+}
+
 android {
     ndkVersion rootProject.ext.ndkVersion
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
+    // namespace stays com.mobile (source package) — only the Play-facing
+    // applicationId changes. applicationId is PERMANENT after the first Play
+    // upload; confirm it before publishing.
     namespace "com.mobile"
     defaultConfig {
-        applicationId "com.mobile"
+        applicationId "ge.mia.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
-        versionName "1.0"
+        versionName "1.0.0"
     }
     signingConfigs {
         debug {
@@ -94,19 +107,31 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        release {
+            if (keystorePropertiesFile.exists()) {
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            if (keystorePropertiesFile.exists()) {
+                signingConfig signingConfigs.release
+            } else {
+                logger.warn("WARNING: android/keystore.properties missing — release build will be DEBUG-SIGNED and unpublishable.")
+                signingConfig signingConfigs.debug
+            }
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
             // Cleartext is governed by res/xml/network_security_config.xml —
-            // HTTPS-only globally, allowlist of dev LAN IPs for local testing.
+            // release is HTTPS-only; the dev LAN allowlist lives in a
+            // debug-only resource overlay (src/debug/res/xml).
         }
     }
 }

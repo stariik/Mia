@@ -1,18 +1,38 @@
 import Config from 'react-native-config';
 
-export const env = {
-  // NOTE: react-native-config is NOT wired into the Android build (no
-  // dotenv.gradle apply), so Config.API_BASE_URL is undefined and THIS
-  // fallback is what's actually used at runtime. Edit it here for dev.
-  // `localhost` works on-device once you run:  adb reverse tcp:3000 tcp:3000
-  apiBaseUrl: Config.API_BASE_URL || 'http://localhost:3002',
+// ─────────────────────────────────────────────────────────────────────────────
+// PRODUCTION CONFIG — set these before building the Play Store release.
+// (react-native-config is NOT wired into the Android build, so Config.* is
+// undefined at runtime and these constants are what actually ships.)
+// ─────────────────────────────────────────────────────────────────────────────
 
-  // Sentry crash reporting. Paste your project DSN here (like apiBaseUrl,
-  // react-native-config isn't wired into the Android build, so Config.* is
-  // undefined and this fallback is what runs). Leave '' to disable Sentry.
-  sentryDsn: Config.SENTRY_DSN || '',
+/** HTTPS base URL of the deployed web/ backend (e.g. 'https://api.mia.ge').
+ *  LAUNCH BLOCKER while empty: release builds have no server to talk to.
+ *  See LAUNCH-CHECKLIST.md §1. */
+const PROD_API_BASE_URL = '';
+
+/** Sentry project DSN — crash reporting is silently OFF while empty. */
+const PROD_SENTRY_DSN = '';
+
+const DEV_API_BASE_URL = Config.API_BASE_URL || 'http://localhost:3002';
+
+export const env = {
+  apiBaseUrl: __DEV__ ? DEV_API_BASE_URL : PROD_API_BASE_URL,
+  sentryDsn: Config.SENTRY_DSN || PROD_SENTRY_DSN,
 
   // NOTE: the "Hey Mia" wake word no longer needs any key — it runs fully
   // on-device via openWakeWord (see android/.../wake/OwwEngine.kt). The old
   // PICOVOICE_ACCESS_KEY was removed.
 };
+
+/** True when the build has a usable backend URL. Release builds without
+ *  PROD_API_BASE_URL show a clear Georgian error instead of dialing localhost
+ *  on the user's own phone (which is what the old fallback did). */
+export const isBackendConfigured = env.apiBaseUrl.length > 0;
+
+if (!isBackendConfigured) {
+  // Loud, greppable, and visible in Sentry once a DSN exists.
+  console.error(
+    '[env] PROD_API_BASE_URL is not set — this release build cannot reach any backend.',
+  );
+}
