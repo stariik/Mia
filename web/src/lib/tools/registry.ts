@@ -3,6 +3,7 @@ import { getTime } from "./handlers/getTime";
 import { getWeather } from "./handlers/getWeather";
 import { setTimer } from "./handlers/setTimer";
 import { setAlarm } from "./handlers/setAlarm";
+import { calculate } from "./handlers/calculate";
 import {
   pauseMusic,
   resumeMusic,
@@ -17,6 +18,7 @@ export const TOOLS: Tool[] = [
   getWeather,
   setTimer,
   setAlarm,
+  calculate,
   pauseMusic,
   resumeMusic,
   toggleMusic,

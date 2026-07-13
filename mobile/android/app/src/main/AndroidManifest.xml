@@ -20,7 +20,14 @@
   <uses-permission android:name="android.permission.DISABLE_KEYGUARD" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+  <!-- Always-on "Hey Mia" wake word runs in a microphone-type foreground
+       service (Android 14+ requires the type + matching permission). -->
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
   <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+  <!-- Floating "Hey Mia" orb overlay while answering with the app not in front
+       (only shown when the screen is on & unlocked — Android won't let a
+       non-system app draw over the secure lock screen). -->
+  <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
   <application
     android:name=".MainApplication"
@@ -37,8 +44,6 @@
       android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
       android:launchMode="singleTask"
       android:windowSoftInputMode="adjustResize"
-      android:showWhenLocked="true"
-      android:turnScreenOn="true"
       android:exported="true"
       android:theme="@style/BootTheme">
       <intent-filter>
@@ -62,6 +67,21 @@
 
     <service
       android:name=".alarm.RescheduleAlarmsService"
+      android:exported="false" />
+
+    <!-- Always-on "Hey Mia" wake-word listener. microphone type so it can hold
+         the mic while backgrounded; started while the app is in the foreground
+         (toggle in Settings) and kept alive via START_STICKY. -->
+    <service
+      android:name=".wake.WakeWordService"
+      android:exported="false"
+      android:foregroundServiceType="microphone" />
+
+    <!-- Headless JS host for a screen-off "Hey Mia" turn (record → STT → chat →
+         TTS, no UI). Started by WakeWordService when the wake word fires while
+         the app isn't in the foreground. -->
+    <service
+      android:name=".wake.WakeTurnService"
       android:exported="false" />
   </application>
 </manifest>

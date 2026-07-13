@@ -1,4 +1,5 @@
 import openai from "@/lib/openai";
+import { guard } from "@/lib/apiGuard";
 import { GEORGIAN_ASSISTANT_SYSTEM_PROMPT } from "@/lib/prompts";
 import {
   getToolDefinitions,
@@ -30,6 +31,8 @@ type ChatRequestBody = {
 const MAX_TOOL_ROUNDS = 3;
 
 export async function POST(request: Request) {
+  const g = guard(request);
+  if ("error" in g) return g.error;
   try {
     const { message, history, userContext } =
       (await request.json()) as ChatRequestBody;
@@ -67,7 +70,10 @@ export async function POST(request: Request) {
         try {
           for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
             const stream = await openai.chat.completions.create({
-              model: "gpt-4o-mini",
+              // gpt-4o has noticeably better Georgian than gpt-4.1-mini (same
+              // model the translator uses). Costs ~0.5s more time-to-first-token;
+              // revert to "gpt-4.1-mini" (or try "gpt-4.1") if latency bites.
+              model: "gpt-4o",
               messages,
               temperature: 0.7,
               max_tokens: 300,

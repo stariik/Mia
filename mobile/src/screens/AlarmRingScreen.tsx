@@ -20,7 +20,11 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { useToolsStore } from '@/stores/toolsStore';
-import { dismissAlarm, snoozeAlarm } from '@/lib/tools/platform/native';
+import {
+  dismissAlarm,
+  setLockScreenFlags,
+  snoozeAlarm,
+} from '@/lib/tools/platform/native';
 import { haptics } from '@/lib/haptics';
 import { colors, radius, spacing, typography } from '@/theme';
 
@@ -54,6 +58,9 @@ export function AlarmRingScreen({ route, navigation }: Props) {
   const pulse = useSharedValue(0);
 
   useEffect(() => {
+    // Keep the alarm visible over the keyguard while ringing; cleared on
+    // unmount so the flags don't linger and break keyboard focus elsewhere.
+    setLockScreenFlags(true);
     Vibration.vibrate(VIBRATE_PATTERN, true);
     pulse.value = withRepeat(
       withSequence(
@@ -64,6 +71,7 @@ export function AlarmRingScreen({ route, navigation }: Props) {
       false,
     );
     return () => {
+      setLockScreenFlags(false);
       Vibration.cancel();
       cancelAnimation(pulse);
     };

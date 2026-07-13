@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -15,7 +15,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import Svg, { Line, Path, Polygon, Rect } from 'react-native-svg';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import Animated, {
+  FadeIn,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from 'react-native-reanimated';
 
 import { ActiveOrbRings } from '@/components/ActiveOrbRings';
 import { ConversationDrawer } from '@/components/ConversationDrawer';
@@ -24,10 +29,13 @@ import { AIAssistantOrb } from '@/components/AIAssistantOrb';
 import { AuroraBackdrop } from '@/components/AuroraBackdrop';
 import { BottomToolBar } from '@/components/BottomToolBar';
 import { MiaWordmark } from '@/components/MiaWordmark';
+import { OrbStatus } from '@/components/OrbStatus';
+import { SuggestionChips } from '@/components/SuggestionChips';
 import { audioLevel as audioLevelSV } from '@/lib/audioLevel';
 import { haptics } from '@/lib/haptics';
 import { useSilenceAutoStop } from '@/hooks/useSilenceAutoStop';
 import { useVoicePipeline } from '@/hooks/useVoicePipeline';
+import { ensureWakeWordOnLaunch, useWakeTrigger } from '@/hooks/useWakeWord';
 import { useConversationStore, type Message } from '@/stores/conversationStore';
 import { useVoiceStore } from '@/stores/voiceStore';
 import { brandGradient, colors, radius, spacing, typography } from '@/theme';
@@ -96,8 +104,14 @@ function RecentMessages({ messages }: { messages: Message[] }) {
 }
 
 export function HomeScreen() {
-  const { width } = useWindowDimensions();
-  const orbSize = Math.round(width * 0.85);
+  const { width, height } = useWindowDimensions();
+  // The orb's Pressable is a square; cap it by the orb section's height share
+  // (~0.58 of the space between top bar and toolbar, minus the status slot)
+  // so it can never extend up under the top bar and swallow taps meant for
+  // the history button.
+  const orbSize = Math.round(
+    Math.max(220, Math.min(width * 0.88, (height - 170) * 0.58 - 88)),
+  );
 
   const messages = useConversationStore((s) => s.messages);
   const {
@@ -125,22 +139,11 @@ export function HomeScreen() {
 
   const state = orbState(isListening, isThinking, isSpeaking);
 
-  const statusText = useMemo(() => {
-    // While listening, prefer showing the streaming transcript itself — the
-    // "ვუსმენ…" placeholder is only useful before any text arrives.
-    if (isListening && !currentTranscript) return 'ვუსმენ…';
-    if (isListening) return null;
-    if (isThinking) return 'ვფიქრობ…';
-    if (isSpeaking) return 'ვლაპარაკობ…';
-    return null;
-  }, [isListening, isThinking, isSpeaking, currentTranscript]);
-
-  // Single line shown under the orb: live transcript while listening, the
-  // current state ("ვფიქრობ…"), or the idle "tap to talk" invitation.
-  const orbHint =
-    isListening && currentTranscript
-      ? currentTranscript
-      : (statusText ?? 'შემეხე ხმისთვის');
+  // Springy press feedback on the orb itself.
+  const orbScale = useSharedValue(1);
+  const orbPressStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: orbScale.value }],
+  }));
 
   const onMic = () => {
     haptics.tap();
@@ -160,6 +163,23 @@ export function HomeScreen() {
   // Auto-close recording after sustained silence (or grace timeout if user
   // never speaks). VAD reads the same SharedValue the orb uses.
   useSilenceAutoStop(isListening, pipeline.stopListeningAndSend);
+
+  // Re-arm the background "Hey Mia" service on launch if the user left it on.
+  useEffect(() => {
+    ensureWakeWordOnLaunch();
+  }, []);
+
+  // Saying "Mia" starts a turn, exactly like tapping the orb (interrupting
+  // playback if Mia is mid-sentence). Reads live state so it never goes stale.
+  const onWake = useCallback(() => {
+    const { isListening: listening, isSpeaking: speaking } =
+      useVoiceStore.getState();
+    if (listening) return;
+    haptics.tap();
+    if (speaking) pipeline.stopSpeaking();
+    pipeline.startListening();
+  }, [pipeline]);
+  useWakeTrigger(onWake);
 
   const onSend = () => {
     const text = input.trim();
@@ -228,37 +248,38 @@ export function HomeScreen() {
           <View style={styles.orbSection}>
             <Pressable
               onPress={onMic}
+              onPressIn={() => {
+                orbScale.value = withSpring(0.965, { damping: 16, stiffness: 320 });
+              }}
+              onPressOut={() => {
+                orbScale.value = withSpring(1, { damping: 12, stiffness: 220 });
+              }}
               disabled={isThinking}
               accessibilityRole="button"
               accessibilityLabel="ხმოვანი ჩაწერა"
-              style={({ pressed }) => [
-                { width: orbSize, height: orbSize, borderRadius: orbSize / 2 },
-                pressed && { opacity: 0.92, transform: [{ scale: 0.985 }] },
-              ]}
+              style={{ width: orbSize, height: orbSize, borderRadius: orbSize / 2 }}
             >
-              <AIAssistantOrb size={orbSize} state={state} audioLevel={audioLevelSV} />
-              <ActiveOrbRings size={orbSize} />
+              <Animated.View style={[styles.flex1, orbPressStyle]}>
+                <AIAssistantOrb size={orbSize} state={state} audioLevel={audioLevelSV} />
+                <ActiveOrbRings size={orbSize} />
+              </Animated.View>
             </Pressable>
-            <Text
-              style={[
-                styles.orbHint,
-                isListening && currentTranscript ? styles.orbHintActive : null,
-              ]}
-              numberOfLines={2}
-            >
-              {orbHint}
-            </Text>
+            <OrbStatus state={state} transcript={currentTranscript} />
           </View>
 
           <View style={styles.bottomSection}>
-            <View style={styles.messagesMask}>
-              <RecentMessages messages={messages} />
-              <LinearGradient
-                colors={['rgba(2,2,10,0)', colors.bgDeep]}
-                style={styles.fadeBottom}
-                pointerEvents="none"
-              />
-            </View>
+            {messages.length === 0 ? (
+              <SuggestionChips onPick={(t) => pipeline.sendText(t)} />
+            ) : (
+              <View style={styles.messagesMask}>
+                <RecentMessages messages={messages} />
+                <LinearGradient
+                  colors={['rgba(2,2,10,0)', colors.bgDeep]}
+                  style={styles.fadeBottom}
+                  pointerEvents="none"
+                />
+              </View>
+            )}
           </View>
 
           {showInput ? (
@@ -365,6 +386,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
+    // Wins hit-testing over the (later-rendered) orb section, so the orb can
+    // never intercept taps on the history / type buttons.
+    zIndex: 10,
   },
   topSide: {
     flex: 1,
@@ -413,17 +437,7 @@ const styles = StyleSheet.create({
     width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  orbHint: {
-    marginTop: spacing.sm,
-    fontFamily: 'Manrope-Regular',
-    fontSize: 14,
-    color: colors.textMuted,
-    textAlign: 'center',
-    paddingHorizontal: spacing.xl,
-  },
-  orbHintActive: {
-    color: colors.primary,
+    paddingTop: spacing.lg,
   },
   bottomSection: {
     flex: 0.42,

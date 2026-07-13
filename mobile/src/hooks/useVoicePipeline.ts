@@ -1,41 +1,29 @@
 import { useCallback, useRef } from 'react';
-import ReactNativeBlobUtil from 'react-native-blob-util';
 
-import { streamChat } from '@/api/chat';
 import { transcribeGooglePcm } from '@/api/transcribeGoogle';
-import {
-  synthesizeWithCamb,
-  synthesizeWithElevenLabs,
-  synthesizeWithOpenAI,
-} from '@/api/synthesize';
 import { streamTranscribe } from '@/api/transcribe';
-import { orbAudio } from '@/lib/orbAudio';
-import { runClientToolCalls } from '@/lib/tools/runClientCalls';
-import { useConversationStore } from '@/stores/conversationStore';
-import { getEffectiveCity, useLocationStore } from '@/stores/locationStore';
+import { runAssistantTurn } from '@/lib/assistantTurn';
+import { orbPlayback } from '@/lib/orbPlayback';
+import { wakeWord } from '@/lib/wakeWord';
 import { useVoiceStore } from '@/stores/voiceStore';
 
 import { useAudioRecorder } from './useAudioRecorder';
 import { usePcmRecorder } from './usePcmRecorder';
 
-function mimeForPath(path: string): string {
-  return path.toLowerCase().endsWith('.mp3') ? 'audio/mpeg' : 'audio/wav';
-}
-
 type Mode = 'idle' | 'recording';
 type RecorderKind = 'pcm' | 'file';
 
-// Orchestrates record → STT → chat SSE → TTS → playback.
-// Mirrors web/src/app/page.tsx:handleUserMessage.
+// Orchestrates record → STT → assistant turn (chat SSE → TTS → playback).
+//
+// The chat→TTS→playback half lives in `runAssistantTurn` (UI-agnostic) so it's
+// shared verbatim with the screen-off headless wake turn; this hook owns the
+// foreground concerns: recording, turn/interrupt bookkeeping, and orb playback.
 //
 // Two recording paths:
 //   `pcm`  (preferred) — usePcmRecorder captures raw PCM16 locally, then sends
 //                        the whole buffer to Chirp 2 on stop.
 //   `file` (fallback)  — nitro-sound records an .m4a, uploaded to
 //                        /api/transcribe-stream as SSE.
-//
-// We try the PCM recorder first; if its native module isn't linked we silently
-// fall back to file mode so the app still works.
 
 // Dev-only pipeline diagnostics; silenced in release builds.
 const dlog = (...args: unknown[]) => {
@@ -50,8 +38,7 @@ export function useVoicePipeline() {
 
   // Each user turn gets a monotonic id. Anything async (chat SSE, sentence
   // playback) checks it before touching audio or shared state, so an interrupt
-  // or a rapid re-send cleanly supersedes the previous turn instead of leaking
-  // into it (e.g. queued sentences playing over a new recording).
+  // or a rapid re-send cleanly supersedes the previous turn.
   const turnIdRef = useRef(0);
   const chatAbortRef = useRef<(() => void) | null>(null);
 
@@ -59,10 +46,8 @@ export function useVoicePipeline() {
     turnIdRef.current += 1; // invalidate whatever turn is in flight
     chatAbortRef.current?.(); // stop the chat SSE
     chatAbortRef.current = null;
-    orbAudio.stop(); // stop the current sentence + resolve its pending promise
+    orbPlayback.stop(); // stop the current sentence + resolve its pending promise
   }, []);
-
-  const { updateLastAssistant } = useConversationStore.getState();
 
   const handleText = useCallback(
     async (text: string) => {
@@ -72,164 +57,27 @@ export function useVoicePipeline() {
       // Supersede any in-flight turn (interrupt, or a rapid second send).
       cancelActiveTurn();
       const myTurn = ++turnIdRef.current;
-      const isCurrent = () => turnIdRef.current === myTurn;
 
-      const voice = useVoiceStore.getState();
-      voice.setTranscript('');
-      voice.setError(null);
-
-      useConversationStore.getState().addMessage({
-        role: 'user',
-        content: trimmed,
-        timestamp: Date.now(),
+      await runAssistantTurn({
+        text: trimmed,
+        playback: orbPlayback,
+        isCurrent: () => turnIdRef.current === myTurn,
+        onChatAbort: (abort) => {
+          chatAbortRef.current = abort;
+        },
       });
-
-      const history = useConversationStore
-        .getState()
-        .messages.slice(-11, -1)
-        .map(({ role, content }) => ({ role, content }));
-
-      voice.setThinking(true);
-
-      let fullReply = '';
-      let assistantAdded = false;
-      const ensureAssistant = () => {
-        if (assistantAdded) return;
-        useConversationStore.getState().addMessage({
-          role: 'assistant',
-          content: '',
-          timestamp: Date.now(),
-        });
-        useVoiceStore.getState().setThinking(false);
-        assistantAdded = true;
-      };
-
-      const locState = useLocationStore.getState();
-      const userContext = {
-        city: getEffectiveCity(locState),
-        lat: locState.lat,
-        lon: locState.lon,
-        timezone:
-          Intl.DateTimeFormat().resolvedOptions().timeZone || undefined,
-      };
-
-      // Synthesize + play sentences as they arrive from the chat stream.
-      // Synthesis runs in parallel (multiple Camb tasks in flight); playback
-      // is sequential via a Promise chain so audio doesn't overlap.
-      const { ttsProvider, openaiVoice } = useVoiceStore.getState();
-      const synthesize = (text: string) => {
-        if (ttsProvider === 'elevenlabs') return synthesizeWithElevenLabs(text);
-        if (ttsProvider === 'camb') return synthesizeWithCamb(text);
-        return synthesizeWithOpenAI(text, openaiVoice);
-      };
-
-      let textBuffer = '';
-      let playbackChain: Promise<void> = Promise.resolve();
-      let firstAudioStarted = false;
-
-      const flushSentence = (sentence: string) => {
-        const text = sentence.trim();
-        if (!text) return;
-        const synthPromise = synthesize(text).catch((e) => {
-          console.warn('[TTS] synth failed:', e);
-          return null;
-        });
-        playbackChain = playbackChain
-          .then(async () => {
-            if (!isCurrent()) return; // turn superseded — don't play stale audio
-            const path = await synthPromise;
-            if (!path || !isCurrent()) return;
-            const cleanPath = path.replace(/^file:\/\//, '');
-            const base64 = await ReactNativeBlobUtil.fs.readFile(
-              cleanPath,
-              'base64',
-            );
-            if (!isCurrent()) return;
-            if (!firstAudioStarted) {
-              firstAudioStarted = true;
-              useVoiceStore.getState().setThinking(false);
-              useVoiceStore.getState().setSpeaking(true);
-            }
-            await orbAudio.play(base64, mimeForPath(path));
-          })
-          .catch((e) => {
-            console.warn('[TTS] playback failed:', e);
-          });
-      };
-
-      const SENTENCE_RE = /[.!?…]+\s+/;
-      const consumeSentences = () => {
-        let m: RegExpExecArray | null;
-        while ((m = SENTENCE_RE.exec(textBuffer)) !== null) {
-          const endIdx = m.index + m[0].length;
-          const sentence = textBuffer.slice(0, endIdx);
-          textBuffer = textBuffer.slice(endIdx);
-          flushSentence(sentence);
-        }
-      };
-
-      try {
-        const { promise, abort } = streamChat({
-          message: trimmed,
-          history,
-          userContext,
-          onContent: (chunk) => {
-            if (!isCurrent()) return;
-            ensureAssistant();
-            fullReply += chunk;
-            updateLastAssistant(fullReply);
-            textBuffer += chunk;
-            consumeSentences();
-          },
-          onToolCalls: (calls) => {
-            if (!isCurrent()) return;
-            runClientToolCalls(calls);
-          },
-          onError: (msg) => {
-            if (isCurrent()) useVoiceStore.getState().setError(msg);
-          },
-        });
-        chatAbortRef.current = abort;
-        await promise;
-      } catch (err) {
-        if (isCurrent()) {
-          const msg = err instanceof Error ? err.message : 'Chat failed';
-          useVoiceStore.getState().setError(msg);
-          useVoiceStore.getState().setThinking(false);
-        }
-        return;
-      }
-
-      // Final sentence (no trailing whitespace, so regex didn't catch it).
-      if (textBuffer.trim()) {
-        flushSentence(textBuffer);
-        textBuffer = '';
-      }
-
-      if (!fullReply) {
-        if (isCurrent()) useVoiceStore.getState().setThinking(false);
-        return;
-      }
-
-      try {
-        await playbackChain;
-      } catch (e) {
-        console.warn('[TTS] chain error:', e);
-      } finally {
-        if (isCurrent()) {
-          chatAbortRef.current = null;
-          useVoiceStore.getState().setThinking(false);
-          useVoiceStore.getState().setSpeaking(false);
-        }
-      }
     },
-    [updateLastAssistant, cancelActiveTurn],
+    [cancelActiveTurn],
   );
 
   const startListening = useCallback(async () => {
     if (modeRef.current === 'recording') return;
     useVoiceStore.getState().setError(null);
     useVoiceStore.getState().setTranscript('');
+
+    // Hand the mic off from the "Hey Mia" service so two AudioRecord consumers
+    // don't fight over it (no-op when the wake word isn't running).
+    wakeWord.pauseDetection();
 
     // Try the PCM recorder first.
     try {
@@ -259,6 +107,8 @@ export function useVoicePipeline() {
       useVoiceStore.getState().setError(msg);
       useVoiceStore.getState().setListening(false);
       modeRef.current = 'idle';
+      // Recording never started — let the wake word listen again.
+      wakeWord.resumeDetection();
     }
   }, [recorder, pcmRecorder]);
 
@@ -294,6 +144,9 @@ export function useVoicePipeline() {
       useVoiceStore.getState().setError(msg);
       useVoiceStore.getState().setTranscript('');
       return;
+    } finally {
+      // Mic is free again — resume wake-word listening (no-op if disabled).
+      wakeWord.resumeDetection();
     }
 
     useVoiceStore.getState().setTranscript('');

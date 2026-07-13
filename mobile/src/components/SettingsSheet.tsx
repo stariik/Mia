@@ -4,12 +4,14 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 
+import { useWakeWordToggle } from '@/hooks/useWakeWord';
 import { refreshLocation } from '@/lib/location';
 import { useAuthStore } from '@/stores/authStore';
 import { useLocationStore } from '@/stores/locationStore';
@@ -32,13 +34,26 @@ const OPENAI_VOICES = ['alloy', 'echo', 'fable', 'nova', 'onyx', 'shimmer'];
 export function SettingsSheet({ visible, onClose }: Props) {
   const { ttsProvider, setTtsProvider, openaiVoice, setOpenaiVoice } =
     useVoiceStore();
-  const user = useAuthStore((s) => s.user);
-  const signOut = useAuthStore((s) => s.signOut);
+  const { user, logout } = useAuthStore();
 
   const detectedCity = useLocationStore((s) => s.city);
   const manualCity = useLocationStore((s) => s.manualCity);
   const setManualCity = useLocationStore((s) => s.setManualCity);
   const [cityDraft, setCityDraft] = useState(manualCity ?? '');
+
+  const wake = useWakeWordToggle();
+  const [wakeNote, setWakeNote] = useState<string | null>(null);
+
+  const onToggleWake = async (next: boolean) => {
+    const res = await wake.set(next);
+    if (res.ok) {
+      setWakeNote(null);
+    } else if (res.reason === 'no-mic') {
+      setWakeNote('მიკროფონის ნებართვა საჭიროა');
+    } else {
+      setWakeNote('ჩართვა ვერ მოხერხდა');
+    }
+  };
 
   useEffect(() => {
     if (visible) setCityDraft(manualCity ?? '');
@@ -115,6 +130,38 @@ export function SettingsSheet({ visible, onClose }: Props) {
             </>
           ) : null}
 
+          {wake.available ? (
+            <>
+              <Text
+                style={[typography.labelSm, styles.section, styles.sectionTop]}
+              >
+                ხმოვანი გამოძახება
+              </Text>
+              <View style={[styles.row, { justifyContent: 'space-between' }]}>
+                <View style={styles.flex}>
+                  <Text style={[typography.body, styles.rowLabel]}>
+                    „Mia“-ს გამოძახება
+                  </Text>
+                  <Text style={[typography.bodySmall, styles.rowHint]}>
+                    თქვი „Mia“ აპის გახსნის გარეშე
+                  </Text>
+                  {wakeNote ? (
+                    <Text style={[typography.bodySmall, styles.wakeNote]}>
+                      {wakeNote}
+                    </Text>
+                  ) : null}
+                </View>
+                <Switch
+                  value={wake.enabled}
+                  disabled={wake.busy}
+                  onValueChange={onToggleWake}
+                  trackColor={{ false: colors.outlineVariant, true: colors.primary }}
+                  thumbColor="#ffffff"
+                />
+              </View>
+            </>
+          ) : null}
+
           <Text style={[typography.labelSm, styles.section, styles.sectionTop]}>
             ქალაქი
           </Text>
@@ -150,32 +197,18 @@ export function SettingsSheet({ visible, onClose }: Props) {
               </Text>
             </Pressable>
           </View>
-
-          {user ? (
-            <>
-              <Text style={[typography.labelSm, styles.section, styles.sectionTop]}>
-                ანგარიში
-              </Text>
-              <View style={styles.row}>
-                <View style={styles.flex}>
-                  <Text style={[typography.body, styles.rowLabel]}>{user.name}</Text>
-                  <Text style={[typography.bodySmall, styles.rowHint]}>{user.email}</Text>
-                </View>
-                <Pressable
-                  onPress={() => {
-                    signOut();
-                    onClose();
-                  }}
-                  style={styles.signOutBtn}
-                  hitSlop={6}
-                >
-                  <Text style={[typography.labelSm, styles.signOutText]}>
-                    გასვლა
-                  </Text>
-                </Pressable>
-              </View>
-            </>
-          ) : null}
+          {/* Account */}
+          <Text style={[typography.labelSm, styles.section, styles.sectionTop]}>
+            ანგარიში
+          </Text>
+          <View style={[styles.row, { justifyContent: 'space-between' }]}>
+            <Text style={[typography.bodySmall, { color: colors.textMuted }]}>
+              {user?.email ?? ''}
+            </Text>
+            <Pressable onPress={logout} style={styles.signOutBtn} hitSlop={6}>
+              <Text style={styles.signOutText}>გასვლა</Text>
+            </Pressable>
+          </View>
         </ScrollView>
 
         <Pressable
@@ -264,6 +297,10 @@ const styles = StyleSheet.create({
   rowHint: {
     color: colors.textMuted,
     marginTop: 2,
+  },
+  wakeNote: {
+    color: colors.danger,
+    marginTop: 4,
   },
   dot: {
     width: 10,

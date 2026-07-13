@@ -23,6 +23,14 @@ export interface AIAssistantOrbProps {
   hoverIntensity?: number;
   forceHoverState?: boolean;
   backgroundColor?: string;
+  /**
+   * Feather the orb's alpha to 0 before the canvas edge so the square WebView
+   * boundary never reveals itself (the glow's faint residual reaching the
+   * corners is what reads as a "box" around the orb). Only affects the corner
+   * residual outside the orb's circle — the visible orb is unchanged. Default
+   * on; the round orb on a dark backdrop looks identical, minus the square.
+   */
+  edgeFade?: boolean;
 }
 
 const PUSH_INTERVAL_MS = 50;
@@ -38,6 +46,7 @@ export function AIAssistantOrb({
   hoverIntensity = 2,
   forceHoverState = false,
   backgroundColor = '#000000',
+  edgeFade = true,
 }: AIAssistantOrbProps) {
   const webRef = useRef<WebView>(null);
   const stateRef = useRef<OrbState>(state);
@@ -51,9 +60,18 @@ export function AIAssistantOrb({
         rotateOnHover: true,
         forceHoverState,
         backgroundColor,
+        edgeFade,
       }),
-    [hue, hoverIntensity, forceHoverState, backgroundColor],
+    [hue, hoverIntensity, forceHoverState, backgroundColor, edgeFade],
   );
+
+  // Mirror the assistant state into the WebView so the shader can crossfade
+  // between its per-state looks (idle / listening / thinking / speaking).
+  useEffect(() => {
+    webRef.current?.injectJavaScript(
+      `window.setOrbState && window.setOrbState('${state}'); true;`,
+    );
+  }, [state]);
 
   useEffect(() => {
     let lastSent = -1;
@@ -89,7 +107,10 @@ export function AIAssistantOrb({
         width: size,
         height: size,
         backgroundColor: 'transparent',
-        overflow: 'hidden',
+        // Visible (not hidden): the WebView is exactly this size, so there's
+        // nothing to clip at the RN layer — the square came from inside the
+        // WebGL canvas (fixed via edgeFade), not from this container.
+        overflow: 'visible',
       }}
     >
       <WebView
@@ -131,6 +152,13 @@ export function AIAssistantOrb({
           } catch {
             console.log('[Orb]', e.nativeEvent.data);
           }
+        }}
+        onLoadEnd={() => {
+          // The state effect may have fired before the WebView finished
+          // booting; sync the current state once the page is live.
+          webRef.current?.injectJavaScript(
+            `window.setOrbState && window.setOrbState('${stateRef.current}'); true;`,
+          );
         }}
         onError={(e) => console.warn('[Orb] webview error', e.nativeEvent)}
         onHttpError={(e) =>

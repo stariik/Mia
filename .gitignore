@@ -28,3 +28,5 @@ spike/samples/
 
 # Claude memory
 .claude/
+graphify-out/
+mia-obs/

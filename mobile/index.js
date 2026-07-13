@@ -4,20 +4,39 @@
 
 import { AppRegistry } from 'react-native';
 import notifee, { EventType } from '@notifee/react-native';
+import * as Sentry from '@sentry/react-native';
 
 import App from './App';
 import { name as appName } from './app.json';
+import { env } from './src/config/env';
 import {
   rescheduleAllFromStorage,
   snoozeAlarmHeadless,
   dismissAlarmHeadless,
   rollRecurringAlarm,
 } from './src/lib/tools/platform/headless';
+import { runWakeSession } from './src/lib/wakeSession';
+
+// Crash reporting (JS + native). No-ops until env.sentryDsn is set. Captures the
+// main app, the headless wake/alarm tasks, and native crashes (autolinked SDK).
+if (env.sentryDsn) {
+  Sentry.init({ dsn: env.sentryDsn, tracesSampleRate: 0.2 });
+}
 
 // Re-arm scheduled alarms after device reboot (Android BootReceiver →
 // RescheduleAlarmsService → this task).
 AppRegistry.registerHeadlessTask('RescheduleAlarms', () => async () => {
   await rescheduleAllFromStorage();
+});
+
+// App-closed "Hey Jarvis / Hey Mia" voice session (mobile/docs/hey-jarvis-
+// rebuild-prompt.md). WakeWordService always routes a background turn through
+// this headless task — it reuses the warm JS runtime the mic FGS keeps alive,
+// or boots one when cold. Running inside a headless task is what keeps RN's JS
+// timers ticking with no resumed Activity; the old in-process 'turn' event left
+// them paused, hanging the turn until the app was foregrounded.
+AppRegistry.registerHeadlessTask('MiaWakeTurn', () => async () => {
+  await runWakeSession();
 });
 
 // Background event handler for Notifee. Fires when the app is killed/swiped
@@ -46,4 +65,4 @@ notifee.onBackgroundEvent(async ({ type, detail }) => {
   }
 });
 
-AppRegistry.registerComponent(appName, () => App);
+AppRegistry.registerComponent(appName, () => Sentry.wrap(App));

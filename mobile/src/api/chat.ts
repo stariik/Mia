@@ -2,7 +2,7 @@ import RNEventSource from 'react-native-sse';
 
 import type { ClientToolCall } from '@/lib/tools/types';
 
-import { apiUrl } from './client';
+import { apiUrl, authHeaders } from './client';
 
 type ChatHistoryEntry = { role: 'user' | 'assistant'; content: string };
 
@@ -52,7 +52,7 @@ export function streamChat({
 
   const source = new RNEventSource(apiUrl('/api/chat'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ message, history, userContext }),
     pollingInterval: 0,
   });

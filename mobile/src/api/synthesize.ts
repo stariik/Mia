@@ -1,6 +1,6 @@
 import ReactNativeBlobUtil from 'react-native-blob-util';
 
-import { apiUrl } from './client';
+import { apiUrl, authHeaders } from './client';
 
 const POLL_DELAY_MS = 200;
 const MAX_POLLS = 240;
@@ -84,7 +84,7 @@ async function downloadToCachePost(
   }).fetch(
     'POST',
     url,
-    { 'Content-Type': 'application/json' },
+    { 'Content-Type': 'application/json', ...authHeaders() },
     JSON.stringify(body),
   );
   const res = await task;

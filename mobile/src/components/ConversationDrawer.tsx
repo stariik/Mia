@@ -66,7 +66,7 @@ export function ConversationDrawer({ visible, onClose }: Props) {
   return (
     <View
       pointerEvents={visible ? 'auto' : 'none'}
-      style={StyleSheet.absoluteFill}
+      style={[StyleSheet.absoluteFill, styles.root]}
     >
       <Animated.View style={[StyleSheet.absoluteFill, styles.overlay, overlayStyle]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
@@ -209,6 +209,11 @@ export function ConversationDrawer({ visible, onClose }: Props) {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  root: {
+    // Above the top bar (zIndex 10 in HomeScreen) so the Mia wordmark and
+    // history button never draw over the open drawer.
+    zIndex: 100,
+  },
   overlay: {
     backgroundColor: '#000',
   },

@@ -8,6 +8,7 @@ import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative
 import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
 import com.mobile.alarm.AlarmPackage
 import com.mobile.music.MusicControlPackage
+import com.mobile.wake.WakeWordPackage
 
 class MainApplication : Application(), ReactApplication {
 
@@ -18,6 +19,7 @@ class MainApplication : Application(), ReactApplication {
         PackageList(this).packages.apply {
           add(AlarmPackage())
           add(MusicControlPackage())
+          add(WakeWordPackage())
         },
     )
   }

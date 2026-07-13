@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
@@ -28,8 +28,6 @@ const theme = {
   },
 };
 
-// Wrappers translate React Navigation's prop shape to the screens' simpler
-// `onBack` callback signature.
 function AlarmsRoute({ navigation }: any) {
   return <AlarmsScreen onBack={() => navigation.goBack()} />;
 }
@@ -41,14 +39,22 @@ function TranslatorRoute({ navigation }: any) {
 }
 
 export function RootNavigator() {
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const { token, hydrated, hydrate } = useAuthStore();
+
+  useEffect(() => {
+    hydrate();
+  }, [hydrate]);
+
+  if (!hydrated) return null;
 
   return (
     <NavigationContainer theme={theme} ref={navigationRef}>
       <Stack.Navigator
         screenOptions={{ headerShown: false, animation: 'fade' }}
       >
-        {isAuthenticated ? (
+        {!token ? (
+          <Stack.Screen name="Auth" component={AuthScreen} />
+        ) : (
           <>
             <Stack.Screen name="Home" component={HomeScreen} />
             <Stack.Screen name="Alarms" component={AlarmsRoute} />
@@ -64,8 +70,6 @@ export function RootNavigator() {
               }}
             />
           </>
-        ) : (
-          <Stack.Screen name="Auth" component={AuthScreen} />
         )}
       </Stack.Navigator>
     </NavigationContainer>

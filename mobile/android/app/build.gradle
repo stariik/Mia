@@ -115,6 +115,18 @@ dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
 
+    // On-device wake-word ("Hey Mia") inference, run inside WakeWordService so
+    // it keeps listening after the app UI is closed. We use openWakeWord
+    // (Apache-2.0, free for commercial use — no account, key, or per-user
+    // licensing) via ONNX Runtime: three small ONNX models in assets/
+    // (melspectrogram → speech embedding → wake-word classifier). No audio
+    // leaves the device until the keyword fires. See OwwEngine.kt.
+    //
+    // NOTE: the in-app STT recorder uses @picovoice/react-native-voice-processor
+    // (also free/Apache-2.0, no key) — that's a *separate* autolinked module and
+    // is unaffected by this; its ai.picovoice.** proguard keep rule stays.
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.20.0")
+
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")
     } else {

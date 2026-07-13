@@ -5,9 +5,19 @@
 // Uses Flash v2.5 (eleven_flash_v2_5) for ~75ms model latency. Voice ID and
 // model come from env so the mobile client just sends text.
 
+import { normalizeGeorgianNumbers } from "@/lib/georgianNumbers";
+import { guard } from "@/lib/apiGuard";
+
 const DEFAULT_MODEL = "eleven_flash_v2_5";
 
+// 64 kbps @ 44.1 kHz: half the bytes of mp3_44100_128 with no audible loss for
+// speech, so first-audio arrives sooner. Override via env if you ever need
+// higher fidelity (e.g. mp3_44100_128) or smaller still (mp3_22050_32).
+const DEFAULT_OUTPUT_FORMAT = "mp3_44100_64";
+
 export async function POST(request: Request) {
+  const g = guard(request);
+  if ("error" in g) return g.error;
   try {
     const { text, voiceId } = (await request.json()) as {
       text?: string;
@@ -21,6 +31,8 @@ export async function POST(request: Request) {
     const apiKey = process.env.ELEVENLABS_API_KEY;
     const envVoice = process.env.ELEVENLABS_VOICE_ID;
     const model = process.env.ELEVENLABS_MODEL || DEFAULT_MODEL;
+    const outputFormat =
+      process.env.ELEVENLABS_OUTPUT_FORMAT || DEFAULT_OUTPUT_FORMAT;
     const voice = voiceId || envVoice;
 
     if (!apiKey) {
@@ -37,7 +49,7 @@ export async function POST(request: Request) {
     }
 
     // Stream endpoint: returns audio bytes immediately as the model generates.
-    const url = `https://api.elevenlabs.io/v1/text-to-speech/${voice}/stream?output_format=mp3_44100_128`;
+    const url = `https://api.elevenlabs.io/v1/text-to-speech/${voice}/stream?output_format=${outputFormat}`;
     const res = await fetch(url, {
       method: "POST",
       headers: {
@@ -46,13 +58,16 @@ export async function POST(request: Request) {
         Accept: "audio/mpeg",
       },
       body: JSON.stringify({
-        text,
+        // Spell digits as Georgian words so they're pronounced correctly.
+        text: normalizeGeorgianNumbers(text),
         model_id: model,
         voice_settings: {
           stability: 0.5,
           similarity_boost: 0.75,
           style: 0.0,
-          use_speaker_boost: true,
+          // speaker_boost adds latency for a marginal similarity gain — off for
+          // faster first-audio on a voice assistant.
+          use_speaker_boost: false,
         },
       }),
     });

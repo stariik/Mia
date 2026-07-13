@@ -16,6 +16,7 @@ import { v2 } from "@google-cloud/speech";
 import path from "node:path";
 import fs from "node:fs";
 import openai from "@/lib/openai";
+import { guard } from "@/lib/apiGuard";
 
 type V2SpeechClient = InstanceType<typeof v2.SpeechClient>;
 
@@ -109,6 +110,12 @@ function trimSilence(pcm: Buffer, sampleRate: number): Buffer {
   const trimmed = aligned.slice(startIdx, endIdx);
   return Buffer.from(trimmed.buffer, trimmed.byteOffset, trimmed.byteLength);
 }
+
+// Skip the LLM proof-reader when Chirp 2 is at least this confident — such
+// transcripts are reliably correct, so the ~400ms correction pass isn't worth
+// it. A confidence of 0 means "unknown" and falls below the bar, so those still
+// get proofread (the safe default).
+const PROOFREAD_CONFIDENCE_MAX = 0.85;
 
 const SA_PATH = path.resolve(process.cwd(), "google-service-account.json");
 
@@ -227,6 +234,8 @@ async function correctTranscript(text: string): Promise<string> {
 }
 
 export async function POST(request: Request) {
+  const g = guard(request);
+  if ("error" in g) return g.error;
   let body: {
     audioBase64?: string;
     sampleRate?: number;
@@ -353,10 +362,14 @@ export async function POST(request: Request) {
     const rawText = winner.text;
     const winnerIsKa = winner.code === "ka-GE";
 
-    // LLM post-correction only for a Georgian winner — the proof-reader is
-    // Georgian-specific and would mangle a Russian/English transcript.
+    // LLM post-correction only for a Georgian winner (the proof-reader is
+    // Georgian-specific and would mangle a Russian/English transcript) AND only
+    // when Chirp 2 wasn't already confident — high-confidence transcripts skip
+    // the pass for a free latency win.
+    const needsProofread =
+      winnerIsKa && winner.confidence < PROOFREAD_CONFIDENCE_MAX;
     const text =
-      rawText && winnerIsKa ? await correctTranscript(rawText) : rawText;
+      rawText && needsProofread ? await correctTranscript(rawText) : rawText;
 
     if (process.env.NODE_ENV !== "production") {
       console.log(

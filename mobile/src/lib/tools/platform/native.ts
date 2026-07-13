@@ -28,9 +28,19 @@ const alarmHandles = new Map<string, ReturnType<typeof setTimeout>>();
 type NativeAlarm = {
   getDefaultAlarmUri(): Promise<string | null>;
   createChannels(): Promise<void>;
+  setLockScreenFlags(enabled: boolean): void;
 };
 
 const AlarmNative = (NativeModules.AlarmModule || null) as NativeAlarm | null;
+
+/**
+ * Show-when-locked window flags. Enabled only while the AlarmRing screen is
+ * up; leaving them on permanently breaks soft-keyboard focus app-wide.
+ */
+export function setLockScreenFlags(enabled: boolean) {
+  if (Platform.OS !== 'android') return;
+  AlarmNative?.setLockScreenFlags?.(enabled);
+}
 
 async function ensureNotifeeChannelsFallback() {
   // iOS or pre-AlarmModule fallback. Notifee channels are Android-only.

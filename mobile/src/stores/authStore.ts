@@ -1,74 +1,45 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 
-export type AuthUser = {
-  id: string;
-  email: string;
-  name: string;
-};
+export type AuthUser = { id: string; email: string };
 
 type AuthState = {
-  isAuthenticated: boolean;
+  token: string | null;
   user: AuthUser | null;
-  /** True while a sign-in/sign-up call is in flight. */
-  pending: boolean;
-  error: string | null;
-
-  signIn: (email: string, password: string) => Promise<void>;
-  signUp: (name: string, email: string, password: string) => Promise<void>;
-  signOut: () => void;
-  clearError: () => void;
+  hydrated: boolean;
+  hydrate: () => Promise<void>;
+  login: (token: string, user: AuthUser) => Promise<void>;
+  logout: () => Promise<void>;
 };
 
-const fakeNetwork = (ms = 600) =>
-  new Promise<void>((r) => setTimeout(() => r(), ms));
+const TOKEN_KEY = '@mia:auth_token';
+const USER_KEY = '@mia:auth_user';
 
-const newId = () =>
-  `u_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-
-// Stub auth — accepts any non-empty email/password. Replace with real backend
-// when the API is ready. State is in-memory only (lost on app restart).
 export const useAuthStore = create<AuthState>((set) => ({
-  isAuthenticated: false,
+  token: null,
   user: null,
-  pending: false,
-  error: null,
+  hydrated: false,
 
-  signIn: async (email, password) => {
-    set({ pending: true, error: null });
+  hydrate: async () => {
     try {
-      const e = email.trim();
-      if (!e || !e.includes('@')) throw new Error('Invalid email.');
-      if (!password || password.length < 4) throw new Error('Password too short.');
-      await fakeNetwork();
+      const result = await AsyncStorage.getMany([TOKEN_KEY, USER_KEY]);
       set({
-        isAuthenticated: true,
-        user: { id: newId(), email: e, name: e.split('@')[0] },
-        pending: false,
+        token: result[TOKEN_KEY] ?? null,
+        user: result[USER_KEY] ? (JSON.parse(result[USER_KEY]!) as AuthUser) : null,
+        hydrated: true,
       });
-    } catch (err) {
-      set({ pending: false, error: err instanceof Error ? err.message : 'Sign in failed.' });
+    } catch {
+      set({ hydrated: true });
     }
   },
 
-  signUp: async (name, email, password) => {
-    set({ pending: true, error: null });
-    try {
-      const n = name.trim();
-      const e = email.trim();
-      if (!n) throw new Error('Name is required.');
-      if (!e || !e.includes('@')) throw new Error('Invalid email.');
-      if (!password || password.length < 4) throw new Error('Password too short.');
-      await fakeNetwork();
-      set({
-        isAuthenticated: true,
-        user: { id: newId(), email: e, name: n },
-        pending: false,
-      });
-    } catch (err) {
-      set({ pending: false, error: err instanceof Error ? err.message : 'Sign up failed.' });
-    }
+  login: async (token, user) => {
+    await AsyncStorage.setMany({ [TOKEN_KEY]: token, [USER_KEY]: JSON.stringify(user) });
+    set({ token, user });
   },
 
-  signOut: () => set({ isAuthenticated: false, user: null, error: null }),
-  clearError: () => set({ error: null }),
+  logout: async () => {
+    await AsyncStorage.removeMany([TOKEN_KEY, USER_KEY]);
+    set({ token: null, user: null });
+  },
 }));

@@ -16,11 +16,19 @@
 -keepclassmembers class io.invertase.notifee.** { *; }
 
 # ──────────────── Picovoice voice processor (streaming STT) ────────────────
-# Voice processor uses JNI bindings.
+# @picovoice/react-native-voice-processor captures the PCM frames for STT and
+# uses JNI bindings. (This is NOT Porcupine — the wake word moved to
+# openWakeWord/ONNX Runtime below — but the STT recorder still needs this keep.)
 -keep class ai.picovoice.** { *; }
 -keepclasseswithmembernames class * {
     native <methods>;
 }
+
+# ──────────────── ONNX Runtime ("Hey Mia" wake word) ────────────────
+# ORT resolves its JNI bridge by name; keep the API surface and don't warn on
+# the optional providers/classes it references but we don't ship.
+-keep class ai.onnxruntime.** { *; }
+-dontwarn ai.onnxruntime.**
 
 # ──────────────── react-native-nitro-sound + nitro-modules ────────────────
 # Nitro autogenerates JNI; keep generated specs.

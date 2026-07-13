@@ -11,6 +11,7 @@ import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
+import com.mobile.MainActivity
 
 /**
  * Exposes alarm-tone + notification-channel helpers that Notifee can't do on
@@ -25,6 +26,18 @@ class AlarmModule(reactContext: ReactApplicationContext) :
   ReactContextBaseJavaModule(reactContext) {
 
   override fun getName(): String = NAME
+
+  /**
+   * Toggles show-when-locked / turn-screen-on on MainActivity. The AlarmRing
+   * screen enables this while ringing (so the alarm stays visible over the
+   * keyguard) and disables it on dismiss — the flags MUST NOT stay on during
+   * normal use because they break soft-keyboard focus app-wide.
+   */
+  @ReactMethod
+  fun setLockScreenFlags(enabled: Boolean) {
+    val activity = reactApplicationContext.currentActivity as? MainActivity ?: return
+    activity.runOnUiThread { activity.setLockScreenFlags(enabled) }
+  }
 
   @ReactMethod
   fun getDefaultAlarmUri(promise: Promise) {

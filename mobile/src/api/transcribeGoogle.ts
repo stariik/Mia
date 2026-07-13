@@ -1,4 +1,4 @@
-import { apiUrl } from './client';
+import { apiUrl, authHeaders } from './client';
 
 // Abort the request if the server hasn't responded in this window, so the UI
 // never gets stuck on "Transcribing…" forever when the network/server hangs.
@@ -27,7 +27,7 @@ export async function transcribeGooglePcm(
   try {
     const res = await fetch(apiUrl('/api/transcribe-google-v2'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({
         audioBase64,
         sampleRate,
