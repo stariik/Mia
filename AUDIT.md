@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-13 · **Auditor:** Claude (principal-engineer pass, full codebase access)
 **Scope:** `mobile/` (React Native 0.85, Android) + `web/` (Next.js API backend)
-**Verified:** `tsc --noEmit` clean · release APK builds (42 MB, arm64-only, ProGuard on) · Jest suite present (greetings)
+**Verified after changes:** `tsc --noEmit` clean (mobile + web) · Jest 24 passing · **release `.aab` builds and is signed with the new upload key** (`CN=Mia`, not the debug key) — 40.6 MB, arm64-v8a, ProGuard on. Device-level voice-loop test is yours to run (you run apps).
 
 ---
 
