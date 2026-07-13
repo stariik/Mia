@@ -1,4 +1,6 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
+import { createJSONStorage, persist } from 'zustand/middleware';
 
 export type Message = {
   role: 'user' | 'assistant';
@@ -32,6 +34,23 @@ type ConversationState = {
 const newId = () =>
   `c_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 
+// Storage cap: keep the most recent conversations, drop the rest on write so
+// AsyncStorage doesn't grow without bound.
+const MAX_CONVERSATIONS = 30;
+
+const capConversations = (
+  conversations: Record<string, Conversation>,
+  order: string[],
+): { conversations: Record<string, Conversation>; order: string[] } => {
+  if (order.length <= MAX_CONVERSATIONS) return { conversations, order };
+  const kept = order.slice(0, MAX_CONVERSATIONS);
+  const next: Record<string, Conversation> = {};
+  for (const id of kept) {
+    if (conversations[id]) next[id] = conversations[id];
+  }
+  return { conversations: next, order: kept };
+};
+
 const titleFromMessages = (msgs: Message[]) => {
   const first = msgs.find((m) => m.role === 'user');
   if (!first) return 'New chat';
@@ -40,7 +59,9 @@ const titleFromMessages = (msgs: Message[]) => {
   return t.length > 40 ? t.slice(0, 40) + '…' : t;
 };
 
-export const useConversationStore = create<ConversationState>((set) => ({
+export const useConversationStore = create<ConversationState>()(
+  persist(
+    (set) => ({
   conversations: {},
   order: [],
   activeId: null,
@@ -79,11 +100,14 @@ export const useConversationStore = create<ConversationState>((set) => ({
       };
 
       const newOrder = [activeId, ...order.filter((id) => id !== activeId)];
+      const capped = capConversations(
+        { ...conversations, [activeId]: updated },
+        newOrder,
+      );
 
       return {
         activeId,
-        conversations: { ...conversations, [activeId]: updated },
-        order: newOrder,
+        ...capped,
         messages,
       };
     }),
@@ -157,4 +181,29 @@ export const useConversationStore = create<ConversationState>((set) => ({
       }
       return { conversations: rest, order, activeId, messages };
     }),
-}));
+    }),
+    {
+      name: 'conversations-v1',
+      storage: createJSONStorage(() => AsyncStorage),
+      // `messages` is a derived mirror of the active conversation — rebuild it
+      // after hydration instead of persisting it.
+      partialize: (s) => ({
+        conversations: s.conversations,
+        order: s.order,
+        activeId: s.activeId,
+      }),
+      merge: (persisted, current) => {
+        const p = persisted as Partial<ConversationState> | undefined;
+        const activeId = p?.activeId ?? null;
+        const conversations = p?.conversations ?? {};
+        return {
+          ...current,
+          conversations,
+          order: p?.order ?? [],
+          activeId,
+          messages: activeId ? conversations[activeId]?.messages ?? [] : [],
+        };
+      },
+    },
+  ),
+);
