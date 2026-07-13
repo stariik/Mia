@@ -160,6 +160,10 @@ export function useVoicePipeline() {
   const stopSpeaking = useCallback(() => {
     cancelActiveTurn();
     useVoiceStore.getState().setSpeaking(false);
+    // Also clear "thinking": a turn canceled before its first token would
+    // otherwise leave the flag set forever (the superseded turn's finally
+    // block is gated on isCurrent() and won't touch shared state).
+    useVoiceStore.getState().setThinking(false);
   }, [cancelActiveTurn]);
 
   return {

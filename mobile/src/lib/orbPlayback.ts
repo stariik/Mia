@@ -10,8 +10,14 @@ import { orbAudio } from './orbAudio';
 export const orbPlayback: TtsPlayback = {
   async play(filePath, mime) {
     const cleanPath = filePath.replace(/^file:\/\//, '');
-    const base64 = await ReactNativeBlobUtil.fs.readFile(cleanPath, 'base64');
-    await orbAudio.play(base64, mime);
+    try {
+      const base64 = await ReactNativeBlobUtil.fs.readFile(cleanPath, 'base64');
+      await orbAudio.play(base64, mime);
+    } finally {
+      // Each spoken sentence is a one-shot cache file — delete it or the TTS
+      // cache grows without bound (leftovers from crashes are swept on launch).
+      ReactNativeBlobUtil.fs.unlink(cleanPath).catch(() => {});
+    }
   },
   stop() {
     orbAudio.stop();

@@ -32,6 +32,7 @@ import { MiaWordmark } from '@/components/MiaWordmark';
 import { OrbStatus } from '@/components/OrbStatus';
 import { SuggestionChips } from '@/components/SuggestionChips';
 import { audioLevel as audioLevelSV } from '@/lib/audioLevel';
+import { userErrorMessage } from '@/lib/errorMessages';
 import { haptics } from '@/lib/haptics';
 import { useSilenceAutoStop } from '@/hooks/useSilenceAutoStop';
 import { useVoicePipeline } from '@/hooks/useVoicePipeline';
@@ -40,14 +41,6 @@ import { useConversationStore, type Message } from '@/stores/conversationStore';
 import { useVoiceStore } from '@/stores/voiceStore';
 import { brandGradient, colors, radius, spacing, typography } from '@/theme';
 
-const GENERIC_ERROR_GE = 'სერვერთან კავშირი ვერ მოხერხდა';
-// Show the real error if it's a short technical string, otherwise fall back
-// to the generic Georgian toast. Helps with diagnosis during dev.
-function toastMessage(err: string | null | undefined) {
-  if (!err) return GENERIC_ERROR_GE;
-  if (err.length < 80) return err;
-  return GENERIC_ERROR_GE;
-}
 
 function orbState(
   listening: boolean,
@@ -147,8 +140,9 @@ export function HomeScreen() {
 
   const onMic = () => {
     haptics.tap();
-    if (isSpeaking) {
-      // Interrupt: stop Mia mid-sentence and start a fresh recording.
+    if (isSpeaking || isThinking) {
+      // Interrupt: cancel the in-flight turn (mid-sentence or still waiting on
+      // the model — a slow backend must never trap the user) and re-listen.
       pipeline.stopSpeaking();
       pipeline.startListening();
       return;
@@ -254,7 +248,6 @@ export function HomeScreen() {
               onPressOut={() => {
                 orbScale.value = withSpring(1, { damping: 12, stiffness: 220 });
               }}
-              disabled={isThinking}
               accessibilityRole="button"
               accessibilityLabel="ხმოვანი ჩაწერა"
               style={{ width: orbSize, height: orbSize, borderRadius: orbSize / 2 }}
@@ -350,7 +343,7 @@ export function HomeScreen() {
               hitSlop={4}
               accessibilityLabel="დახურვა"
             >
-              <Text style={styles.toastText}>{toastMessage(error)}</Text>
+              <Text style={styles.toastText}>{userErrorMessage(error)}</Text>
               <Text style={styles.toastDismiss}>×</Text>
             </Pressable>
           </Animated.View>

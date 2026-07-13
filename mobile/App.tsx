@@ -4,6 +4,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import notifee, { EventType } from '@notifee/react-native';
 import BootSplash from 'react-native-bootsplash';
+import ReactNativeBlobUtil from 'react-native-blob-util';
 
 import { RootNavigator } from '@/navigation/RootNavigator';
 import { navigateRef } from '@/navigation/navigationRef';
@@ -26,6 +27,20 @@ function App() {
 
     ensureChannel();
     ensureNotificationPermission();
+
+    // TTS cache files are deleted right after playback; this sweeps leftovers
+    // from crashes / interrupted turns (blob-util names them RNFetchBlob*).
+    const cacheDir = ReactNativeBlobUtil.fs.dirs.CacheDir;
+    ReactNativeBlobUtil.fs
+      .ls(cacheDir)
+      .then((names) =>
+        names
+          .filter((n) => n.startsWith('RNFetchBlob'))
+          .forEach((n) =>
+            ReactNativeBlobUtil.fs.unlink(`${cacheDir}/${n}`).catch(() => {}),
+          ),
+      )
+      .catch(() => {});
 
     const runReconcile = () => {
       reconcileTools();
