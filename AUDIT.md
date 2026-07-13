@@ -64,7 +64,7 @@ One correction to the brief: **the orb is not Skia.** It's a WebView running an 
 12. **TTS cache never cleaned.** Every spoken sentence writes an mp3 via `react-native-blob-util` `fileCache` (`synthesize.ts:63-96`) and no code ever deletes them — storage grows unboundedly with use. → Files deleted after playback; leftover sweep on launch.
 13. **Cleartext dev-IP allowlist ships in the release** `network_security_config.xml`. Not exploitable by itself, but sloppy. → Dev IPs moved to a debug-only resource overlay; release config is HTTPS-only, no exceptions.
 14. **Dead native dependencies inflate the APK**: `@shopify/react-native-skia` (unused, native C++ per-arch), `@react-native-community/blur` (unused), `ogl` (unused JS). → Removed all three.
-15. **arm64-only build** (`gradle.properties: reactNativeArchitectures=arm64-v8a`) excludes every 32-bit budget phone — a real slice of the Georgian Android market. → Release now also builds `armeabi-v7a` (AAB splits keep per-device download size unchanged).
+15. **arm64-only build** (`gradle.properties: reactNativeArchitectures=arm64-v8a`) excludes every 32-bit budget phone. → **Attempted `armeabi-v7a`, reverted.** `react-native-nitro-sound`'s CMake build fails on armeabi-v7a under Windows (`ninja: manifest still dirty after 100 tries`) — the pre-existing comment already documented this and set arm64-only deliberately. arm64 covers effectively all phones sold in the last several years; revisit on a Linux CI where the native build may succeed. Left as a documented post-launch item, not a blocker.
 
 ## Findings noted, deliberately NOT changed (risk > reward one week out)
 

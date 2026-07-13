@@ -117,9 +117,11 @@ cd mobile/android
   `/delete-account` page must stay public either way).
 - **Paid API budget**: `DAILY_REQUEST_CAP=5000` global default ≈ roughly
   1000 voice turns/day worst-case. Set to what your wallet tolerates.
-- **32-bit support**: I enabled `armeabi-v7a`. If closed testing shows a
-  problem on 32-bit devices, you can revert to arm64-only in
-  `mobile/android/gradle.properties` (Play allows it; it just shrinks reach).
+- **32-bit support**: kept arm64-only. Adding `armeabi-v7a` breaks the
+  `react-native-nitro-sound` native build on Windows (ninja "manifest still
+  dirty" loop — a known third-party issue your gradle.properties comment
+  already flagged). arm64 reaches ~all recent phones; if you want 32-bit
+  reach later, try the build on a Linux CI runner.
 
 ## Post-launch backlog (from the audit; none block launch)
 
