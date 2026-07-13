@@ -675,7 +675,15 @@ export function buildOrbHtml({
       } catch (_) {}
     };
 
+    // Battery: stop the render loop entirely while the page is hidden (app
+    // backgrounded / screen off). Resumed from the visibilitychange listener
+    // below the initial kick-off.
+    var rafPaused = false;
     function update(t) {
+      if (document.hidden) {
+        rafPaused = true;
+        return;
+      }
       requestAnimationFrame(update);
       var dt = (t - lastTime) * 0.001;
       lastTime = t;
@@ -750,6 +758,14 @@ export function buildOrbHtml({
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     }
     requestAnimationFrame(update);
+
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden && rafPaused) {
+        rafPaused = false;
+        lastTime = performance.now(); // avoid a giant dt on resume
+        requestAnimationFrame(update);
+      }
+    });
 
     // Trigger the float-in once the hidden initial state has painted (two
     // frames), otherwise the browser coalesces it into no transition.
