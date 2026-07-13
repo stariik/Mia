@@ -1,4 +1,4 @@
-import { apiUrl } from './client';
+import { apiUrl, authHeaders } from './client';
 
 const TRANSLATE_TIMEOUT_MS = 20_000;
 
@@ -20,7 +20,7 @@ export async function translateText(
   try {
     const res = await fetch(apiUrl('/api/translate'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ text, from, to }),
       signal: controller.signal,
     });

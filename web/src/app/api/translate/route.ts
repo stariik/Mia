@@ -8,9 +8,12 @@
 // tight prompt. gpt-4o is used deliberately — gpt-4o-mini mistranslates
 // Georgian and falls back to canned replies.
 import openai from "@/lib/openai";
+import { guard } from "@/lib/apiGuard";
 import { LANGUAGES } from "@/lib/languages";
 
 export async function POST(request: Request) {
+  const g = guard(request);
+  if ("error" in g) return g.error;
   let body: { text?: string; from?: string; to?: string };
   try {
     body = (await request.json()) as { text?: string; from?: string; to?: string };

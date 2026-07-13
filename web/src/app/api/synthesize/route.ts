@@ -1,8 +1,11 @@
 import openai from "@/lib/openai";
+import { guard } from "@/lib/apiGuard";
 
 type Voice = "alloy" | "ash" | "coral" | "echo" | "fable" | "nova" | "onyx" | "sage" | "shimmer";
 
 export async function POST(request: Request) {
+  const g = guard(request);
+  if ("error" in g) return g.error;
   try {
     const { text, voice = "nova", speed = 1.0 } = await request.json();
 

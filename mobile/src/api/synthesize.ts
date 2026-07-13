@@ -9,7 +9,7 @@ const MAX_POLLS = 240;
 export async function synthesizeWithCamb(text: string): Promise<string> {
   const submitRes = await fetch(apiUrl('/api/synthesize-camb'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ text }),
   });
   if (!submitRes.ok) throw new Error(await readError(submitRes, 'Camb submit'));
@@ -22,6 +22,7 @@ export async function synthesizeWithCamb(text: string): Promise<string> {
     await sleep(POLL_DELAY_MS);
     const pollRes = await fetch(
       apiUrl(`/api/synthesize-camb/status?taskId=${taskId}`),
+      { headers: authHeaders() },
     );
     if (!pollRes.ok) throw new Error(await readError(pollRes, 'Camb poll'));
     const data = (await pollRes.json()) as {
@@ -64,7 +65,7 @@ async function downloadToCache(url: string, ext: 'wav' | 'mp3') {
   const task = ReactNativeBlobUtil.config({
     fileCache: true,
     appendExt: ext,
-  }).fetch('GET', url);
+  }).fetch('GET', url, authHeaders());
   const res = await task;
   const info = res.info();
   if (info.status < 200 || info.status >= 300) {

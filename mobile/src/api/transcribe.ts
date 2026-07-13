@@ -1,7 +1,7 @@
 import ReactNativeBlobUtil from 'react-native-blob-util';
 import RNEventSource from 'react-native-sse';
 
-import { apiUrl } from './client';
+import { apiUrl, authHeaders } from './client';
 
 // Abort the SSE if no event arrives within this window (server accepted the
 // connection but never produced data) — mirrors the chat stream watchdog.
@@ -65,7 +65,7 @@ export function streamTranscribe({
 
       source = new RNEventSource(apiUrl('/api/transcribe-stream'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ audioBase64, mime: 'audio/mp4' }),
         pollingInterval: 0,
       });

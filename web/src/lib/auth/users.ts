@@ -57,3 +57,13 @@ export function findUserByEmail(email: string): User | undefined {
 export function checkPassword(user: User, password: string): boolean {
   return verifyPassword(password, user.passwordHash);
 }
+
+/** Permanently remove a user (Play account-deletion requirement). Returns
+ *  false when no such user exists. */
+export function deleteUser(id: string): boolean {
+  const users = readUsers();
+  const remaining = users.filter((u) => u.id !== id);
+  if (remaining.length === users.length) return false;
+  writeUsers(remaining);
+  return true;
+}

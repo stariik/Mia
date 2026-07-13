@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 
+import { authApi } from '@/api/auth';
 import { useWakeWordToggle } from '@/hooks/useWakeWord';
 import { refreshLocation } from '@/lib/location';
 import { useAuthStore } from '@/stores/authStore';
@@ -43,6 +44,31 @@ export function SettingsSheet({ visible, onClose }: Props) {
 
   const wake = useWakeWordToggle();
   const [wakeNote, setWakeNote] = useState<string | null>(null);
+
+  // Account deletion (Play requirement): collapsed danger link → inline
+  // password confirm. Deleting logs the user out (back to AuthScreen).
+  const [deleteMode, setDeleteMode] = useState(false);
+  const [deletePw, setDeletePw] = useState('');
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteErr, setDeleteErr] = useState<string | null>(null);
+
+  const onDeleteAccount = async () => {
+    if (deleteBusy || !user?.email || !deletePw) return;
+    setDeleteBusy(true);
+    setDeleteErr(null);
+    try {
+      await authApi.deleteAccount(user.email, deletePw);
+      await logout();
+    } catch (err) {
+      setDeleteErr(
+        err instanceof Error && err.message === 'Incorrect email or password'
+          ? 'პაროლი არასწორია'
+          : 'წაშლა ვერ მოხერხდა — სცადეთ მოგვიანებით',
+      );
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
 
   const onToggleWake = async (next: boolean) => {
     const res = await wake.set(next);
@@ -209,6 +235,66 @@ export function SettingsSheet({ visible, onClose }: Props) {
               <Text style={styles.signOutText}>გასვლა</Text>
             </Pressable>
           </View>
+
+          {!deleteMode ? (
+            <Pressable
+              onPress={() => {
+                setDeleteMode(true);
+                setDeleteErr(null);
+                setDeletePw('');
+              }}
+              hitSlop={6}
+              style={styles.deleteLink}
+            >
+              <Text style={[typography.bodySmall, styles.deleteLinkText]}>
+                ანგარიშის წაშლა
+              </Text>
+            </Pressable>
+          ) : (
+            <View style={styles.deleteBox}>
+              <Text style={[typography.bodySmall, styles.deleteWarn]}>
+                ანგარიშის წაშლა საბოლოოა. დაადასტურეთ პაროლით:
+              </Text>
+              <TextInput
+                value={deletePw}
+                onChangeText={setDeletePw}
+                placeholder="პაროლი"
+                placeholderTextColor={colors.textMuted}
+                secureTextEntry
+                autoCapitalize="none"
+                style={[typography.body, styles.deleteInput]}
+              />
+              {deleteErr ? (
+                <Text style={[typography.bodySmall, styles.deleteErr]}>
+                  {deleteErr}
+                </Text>
+              ) : null}
+              <View style={styles.deleteActions}>
+                <Pressable
+                  onPress={() => setDeleteMode(false)}
+                  style={styles.linkBtn}
+                  hitSlop={6}
+                >
+                  <Text style={[typography.labelSm, styles.linkBtnText]}>
+                    გაუქმება
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={onDeleteAccount}
+                  disabled={deleteBusy || !deletePw}
+                  style={[
+                    styles.signOutBtn,
+                    (deleteBusy || !deletePw) && { opacity: 0.4 },
+                  ]}
+                  hitSlop={6}
+                >
+                  <Text style={styles.signOutText}>
+                    {deleteBusy ? 'იშლება…' : 'სამუდამოდ წაშლა'}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          )}
         </ScrollView>
 
         <Pressable
@@ -354,6 +440,42 @@ const styles = StyleSheet.create({
     textTransform: 'none',
     letterSpacing: 0.2,
     fontSize: 12,
+  },
+  deleteLink: {
+    alignSelf: 'flex-start',
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.md,
+  },
+  deleteLinkText: {
+    color: colors.textMuted,
+    textDecorationLine: 'underline',
+  },
+  deleteBox: {
+    borderWidth: 1,
+    borderColor: colors.dangerStroke,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  deleteWarn: {
+    color: colors.danger,
+  },
+  deleteInput: {
+    color: colors.text,
+    borderBottomWidth: 1,
+    borderColor: colors.stroke,
+    paddingVertical: spacing.xs,
+    marginTop: spacing.sm,
+  },
+  deleteErr: {
+    color: colors.danger,
+    marginTop: spacing.xs,
+  },
+  deleteActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: spacing.sm,
+    marginTop: spacing.md,
   },
   doneBtn: {
     width: '100%',

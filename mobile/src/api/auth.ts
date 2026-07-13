@@ -18,4 +18,18 @@ export const authApi = {
     post('/api/auth/login', { email, password }),
   register: (email: string, password: string) =>
     post('/api/auth/register', { email, password }),
+
+  /** Permanent account deletion (Play requirement). Re-authenticates with the
+   *  password so the same server route also serves the public web page. */
+  deleteAccount: async (email: string, password: string): Promise<void> => {
+    const res = await fetch(apiUrl('/api/auth/delete'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(data.error ?? 'Deletion failed');
+    }
+  },
 };

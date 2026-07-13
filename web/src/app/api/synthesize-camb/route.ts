@@ -1,3 +1,5 @@
+import { guard } from "@/lib/apiGuard";
+
 const CAMB_API_KEY = process.env.CAMB_API_KEY!;
 const CAMB_BASE = "https://client.camb.ai/apis";
 
@@ -6,6 +8,8 @@ const GEORGIAN_LANG_ID = 90;
 
 // Step 1: Submit TTS task — returns task_id
 export async function POST(request: Request) {
+  const g = guard(request);
+  if ("error" in g) return g.error;
   try {
     const { text, voiceId = DEFAULT_VOICE_ID } = await request.json();
 

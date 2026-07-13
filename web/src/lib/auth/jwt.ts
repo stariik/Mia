@@ -1,5 +1,10 @@
 import crypto from 'crypto';
 
+// Hard-fail in production: with the known dev fallback, anyone can forge a
+// token and use every guarded (paid) API route for free.
+if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET must be set in production');
+}
 const SECRET = process.env.JWT_SECRET ?? 'mia-dev-secret-change-in-production';
 const TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days
 

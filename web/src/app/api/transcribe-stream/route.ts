@@ -1,4 +1,5 @@
 import openai from "@/lib/openai";
+import { guard } from "@/lib/apiGuard";
 
 const PROMPT =
   "ეს არის ქართულენოვანი საუბარი ქართულ ხმოვან ასისტენტთან, სახელად Mia. " +
@@ -14,6 +15,8 @@ type TranscriptEvent =
   | { type: "transcript.text.done"; text: string };
 
 export async function POST(request: Request) {
+  const g = guard(request);
+  if ("error" in g) return g.error;
   let body: { audioBase64?: string; mime?: string };
   try {
     body = (await request.json()) as { audioBase64?: string; mime?: string };

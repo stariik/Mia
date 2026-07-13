@@ -1,6 +1,9 @@
 import openai from "@/lib/openai";
+import { guard } from "@/lib/apiGuard";
 
 export async function POST(request: Request) {
+  const g = guard(request);
+  if ("error" in g) return g.error;
   try {
     const formData = await request.formData();
     const audioFile = formData.get("audio") as File;
