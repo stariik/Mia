@@ -76,7 +76,11 @@ export async function POST(request: Request) {
               model: "gpt-4o",
               messages,
               temperature: 0.7,
-              max_tokens: 300,
+              // Voice replies are 1–2 short sentences. Georgian is token-heavy,
+              // so 200 fits a normal reply without truncating mid-sentence (a
+              // cut-off sentence would clip TTS), while still bounding rambles.
+              // The real brevity lever is the system prompt; this is the guard.
+              max_tokens: 200,
               stream: true,
               ...(toolDefs.length > 0 && {
                 tools: toolDefs,
