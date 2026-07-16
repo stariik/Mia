@@ -225,10 +225,20 @@ vec4 mainImage(vec2 fragCoord) {
   return draw(uv);
 }
 
+// Opacity lift. extractAlpha() derives alpha from the brightest colour channel,
+// so the orb's dimmer regions are also its most transparent — over the app
+// background that reads as washed out and hard to see. Scaling alpha here also
+// brightens the pixel (extractAlpha normalises rgb by alpha, and main()
+// re-multiplies below), so this buys presence and opacity in one move. The
+// clamp means the body saturates to solid while the faint outer bloom, which
+// starts far below 1.0, is barely touched — denser orb, same soft edge.
+// Raise for a heavier orb; 1.0 restores the original look.
+const float ALPHA_GAIN = 1.45;
+
 void main() {
   vec2 fragCoord = vUv * iResolution.xy;
   vec4 col = mainImage(fragCoord);
-  float a = col.a;
+  float a = min(col.a * ALPHA_GAIN, 1.0);
   if (edgeFade > 0.5) {
     // Fade the orb's outer bloom to FULLY transparent well INSIDE the canvas,
     // so no alpha reaches the square edge — that edge residual (strongest at the
