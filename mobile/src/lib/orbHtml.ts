@@ -584,10 +584,31 @@ export function buildOrbHtml({
         a.src = currentBlobUrl;
 
         a.addEventListener('ended', function () {
-          stopAnalysis();
-          revokeBlob();
-          currentAudio = null;
-          rnLog('tts-ended', null);
+          // 'ended' fires when the ELEMENT finishes feeding the graph — but the
+          // audio is routed through Web Audio, so the last chunk is still in the
+          // output buffer and has not reached the speaker yet. Callers treat this
+          // event as "the audio finished": the wake session immediately calls
+          // stop() to free the audio route for recording, which suspends the
+          // context and discards that tail mid-word. (In-app never stops after a
+          // reply, which is why only the floating orb clipped.) Wait out the real
+          // output latency so the event means what its name claims.
+          var lat = 0;
+          try {
+            lat = (audioCtx.outputLatency || 0) + (audioCtx.baseLatency || 0);
+          } catch (_) {}
+          // Android WebView often reports 0 here; the floor covers that case.
+          var waitMs = Math.min(Math.max(lat * 1000, 150), 400);
+          setTimeout(function () {
+            // A stop() or a newer clip may have landed inside the wait window.
+            // Without this guard the cleanup below would revoke the NEW clip's
+            // blob and cancel its analyser loop. Whoever superseded us already
+            // settled the pending promise, so there is nothing left to report.
+            if (currentAudio !== a) return;
+            stopAnalysis();
+            revokeBlob();
+            currentAudio = null;
+            rnLog('tts-ended', null);
+          }, waitMs);
         });
         a.addEventListener('error', function () {
           stopAnalysis();
