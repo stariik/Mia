@@ -30,3 +30,6 @@ spike/samples/
 .claude/
 graphify-out/
 mia-obs/
+
+# Scratch TTS samples for listening tests — never commit audio
+tts-samples/
