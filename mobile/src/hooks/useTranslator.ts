@@ -25,16 +25,14 @@ function newId() {
   return `t_${Date.now()}_${Math.round(Math.random() * 1e6)}`;
 }
 
-// Synthesize + play a line in its language. ElevenLabs Flash v2.5 is
-// multilingual and handles Georgian/Russian/English from the text alone;
-// OpenAI is the fallback.
+// Synthesize + play a line in its language. eleven_v3 is multilingual and
+// handles Georgian/Russian/English from the text alone.
 async function speak(text: string) {
   if (!text) return;
   try {
-    // Flash v2.5 is multilingual, so the same voice handles ka/ru/en. The old
-    // OpenAI fallback is gone: if ElevenLabs fails this now throws and the turn
-    // is silent (logged below) rather than switching to a worse voice mid-
-    // conversation.
+    // One multilingual voice covers ka/ru/en. The old OpenAI fallback is gone:
+    // if ElevenLabs fails this now throws and the turn is silent (logged below)
+    // rather than switching to a worse voice mid-conversation.
     const path = await synthesizeWithElevenLabs(text);
     await playAudioFile(path);
   } catch (e) {

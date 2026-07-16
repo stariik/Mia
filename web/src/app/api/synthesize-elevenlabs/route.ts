@@ -3,13 +3,19 @@
 // Returns: audio/mpeg — a complete MP3 with duration metadata (see the URL below
 // for why this is not the streaming endpoint).
 //
-// Uses Flash v2.5 (eleven_flash_v2_5) for ~75ms model latency. Voice ID and
-// model come from env so the mobile client just sends text.
+// Voice ID and model come from env so the mobile client just sends text.
 
 import { normalizeGeorgianNumbers } from "@/lib/georgianNumbers";
 import { guard } from "@/lib/apiGuard";
 
-const DEFAULT_MODEL = "eleven_flash_v2_5";
+// eleven_v3 is the only ElevenLabs model that actually speaks Georgian —
+// flash/turbo v2.5 cover ~32 languages and Georgian is not one of them, so they
+// only approximate the script and a native speaker hears it as broken. v3 costs
+// ~2.2-3.3s per sentence vs flash's ~0.3s; that is the price of the language.
+// Do not swap this for a faster model on latency grounds without a Georgian
+// speaker confirming the output is acceptable — that trade was tried and
+// rejected.
+const DEFAULT_MODEL = "eleven_v3";
 
 // 64 kbps @ 44.1 kHz: half the bytes of mp3_44100_128 with no audible loss for
 // speech, so first-audio arrives sooner. Override via env if you ever need

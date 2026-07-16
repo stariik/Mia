@@ -3,10 +3,13 @@ import ReactNativeBlobUtil from 'react-native-blob-util';
 import { apiUrl, authHeaders } from './client';
 
 /**
- * ElevenLabs Flash v2.5 multilingual (Georgian). The only TTS provider.
- * Camb (polled for seconds) and OpenAI (mispronounces Georgian) were removed.
+ * ElevenLabs (eleven_v3 — the only model that really speaks Georgian; the
+ * server picks it, see synthesize-elevenlabs/route.ts). The only TTS provider:
+ * Camb polled for seconds and OpenAI mispronounces Georgian.
  *
- * Returns the absolute local file path of the downloaded audio.
+ * Returns the absolute local file path of the downloaded audio. Note this
+ * awaits the COMPLETE file before returning, so synth latency (~2-3s) is paid
+ * up front — that is the cost to beat if playback ever starts on first byte.
  */
 export async function synthesizeWithElevenLabs(text: string): Promise<string> {
   const task = ReactNativeBlobUtil.config({
