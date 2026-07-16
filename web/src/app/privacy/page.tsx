@@ -4,7 +4,7 @@
 // App content → Privacy policy, and again in the store listing.
 //
 // EDIT THESE TWO before publishing:
-const CONTACT_EMAIL = 'tokokalandadze@gmail.com'; // support/privacy contact shown to users
+const CONTACT_EMAIL = 'hello@miavoice.online'; // support/privacy contact shown to users
 const EFFECTIVE_DATE = '2026 წლის ივლისი'; // update when you change the policy
 
 export const metadata = {

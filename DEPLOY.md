@@ -1,79 +1,77 @@
 # Deploying the Mia backend
 
-Target: a €3.79/mo Hetzner CX22, HTTPS via Caddy, everything in Docker.
-Start to finish this is about 30 minutes, most of it waiting.
+Server: Hetzner CX22 · Domain: `api.miavoice.online` · HTTPS via Caddy · all in Docker.
+~20 minutes, most of it waiting on a build.
 
-Why a VPS and not Vercel/serverless: accounts live in a JSON file on disk and
-the rate limiter counts in memory. Both need one long-lived instance. On
-serverless the accounts vanish and the limiter resets on every cold start —
-which is also the thing standing between you and a surprise API bill.
-
----
-
-## 0. What you need first
-
-- A domain (required — Let's Encrypt will not issue a certificate for a bare
-  IP, and the app refuses plain HTTP in release builds).
-- The two secret files from this laptop:
-  - `web/google-service-account.json`
-  - the API keys for your `.env`
+Why a VPS and not Vercel/serverless: accounts live in a JSON file on disk and the
+rate limiter counts in memory. Both need one long-lived instance. On serverless
+the accounts vanish and the limiter resets on every cold start — and that limiter
+is what stands between you and a runaway API bill.
 
 ---
 
-## 1. Create the server
+## Before you start
 
-Hetzner Cloud → New project → Add server:
-- Location: **Falkenstein** or **Helsinki** (closest to Georgia with good peering)
-- Image: **Ubuntu 24.04**
-- Type: **CX22** (2 vCPU, 4 GB) — €3.79/mo
-- SSH key: add yours (skip the password option)
+- `nslookup api.miavoice.online` must print your Hetzner IP. If it doesn't, wait —
+  Caddy's certificate request fails if the name doesn't resolve yet, and that is
+  the #1 confusing first-deploy error.
+- Hetzner firewall allows **22, 80, 443**. Port 80 must be open even though all
+  real traffic is 443 — it's how Let's Encrypt proves you own the domain.
 
-Note the IPv4 address.
+---
 
-## 2. Point the domain at it
-
-At your registrar's DNS:
-
-| Type | Name | Value |
-|---|---|---|
-| A | `api` (or `@`) | your server's IPv4 |
-
-Wait for it to resolve before step 5 — Caddy's certificate request fails if the
-name doesn't point at the box yet:
-
-```bash
-dig +short api.yourdomain.com     # must print your server IP
-```
-
-## 3. Install Docker
+## 1. Get on the box
 
 ```bash
 ssh root@YOUR_SERVER_IP
+```
+
+## 2. Install Docker
+
+```bash
 curl -fsSL https://get.docker.com | sh
 ```
 
-## 4. Get the code and the secrets on the box
+## 3. Let the server read the private repo
+
+The repo is private, so a plain `git clone` will fail. Give the server its own
+read-only key. On the **server**:
 
 ```bash
-git clone YOUR_REPO_URL mia && cd mia/web
+ssh-keygen -t ed25519 -f ~/.ssh/github -N ""
+cat ~/.ssh/github.pub
 ```
 
-Then from **your laptop** (a new terminal, not the SSH session) copy the two
-things git deliberately does not carry:
+Copy that line → GitHub → **stariik/voice-ai → Settings → Deploy keys → Add deploy
+key** → paste → **leave "Allow write access" UNCHECKED** (the server only ever
+needs to read; a leaked write key could rewrite your app).
+
+Then tell git to use it:
 
 ```bash
+cat >> ~/.ssh/config <<'EOF'
+Host github.com
+  IdentityFile ~/.ssh/github
+  IdentitiesOnly yes
+EOF
+
+git clone git@github.com:stariik/voice-ai.git /root/mia
+```
+
+Say `yes` to the host-key prompt.
+
+## 4. Copy the two secrets from your laptop
+
+These are deliberately not in git. From **PowerShell on your laptop**, in the repo
+folder (not the SSH session):
+
+```powershell
+scp web/.env root@YOUR_SERVER_IP:/root/mia/web/.env
 scp web/google-service-account.json root@YOUR_SERVER_IP:/root/mia/web/
-scp web/.env root@YOUR_SERVER_IP:/root/mia/web/          # after you fill it in
 ```
 
-Build `.env` from the template first:
-
-```bash
-cp web/.env.example web/.env
-openssl rand -base64 32        # paste as JWT_SECRET
-```
-
-Fill in `DOMAIN`, `JWT_SECRET`, `OPENAI_API_KEY`, `ELEVENLABS_API_KEY`.
+`web/.env` is already filled in — every API key, a freshly generated `JWT_SECRET`,
+and `DOMAIN=api.miavoice.online`. Nothing to edit.
 
 ## 5. Start it
 
@@ -81,27 +79,23 @@ Fill in `DOMAIN`, `JWT_SECRET`, `OPENAI_API_KEY`, `ELEVENLABS_API_KEY`.
 cd /root/mia/web && docker compose up -d --build
 ```
 
-Caddy gets the certificate on first boot. Give it ~30 seconds, then from
-anywhere:
+First build takes a few minutes. Caddy fetches the certificate on boot; give it
+~30 seconds after the containers are up.
+
+## 6. Verify
 
 ```bash
-curl https://api.yourdomain.com/          # → the "Backend is running" page
-curl https://api.yourdomain.com/api/chat  # → 401. 401 is correct: the guard works.
+curl https://api.miavoice.online/
+curl https://api.miavoice.online/api/chat
 ```
 
-Open `https://api.yourdomain.com/privacy` in a browser — that URL is what Play
-wants, so confirm it renders before you paste it into the Console.
+- First → the "Backend is running" page.
+- Second → **`401`. A 401 is the correct answer** — it means the API is live and
+  the auth guard is working. Anything else (000, 502, cert error) means something
+  is wrong; see below.
 
-## 6. Point the app at it
-
-In `mobile/src/config/env.ts` set:
-
-```ts
-const PROD_API_BASE_URL = 'https://api.yourdomain.com';
-```
-
-Rebuild the AAB. Until this is set, release builds refuse to start a request —
-that is deliberate, not a bug.
+Then open **https://api.miavoice.online/privacy** in a browser. That exact URL goes
+into Play Console, so confirm it renders and shows a padlock before you paste it.
 
 ---
 
@@ -113,24 +107,29 @@ cd /root/mia/web && git pull && docker compose up -d --build
 
 Accounts survive: `users.json` lives in the `mia-data` volume, not the image.
 
-## Backups
+## Back up
 
-Two things on that box are unrecoverable if lost:
+Two things exist in only one place:
 
 ```bash
-docker run --rm -v mia_mia-data:/d -v $(pwd):/b alpine tar czf /b/users-backup.tgz /d
+# accounts
+docker run --rm -v web_mia-data:/d -v $(pwd):/b alpine tar czf /b/users-backup.tgz /d
 ```
 
-...and `google-service-account.json` (also only on your laptop right now — same
-category as the upload keystore).
+...and `google-service-account.json`, which is only on your laptop and this box.
+Same category as the upload keystore: no recovery if lost.
 
-## If something breaks
+## When it breaks
 
 ```bash
 docker compose logs -f app      # app errors
 docker compose logs -f caddy    # certificate problems live here
+docker compose ps               # is anything actually running?
 ```
 
-Certificate failing? It is almost always DNS not resolving yet, or port 80
-blocked. Both must be open — 80 is how the ACME challenge is answered even
-though all real traffic is on 443.
+**Certificate won't issue** → almost always DNS not resolved yet, or port 80
+blocked. Check `nslookup api.miavoice.online` and the Hetzner firewall.
+
+**`502 Bad Gateway`** → Caddy is up but the app isn't. `docker compose logs app`.
+
+**`curl` hangs / connection refused** → firewall. 80 and 443 both need to be open.

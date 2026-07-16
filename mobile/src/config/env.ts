@@ -6,10 +6,11 @@ import Config from 'react-native-config';
 // undefined at runtime and these constants are what actually ships.)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** HTTPS base URL of the deployed web/ backend (e.g. 'https://api.mia.ge').
- *  LAUNCH BLOCKER while empty: release builds have no server to talk to.
- *  See LAUNCH-CHECKLIST.md §1. */
-const PROD_API_BASE_URL = '';
+/** HTTPS base URL of the deployed web/ backend.
+ *  This is compiled into the shipped app: if the domain ever lapses or moves,
+ *  every installed copy breaks and only an app update can fix it. Keep the
+ *  domain's auto-renew on. See DEPLOY.md. */
+const PROD_API_BASE_URL = 'https://api.miavoice.online';
 
 /** Sentry project DSN — crash reporting is silently OFF while empty. */
 const PROD_SENTRY_DSN = '';
