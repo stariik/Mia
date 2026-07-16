@@ -12,8 +12,11 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-# No secrets needed here: every route reads process.env inside the request
-# handler, so `next build` collecting page data does not touch them.
+# This build runs with NO secrets, on purpose. `next build` imports every route
+# module to collect page data, so any module-level code that requires a real key
+# will break the build here — even though it works locally, where Next silently
+# loads .env.local. Keep secret access lazy or total (see lib/openai.ts,
+# lib/auth/jwt.ts). Verify with: mv .env.local away && npx next build
 RUN npm run build
 
 FROM node:22-alpine AS runner
