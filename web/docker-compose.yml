@@ -1,0 +1,34 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      # Secrets mounted, never baked into the image.
+      - ./google-service-account.json:/app/google-service-account.json:ro
+      # Accounts must survive `docker compose up --build`.
+      - mia-data:/app/data
+    expose:
+      - "3000"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Caddy provisions the Let's Encrypt cert for this name automatically.
+      # Port 80 must stay open — that is how the ACME challenge is answered.
+      - DOMAIN=${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - app
+
+volumes:
+  mia-data:
+  caddy-data:
+  caddy-config:
