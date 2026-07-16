@@ -1,9 +1,5 @@
 import { streamChat } from '@/api/chat';
-import {
-  synthesizeWithCamb,
-  synthesizeWithElevenLabs,
-  synthesizeWithOpenAI,
-} from '@/api/synthesize';
+import { synthesizeWithElevenLabs } from '@/api/synthesize';
 import { runClientToolCalls } from '@/lib/tools/runClientCalls';
 import { useConversationStore } from '@/stores/conversationStore';
 import { getEffectiveCity, useLocationStore } from '@/stores/locationStore';
@@ -38,15 +34,12 @@ export function mimeForPath(path: string): string {
 }
 
 /**
- * Synthesize one phrase with whichever TTS provider the user has selected.
- * Shared by the per-sentence streaming synth below and by the hands-free
- * session's greeting/farewell lines, so they all speak in the same voice.
+ * Synthesize one phrase. Shared by the per-sentence streaming synth below and by
+ * the hands-free session's greeting/farewell lines, so they all speak in the
+ * same voice.
  */
 export function synthesizeForVoice(text: string): Promise<string> {
-  const { ttsProvider, openaiVoice } = useVoiceStore.getState();
-  if (ttsProvider === 'elevenlabs') return synthesizeWithElevenLabs(text);
-  if (ttsProvider === 'camb') return synthesizeWithCamb(text);
-  return synthesizeWithOpenAI(text, openaiVoice);
+  return synthesizeWithElevenLabs(text);
 }
 
 /**
@@ -95,7 +88,12 @@ export async function runAssistantTurn({
       content: '',
       timestamp: Date.now(),
     });
-    useVoiceStore.getState().setThinking(false);
+    // Deliberately does NOT clear `thinking`. The first token arrives well
+    // before the first audio does — the sentence still has to finish generating,
+    // then synthesize. Clearing here dropped the orb to `idle` for that whole
+    // gap, so Mia went visually dead mid-turn and the wait read as a freeze.
+    // `thinking` now stays on until audio actually starts (see firstAudioStarted
+    // below), which is the honest signal: she is still working.
     assistantAdded = true;
   };
 

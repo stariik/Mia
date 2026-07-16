@@ -66,12 +66,10 @@ export default function PrivacyPolicyPage() {
             <b>Google Cloud</b> — მეტყველების ამოცნობა (ქართული ხმა → ტექსტი).
           </li>
           <li style={li}>
-            <b>OpenAI</b> — ასისტენტის პასუხები, თარგმანი, სათადარიგო ამოცნობა/ხმის
-            სინთეზი.
+            <b>OpenAI</b> — ასისტენტის პასუხები, თარგმანი, სათადარიგო ამოცნობა.
           </li>
           <li style={li}>
-            <b>ElevenLabs</b> და <b>Camb.ai</b> — ტექსტის ხმად გადაქცევა (პასუხის
-            წაკითხვა).
+            <b>ElevenLabs</b> — ტექსტის ხმად გადაქცევა (პასუხის წაკითხვა).
           </li>
           <li style={li}>
             <b>Open-Meteo</b> — ამინდის მონაცემები; გადაეცემა თქვენი ქალაქი ან
@@ -165,8 +163,8 @@ export default function PrivacyPolicyPage() {
         </p>
         <ul style={ul}>
           <li style={li}><b>Google Cloud</b> — speech recognition (Georgian speech to text).</li>
-          <li style={li}><b>OpenAI</b> — assistant replies, translation, fallback recognition / speech synthesis.</li>
-          <li style={li}><b>ElevenLabs</b> and <b>Camb.ai</b> — text-to-speech (reading replies aloud).</li>
+          <li style={li}><b>OpenAI</b> — assistant replies, translation, fallback recognition.</li>
+          <li style={li}><b>ElevenLabs</b> — text-to-speech (reading replies aloud).</li>
           <li style={li}><b>Open-Meteo</b> — weather data; receives your city or approximate coordinates.</li>
           <li style={li}><b>Sentry</b> (if enabled) — crash diagnostics only.</li>
         </ul>

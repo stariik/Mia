@@ -2,10 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 
 import { transcribeGooglePcm } from '@/api/transcribeGoogle';
 import { translateText } from '@/api/translate';
-import {
-  synthesizeWithElevenLabs,
-  synthesizeWithOpenAI,
-} from '@/api/synthesize';
+import { synthesizeWithElevenLabs } from '@/api/synthesize';
 import { playAudioFile, stopAudio } from '@/lib/audioPlayer';
 import { bcp47 } from '@/lib/translateLanguages';
 
@@ -34,12 +31,11 @@ function newId() {
 async function speak(text: string) {
   if (!text) return;
   try {
-    let path: string;
-    try {
-      path = await synthesizeWithElevenLabs(text);
-    } catch {
-      path = await synthesizeWithOpenAI(text, 'nova');
-    }
+    // Flash v2.5 is multilingual, so the same voice handles ka/ru/en. The old
+    // OpenAI fallback is gone: if ElevenLabs fails this now throws and the turn
+    // is silent (logged below) rather than switching to a worse voice mid-
+    // conversation.
+    const path = await synthesizeWithElevenLabs(text);
     await playAudioFile(path);
   } catch (e) {
     console.warn('[Translator] speak failed', e);
