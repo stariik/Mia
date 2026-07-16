@@ -6,28 +6,29 @@ Play review time (typically 1–7 days for a new developer account).
 
 ---
 
-## 1. Deploy the backend — **THE blocker; nothing works without it**
+## 1. Deploy the backend — ✅ **DONE 2026-07-16**
 
-The app is a thin client: chat, STT, TTS, translation and auth all live in
-`web/`. It currently runs only on your laptop.
+Live at **https://api.miavoice.online** — Hetzner CX22 (Falkenstein), Docker,
+Caddy with auto-renewing Let's Encrypt. Runbook: `DEPLOY.md`.
 
-- [ ] Pick hosting for the Next.js app. Needs: Node runtime, streaming
-      responses (SSE), and a stable HTTPS domain.
-      Note: the in-memory rate limiter (`web/src/lib/apiGuard.ts`) and the
-      JSON-file user store (`web/data/users.json`) assume a **single,
-      persistent instance** — a VPS (Hetzner/DigitalOcean, ~$6/mo) fits this
-      best. Serverless (Vercel) would silently break both (cold instances =
-      no rate limit state; read-only FS = registration fails). If you choose
-      Vercel anyway, move users to a DB and the limiter to Upstash first.
-- [ ] Set environment variables on the server:
-      - `JWT_SECRET` — long random string (server now refuses to start in
-        production without it): `openssl rand -base64 48`
-      - `OPENAI_API_KEY`, `ELEVENLABS_API_KEY`, `CAMB_API_KEY`,
-        Google STT credentials (same set as your local `.env`)
-      - `DAILY_REQUEST_CAP` — optional; default 5000 requests/day globally
-- [ ] Put the HTTPS URL into `mobile/src/config/env.ts` → `PROD_API_BASE_URL`.
-      Release builds show a Georgian "server not configured" error until you do.
-- [ ] Smoke-test from a phone on mobile data: register → voice turn → alarm.
+Verified from outside: `/`, `/privacy`, `/delete-account` → 200 with valid TLS;
+`POST /api/chat` → 401 (the auth guard working, not an error).
+
+- [x] Single persistent instance (VPS, not serverless) — required by the
+      in-memory rate limiter and the JSON-file user store.
+- [x] Env set on the server (`web/.env`, scp'd — never in git).
+- [x] `PROD_API_BASE_URL` set in `mobile/src/config/env.ts`.
+- [ ] **Smoke-test from the tablet on mobile data: register → voice turn → alarm.**
+      Production starts with zero accounts; the local `users.json` stays local.
+
+## 1b. Backend follow-ups (not launch blockers)
+
+- [ ] Back up `web/google-service-account.json` — like the keystore, it exists
+      only on your laptop and that server. No recovery if both are lost.
+- [ ] Back up the accounts volume periodically (`DEPLOY.md` → Back up).
+- [ ] Renew watch: `.online` renewals run ~10x the first-year promo. The domain
+      is compiled into shipped apps — if it lapses, every install breaks and
+      only an app update can fix it. Keep auto-renew on and a live card.
 
 ## 2. Keystore — back it up NOW
 
