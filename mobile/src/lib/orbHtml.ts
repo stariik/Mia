@@ -714,6 +714,20 @@ export function buildOrbHtml({
     var speakQueue = [];
     var speakActive = null;
 
+    // Seconds of audio to bank before letting playback start.
+    //
+    // Do NOT set this from the average delivery rate. Measured end-to-end,
+    // ElevenLabs returns ~2.9s of audio between first byte (~1.4s) and complete
+    // (~2.7s) — ~2x realtime, which says "start immediately, it can't run dry".
+    // That average is a lie: delivery is BURSTY, and playback started on the
+    // first byte drains its buffer during the gaps between bursts and stutters
+    // (~0.1s hiccups mid-word). This is the margin that absorbs a gap.
+    //
+    // Cost/benefit: bigger = safer but starts later, and at 1.2s we still start
+    // ~0.8s earlier than waiting for the whole file. Raise it if stutter ever
+    // comes back; it can never be lower than the longest burst gap.
+    var PREBUFFER_SECONDS = 1.2;
+
     function streamSupported() {
       try {
         return !!(window.MediaSource && MediaSource.isTypeSupported('audio/mpeg'));
@@ -760,22 +774,58 @@ export function buildOrbHtml({
           if (item.aborted || sb.updating || ms.readyState !== 'open') return;
           if (idx < item.chunks.length) {
             try { sb.appendBuffer(item.chunks[idx++]); }
-            catch (e) { settle(item, 'tts-error', 'appendBuffer: ' + e); }
-            return;
+            catch (e) { settle(item, 'tts-error', 'appendBuffer: ' + e); return; }
+            return; // 'updateend' re-enters feed()
           }
           if (item.done) {
             // Everything fed. Declaring end-of-stream is what gives the element
             // an exact duration — the thing streamed MP3 can't tell it.
             try { ms.endOfStream(); } catch (_) {}
+            maybeStart(); // short clip: may never have reached the prebuffer
             return;
           }
           // Ran dry mid-generation: wait for the fetch to deliver more.
           item.onChunk = feed;
+          maybeStart();
         }
-        sb.addEventListener('updateend', feed);
+        sb.addEventListener('updateend', function () {
+          feed();
+          maybeStart();
+        });
         item.onChunk = feed;
         feed();
       });
+
+      // Audio actually banked in the element, in seconds. Ask the element, not
+      // the byte count: it knows what it decoded, bytes are a guess.
+      function bufferedSeconds() {
+        try {
+          if (!a.buffered || !a.buffered.length) return 0;
+          return a.buffered.end(a.buffered.length - 1) - (a.currentTime || 0);
+        } catch (_) { return 0; }
+      }
+
+      var started = false;
+      function maybeStart() {
+        if (started || item.aborted) return;
+        // item.done short-circuits the margin: a clip shorter than
+        // PREBUFFER_SECONDS ("კარგი.") would otherwise never reach it and would
+        // sit here in silence until the timeout.
+        if (!item.done && bufferedSeconds() < PREBUFFER_SECONDS) return;
+        started = true;
+        resumeThen(function () {
+          if (item.aborted) return;
+          var pp = a.play();
+          if (pp && typeof pp.then === 'function') {
+            pp.catch(function (e) {
+              stopAnalysis();
+              revokeBlob();
+              currentAudio = null;
+              settle(item, 'tts-error', 'play rejected: ' + (e && e.message ? e.message : String(e)));
+            });
+          }
+        });
+      }
 
       a.addEventListener('ended', function () {
         // Same drain as the blob path: 'ended' fires when the element stops
@@ -812,17 +862,9 @@ export function buildOrbHtml({
       currentAudio = a;
       ttsPlaying = true;
       startAnalyserLoop();
-      resumeThen(function () {
-        var pp = a.play();
-        if (pp && typeof pp.then === 'function') {
-          pp.catch(function (e) {
-            stopAnalysis();
-            revokeBlob();
-            currentAudio = null;
-            settle(item, 'tts-error', 'play rejected: ' + (e && e.message ? e.message : String(e)));
-          });
-        }
-      });
+      // No play() here — maybeStart() fires once PREBUFFER_SECONDS is banked (or
+      // the clip is fully in). Starting on the first byte is what stuttered.
+      maybeStart();
     }
 
     // RN calls this per sentence, immediately on flush (not chained).
