@@ -542,6 +542,68 @@ export function buildOrbHtml({
       }
     }
 
+    function ensureCtx() {
+      if (audioCtx) return true;
+      var Ctor = window.AudioContext || window.webkitAudioContext;
+      if (!Ctor) return false;
+      audioCtx = new Ctor();
+      return true;
+    }
+
+    // Route an <audio> element through the analyser so the orb's motion is a
+    // true reading of the waveform. Shared by both playback paths.
+    function attachAnalyser(a) {
+      var source = audioCtx.createMediaElementSource(a);
+      if (!analyser) {
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 1024;
+        // Higher smoothing — the orb should flow with speech rather than
+        // chatter on every syllable boundary. Combined with the attack/
+        // release shaping in tick() this gives a noticeably smoother feel
+        // without losing responsiveness on volume swells.
+        analyser.smoothingTimeConstant = 0.55;
+        analyserBuf = new Uint8Array(analyser.fftSize);
+      }
+      source.connect(analyser);
+      analyser.connect(audioCtx.destination);
+    }
+
+    function startAnalyserLoop() {
+      function tick() {
+        analyserRaf = requestAnimationFrame(tick);
+        analyser.getByteTimeDomainData(analyserBuf);
+        var sumSq = 0;
+        for (var i = 0; i < analyserBuf.length; i++) {
+          var v = (analyserBuf[i] - 128) / 128;
+          sumSq += v * v;
+        }
+        var rms = Math.sqrt(sumSq / analyserBuf.length);
+        // RMS for speech sits ~0.05–0.30; scale up so the orb breathes
+        // visibly without saturating on shouted vowels.
+        var amp = rms * 3.6;
+        if (amp > 1) amp = 1;
+        // Attack / release shaping: rise quickly enough to capture syllable
+        // peaks, fall slowly so the orb glides through inter-syllable gaps
+        // instead of snapping closed. Without this the motion looks twitchy
+        // even with a high analyser smoothing constant.
+        if (amp > targetHover) {
+          targetHover += (amp - targetHover) * 0.50;
+        } else {
+          targetHover += (amp - targetHover) * 0.10;
+        }
+      }
+      tick();
+    }
+
+    // The context is suspended between clips (stopTTSAudio) and at creation
+    // (autoplay policy). resume() is async — starting the <audio> before it
+    // completes routes the first ~300ms into a dead context, eating the head of
+    // every clip. Resume first, then play.
+    function resumeThen(fn) {
+      if (audioCtx.state === 'suspended') audioCtx.resume().then(fn, fn);
+      else fn();
+    }
+
     function stopAnalysis() {
       if (analyserRaf) {
         cancelAnimationFrame(analyserRaf);
@@ -568,13 +630,9 @@ export function buildOrbHtml({
         revokeBlob();
         stopAnalysis();
 
-        if (!audioCtx) {
-          var Ctor = window.AudioContext || window.webkitAudioContext;
-          if (!Ctor) {
-            rnLog('tts-error', 'AudioContext unsupported');
-            return;
-          }
-          audioCtx = new Ctor();
+        if (!ensureCtx()) {
+          rnLog('tts-error', 'AudioContext unsupported');
+          return;
         }
         var blob = base64ToBlob(base64, mime);
         currentBlobUrl = URL.createObjectURL(blob);
@@ -618,53 +676,11 @@ export function buildOrbHtml({
           rnLog('tts-error', msg);
         });
 
-        var source = audioCtx.createMediaElementSource(a);
-        if (!analyser) {
-          analyser = audioCtx.createAnalyser();
-          analyser.fftSize = 1024;
-          // Higher smoothing — the orb should flow with speech rather than
-          // chatter on every syllable boundary. Combined with the attack/
-          // release shaping in tick() this gives a noticeably smoother feel
-          // without losing responsiveness on volume swells.
-          analyser.smoothingTimeConstant = 0.55;
-          analyserBuf = new Uint8Array(analyser.fftSize);
-        }
-        source.connect(analyser);
-        analyser.connect(audioCtx.destination);
-
+        attachAnalyser(a);
         currentAudio = a;
         ttsPlaying = true;
-
-        function tick() {
-          analyserRaf = requestAnimationFrame(tick);
-          analyser.getByteTimeDomainData(analyserBuf);
-          var sumSq = 0;
-          for (var i = 0; i < analyserBuf.length; i++) {
-            var v = (analyserBuf[i] - 128) / 128;
-            sumSq += v * v;
-          }
-          var rms = Math.sqrt(sumSq / analyserBuf.length);
-          // RMS for speech sits ~0.05–0.30; scale up so the orb breathes
-          // visibly without saturating on shouted vowels.
-          var amp = rms * 3.6;
-          if (amp > 1) amp = 1;
-          // Attack / release shaping: rise quickly enough to capture syllable
-          // peaks, fall slowly so the orb glides through inter-syllable gaps
-          // instead of snapping closed. Without this the motion looks twitchy
-          // even with a high analyser smoothing constant.
-          if (amp > targetHover) {
-            targetHover += (amp - targetHover) * 0.50;
-          } else {
-            targetHover += (amp - targetHover) * 0.10;
-          }
-        }
-        tick();
-
-        // The context is suspended between clips (stopTTSAudio) and at
-        // creation (autoplay policy). resume() is async — starting the
-        // <audio> before it completes routes the first ~300ms into a dead
-        // context, eating the head of every clip. Resume first, then play.
-        function startPlayback() {
+        startAnalyserLoop();
+        resumeThen(function () {
           var pp = a.play();
           if (pp && typeof pp.then === 'function') {
             pp.catch(function (e) {
@@ -674,12 +690,7 @@ export function buildOrbHtml({
               rnLog('tts-error', 'play rejected: ' + (e && e.message ? e.message : String(e)));
             });
           }
-        }
-        if (audioCtx.state === 'suspended') {
-          audioCtx.resume().then(startPlayback, startPlayback);
-        } else {
-          startPlayback();
-        }
+        });
       } catch (err) {
         stopAnalysis();
         revokeBlob();
@@ -687,7 +698,190 @@ export function buildOrbHtml({
       }
     };
 
+    // ─── Streaming TTS (MediaSource) ──────────────────────────────────────
+    // The WebView fetches the audio itself and plays it as it arrives. RN can't
+    // do this — its fetch has no ReadableStream — and the old path paid for that
+    // twice: it waited for the COMPLETE file (~2.7s vs ~1.4s to first byte) and
+    // then shipped it back over the bridge as base64.
+    //
+    // Ordering: RN enqueues each sentence the moment it's flushed, so fetches
+    // overlap, but playback is strictly serialized. That keeps the parallel
+    // synth the old RN-side code had.
+    //
+    // MediaSource also fixes duration honestly: endOfStream() states the exact
+    // length, so nothing has to estimate from bitrate (which is what clipped the
+    // final syllable when we fed streamed MP3 to a plain <audio>).
+    var speakQueue = [];
+    var speakActive = null;
+
+    function streamSupported() {
+      try {
+        return !!(window.MediaSource && MediaSource.isTypeSupported('audio/mpeg'));
+      } catch (_) { return false; }
+    }
+
+    function settle(item, kind, payload) {
+      if (item.settled) return;
+      item.settled = true;
+      if (speakActive === item) speakActive = null;
+      rnLog(kind, payload ? { id: item.id, error: payload } : { id: item.id });
+      pumpQueue();
+    }
+
+    function pumpQueue() {
+      if (speakActive) return;
+      var item = null;
+      while (speakQueue.length) {
+        var head = speakQueue.shift();
+        if (!head.aborted) { item = head; break; }
+      }
+      if (!item) return;
+      speakActive = item;
+      playStreamItem(item);
+    }
+
+    function playStreamItem(item) {
+      if (item.error && !item.chunks.length) { settle(item, 'tts-error', item.error); return; }
+      if (!ensureCtx()) { settle(item, 'tts-error', 'AudioContext unsupported'); return; }
+
+      var ms = new MediaSource();
+      var a = new Audio();
+      a.preload = 'auto';
+      currentBlobUrl = URL.createObjectURL(ms);
+      a.src = currentBlobUrl;
+
+      ms.addEventListener('sourceopen', function () {
+        var sb;
+        try { sb = ms.addSourceBuffer('audio/mpeg'); }
+        catch (e) { settle(item, 'tts-error', 'addSourceBuffer: ' + e); return; }
+
+        var idx = 0;
+        function feed() {
+          if (item.aborted || sb.updating || ms.readyState !== 'open') return;
+          if (idx < item.chunks.length) {
+            try { sb.appendBuffer(item.chunks[idx++]); }
+            catch (e) { settle(item, 'tts-error', 'appendBuffer: ' + e); }
+            return;
+          }
+          if (item.done) {
+            // Everything fed. Declaring end-of-stream is what gives the element
+            // an exact duration — the thing streamed MP3 can't tell it.
+            try { ms.endOfStream(); } catch (_) {}
+            return;
+          }
+          // Ran dry mid-generation: wait for the fetch to deliver more.
+          item.onChunk = feed;
+        }
+        sb.addEventListener('updateend', feed);
+        item.onChunk = feed;
+        feed();
+      });
+
+      a.addEventListener('ended', function () {
+        // Same drain as the blob path: 'ended' fires when the element stops
+        // feeding the graph, not when sound reaches the speaker. Callers
+        // (the wake session) suspend the context right after, which would cut
+        // the tail mid-word.
+        var lat = 0;
+        try { lat = (audioCtx.outputLatency || 0) + (audioCtx.baseLatency || 0); } catch (_) {}
+        var waitMs = Math.min(Math.max(lat * 1000, 150), 400);
+        setTimeout(function () {
+          if (currentAudio !== a) return;
+          stopAnalysis();
+          revokeBlob();
+          currentAudio = null;
+          settle(item, 'tts-ended', null);
+        }, waitMs);
+      });
+      a.addEventListener('error', function () {
+        stopAnalysis();
+        revokeBlob();
+        currentAudio = null;
+        settle(item, 'tts-error', a.error ? 'audio error ' + a.error.code : 'audio error');
+      });
+
+      // 'playing' is the honest "sound is coming out now" signal: with a
+      // MediaSource the element waits for enough buffered data, so this can be
+      // a second or more after play() is called. RN flips the orb to "speaking"
+      // on this, not before.
+      a.addEventListener('playing', function () {
+        rnLog('tts-started', { id: item.id });
+      });
+
+      try { attachAnalyser(a); } catch (e) { settle(item, 'tts-error', 'attach: ' + e); return; }
+      currentAudio = a;
+      ttsPlaying = true;
+      startAnalyserLoop();
+      resumeThen(function () {
+        var pp = a.play();
+        if (pp && typeof pp.then === 'function') {
+          pp.catch(function (e) {
+            stopAnalysis();
+            revokeBlob();
+            currentAudio = null;
+            settle(item, 'tts-error', 'play rejected: ' + (e && e.message ? e.message : String(e)));
+          });
+        }
+      });
+    }
+
+    // RN calls this per sentence, immediately on flush (not chained).
+    window.speakTTSStream = function (opts) {
+      var item = {
+        id: opts && opts.id,
+        chunks: [], done: false, error: null,
+        aborted: false, settled: false, onChunk: null,
+      };
+      if (!streamSupported()) { rnLog('tts-error', { id: item.id, error: 'no-mse' }); return; }
+      speakQueue.push(item);
+
+      var ctrl = null;
+      try { ctrl = new AbortController(); } catch (_) {}
+      item.ctrl = ctrl;
+
+      fetch(opts.url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + opts.token },
+        body: JSON.stringify({ text: opts.text }),
+        signal: ctrl ? ctrl.signal : undefined,
+      })
+        .then(function (res) {
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          if (!res.body || !res.body.getReader) throw new Error('no-stream-body');
+          var reader = res.body.getReader();
+          function pump() {
+            return reader.read().then(function (r) {
+              if (item.aborted) { try { reader.cancel(); } catch (_) {} return; }
+              if (r.done) { item.done = true; if (item.onChunk) item.onChunk(); return; }
+              item.chunks.push(r.value);
+              if (item.onChunk) item.onChunk();
+              return pump();
+            });
+          }
+          return pump();
+        })
+        .catch(function (e) {
+          if (item.aborted) return;
+          item.error = String((e && e.message) || e);
+          item.done = true;
+          if (item.onChunk) item.onChunk();
+          // Nothing ever arrived and we're not the one playing → report now;
+          // otherwise playStreamItem reports when its turn comes.
+          if (speakActive !== item && !item.chunks.length) settle(item, 'tts-error', item.error);
+        });
+
+      pumpQueue();
+    };
+
     window.stopTTSAudio = function () {
+      for (var i = 0; i < speakQueue.length; i++) speakQueue[i].aborted = true;
+      speakQueue.length = 0;
+      if (speakActive) {
+        speakActive.aborted = true;
+        try { if (speakActive.ctrl) speakActive.ctrl.abort(); } catch (_) {}
+        speakActive.settled = true; // RN settles its own promise on stop()
+        speakActive = null;
+      }
       try {
         if (currentAudio) {
           currentAudio.pause();

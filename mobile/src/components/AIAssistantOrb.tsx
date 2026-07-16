@@ -144,7 +144,8 @@ export function AIAssistantOrb({
             const msg = JSON.parse(e.nativeEvent.data);
             if (msg.kind === 'error') console.warn('[Orb]', msg.payload);
             else if (msg.kind === 'ready') console.log('[Orb] ready', msg.payload);
-            else if (msg.kind === 'tts-ended') orbAudio.onEvent('tts-ended');
+            else if (msg.kind === 'tts-started') orbAudio.onEvent('tts-started', msg.payload);
+            else if (msg.kind === 'tts-ended') orbAudio.onEvent('tts-ended', msg.payload);
             else if (msg.kind === 'tts-error') {
               console.warn('[Orb] tts-error', msg.payload);
               orbAudio.onEvent('tts-error', msg.payload);

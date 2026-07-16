@@ -1,5 +1,4 @@
 import { streamChat } from '@/api/chat';
-import { synthesizeWithElevenLabs } from '@/api/synthesize';
 import { runClientToolCalls } from '@/lib/tools/runClientCalls';
 import { useConversationStore } from '@/stores/conversationStore';
 import { getEffectiveCity, useLocationStore } from '@/stores/locationStore';
@@ -11,8 +10,16 @@ import { useVoiceStore } from '@/stores/voiceStore';
 //   - nativePlayback — plays via nitro-sound, no UI. Used by the screen-off
 //                      headless turn.
 export interface TtsPlayback {
-  /** Play a synthesized audio file to completion. */
-  play(filePath: string, mime: string): Promise<void>;
+  /**
+   * Speak one sentence, resolving when IT has finished playing.
+   *
+   * Callers enqueue sentences as soon as they're known, without waiting for the
+   * previous one — so implementations MUST serialize playback themselves while
+   * letting synthesis overlap. (Synthesis used to be hoisted up here to get that
+   * overlap, but the streaming backend has to own the fetch to play it as it
+   * arrives, so ordering became the backend's job.)
+   */
+  speak(text: string, onStart?: () => void): Promise<void>;
   /** Stop current playback (interrupt). */
   stop(): void;
 }
@@ -33,14 +40,6 @@ export function mimeForPath(path: string): string {
   return path.toLowerCase().endsWith('.mp3') ? 'audio/mpeg' : 'audio/wav';
 }
 
-/**
- * Synthesize one phrase. Shared by the per-sentence streaming synth below and by
- * the hands-free session's greeting/farewell lines, so they all speak in the
- * same voice.
- */
-export function synthesizeForVoice(text: string): Promise<string> {
-  return synthesizeWithElevenLabs(text);
-}
 
 /**
  * Orchestrates one assistant turn: chat SSE → per-sentence TTS → playback.
@@ -105,36 +104,33 @@ export async function runAssistantTurn({
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || undefined,
   };
 
-  // Synthesize + play sentences as they arrive. Synthesis runs in parallel;
-  // playback is sequential via a Promise chain so audio doesn't overlap.
-  const synthesize = synthesizeForVoice;
-
+  // Hand each sentence to the playback backend the moment it's complete. The
+  // backend overlaps synthesis and serializes playback (see TtsPlayback.speak),
+  // so we deliberately do NOT chain here — chaining would delay the next
+  // sentence's synthesis until the previous finished playing and reintroduce a
+  // gap mid-reply.
   let textBuffer = '';
-  let playbackChain: Promise<void> = Promise.resolve();
+  const spoken: Promise<void>[] = [];
   let firstAudioStarted = false;
 
   const flushSentence = (sentence: string) => {
     const t = sentence.trim();
     if (!t) return;
-    const synthPromise = synthesize(t).catch((e) => {
-      console.warn('[TTS] synth failed:', e);
-      return null;
-    });
-    playbackChain = playbackChain
-      .then(async () => {
-        if (!isCurrent()) return; // turn superseded — don't play stale audio
-        const path = await synthPromise;
-        if (!path || !isCurrent()) return;
-        if (!firstAudioStarted) {
-          firstAudioStarted = true;
-          useVoiceStore.getState().setThinking(false);
-          useVoiceStore.getState().setSpeaking(true);
-        }
-        await playback.play(path, mimeForPath(path));
-      })
-      .catch((e) => {
-        console.warn('[TTS] playback failed:', e);
-      });
+    if (!isCurrent()) return; // turn superseded — don't synthesize stale audio
+    const onStart = () => {
+      // Fires when audio is genuinely audible, not when the text was ready —
+      // synthesis still takes ~1.4s after this sentence is known. Flipping the
+      // orb to "speaking" any earlier would show her talking in silence.
+      if (firstAudioStarted || !isCurrent()) return;
+      firstAudioStarted = true;
+      useVoiceStore.getState().setThinking(false);
+      useVoiceStore.getState().setSpeaking(true);
+    };
+    spoken.push(
+      playback.speak(t, onStart).catch((e) => {
+        console.warn('[TTS] speak failed:', e);
+      }),
+    );
   };
 
   const SENTENCE_RE = /[.!?…]+\s+/;
@@ -191,10 +187,13 @@ export async function runAssistantTurn({
     return;
   }
 
+  // Every sentence is already in flight; wait for the last one to finish
+  // playing. Individual failures are swallowed at the call site, so this only
+  // settles once the backend has worked through its queue.
   try {
-    await playbackChain;
+    await Promise.all(spoken);
   } catch (e) {
-    console.warn('[TTS] chain error:', e);
+    console.warn('[TTS] playback error:', e);
   } finally {
     if (isCurrent()) {
       onChatAbort?.(null);

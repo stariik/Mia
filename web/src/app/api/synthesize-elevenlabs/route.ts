@@ -1,7 +1,18 @@
-// POST /api/synthesize-elevenlabs
-// Body: { text: string, voiceId?: string }
-// Returns: audio/mpeg — a complete MP3 with duration metadata (see the URL below
-// for why this is not the streaming endpoint).
+// POST /api/synthesize-elevenlabs        -> audio/mpeg, STREAMED as generated
+// POST /api/synthesize-elevenlabs?complete=1 -> audio/mpeg, complete file
+//
+// Two shapes because two consumers need different things:
+//
+//  - default (streamed): the orb's WebView plays it through MediaSource and
+//    starts on the first byte. v3 emits its first byte ~1.4s in and the rest at
+//    ~2x realtime, so playback starts ~1.4s earlier and never underruns.
+//
+//  - ?complete=1: the headless/native backend and the WebView's fallback path
+//    hand a finished file to a plain player. Those need the Xing/Info duration
+//    frame, which ElevenLabs' /stream endpoint omits — without it a player has
+//    to estimate length from the bitrate, guesses short, and clips the final
+//    syllable. MediaSource doesn't care (we call endOfStream(), so the exact
+//    length is known), which is why the streamed shape is safe for it.
 //
 // Voice ID and model come from env so the mobile client just sends text.
 
@@ -22,10 +33,31 @@ const DEFAULT_MODEL = "eleven_v3";
 // higher fidelity (e.g. mp3_44100_128) or smaller still (mp3_22050_32).
 const DEFAULT_OUTPUT_FORMAT = "mp3_44100_64";
 
+// The orb's WebView renders inline HTML, so its origin is `null` and any fetch
+// to this API is cross-origin. `*` is safe here: the route is JWT-guarded and
+// we never read cookies, so this grants a browser nothing that curl with the
+// same token couldn't already do.
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Authorization, Content-Type",
+} as const;
+
+// The Authorization header makes the fetch non-simple, so the WebView sends a
+// preflight before every synth. Without this handler each one 405s.
+export async function OPTIONS() {
+  return new Response(null, {
+    status: 204,
+    headers: { ...CORS, "Access-Control-Max-Age": "86400" },
+  });
+}
+
 export async function POST(request: Request) {
   const g = guard(request);
   if ("error" in g) return g.error;
   try {
+    const wantComplete =
+      new URL(request.url).searchParams.get("complete") === "1";
     const { text, voiceId } = (await request.json()) as {
       text?: string;
       voiceId?: string;
@@ -55,14 +87,12 @@ export async function POST(request: Request) {
       );
     }
 
-    // NOT the /stream endpoint, deliberately. Streamed MP3s carry no Xing/Info
-    // frame, so they have no duration metadata and a player must estimate length
-    // from the bitrate. The orb's WebView <audio> guesses short and fires 'ended'
-    // before the final frames play, clipping the last syllable of every sentence
-    // (Android's native MediaPlayer doesn't, which is why only the orb clipped).
-    // Streaming also bought nothing here: the client awaits the complete file
-    // before playing, and measured on Georgian this endpoint is no slower.
-    const url = `https://api.elevenlabs.io/v1/text-to-speech/${voice}?output_format=${outputFormat}`;
+    // /stream emits bytes as the model generates (first byte ~1.4s vs ~2.7s for
+    // the whole file) but omits the Xing/Info duration frame. See the header
+    // comment: only MediaSource can use the streamed shape safely.
+    const url = wantComplete
+      ? `https://api.elevenlabs.io/v1/text-to-speech/${voice}?output_format=${outputFormat}`
+      : `https://api.elevenlabs.io/v1/text-to-speech/${voice}/stream?output_format=${outputFormat}`;
     const res = await fetch(url, {
       method: "POST",
       headers: {
@@ -89,19 +119,26 @@ export async function POST(request: Request) {
       const errText = await res.text().catch(() => "");
       return Response.json(
         { error: `ElevenLabs failed (${res.status}): ${errText.slice(0, 200)}` },
-        { status: res.status >= 400 && res.status < 500 ? res.status : 502 }
+        {
+          status: res.status >= 400 && res.status < 500 ? res.status : 502,
+          headers: CORS,
+        }
       );
     }
 
     return new Response(res.body, {
       headers: {
+        ...CORS,
         "Content-Type": "audio/mpeg",
         "Cache-Control": "no-store",
+        // Nothing downstream may buffer this: the whole point is that the first
+        // bytes reach the player while the model is still generating.
+        "X-Accel-Buffering": "no",
       },
     });
   } catch (error: unknown) {
     const message =
       error instanceof Error ? error.message : "ElevenLabs request failed";
-    return Response.json({ error: message }, { status: 500 });
+    return Response.json({ error: message }, { status: 500, headers: CORS });
   }
 }

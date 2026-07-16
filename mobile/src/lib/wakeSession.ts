@@ -1,11 +1,11 @@
 import { AppState } from 'react-native';
 import ReactNativeBlobUtil from 'react-native-blob-util';
 
+import { synthesizeWithElevenLabs } from '@/api/synthesize';
 import { transcribeGooglePcm } from '@/api/transcribeGoogle';
 import {
   mimeForPath,
   runAssistantTurn,
-  synthesizeForVoice,
   type TtsPlayback,
 } from '@/lib/assistantTurn';
 import { isGoodbye, pickFarewell, pickGreeting } from '@/lib/greetings';
@@ -39,12 +39,32 @@ const mlog = (...args: unknown[]) => {
 };
 
 // Plays a synthesized file through the floating orb's WebView so the orb
-// visualizes the reply. Mirrors orbPlayback (the in-app backend).
+// visualizes the reply.
+//
+// Unlike the in-app orb this does NOT stream: the overlay's WebView is owned by
+// a native module, which only exposes playTts(base64), so RN must hand it a
+// finished file. Teaching it to stream means a Kotlin change — worth doing after
+// the in-app path proves out, since it would save ~1.4s here too.
+let overlayChain: Promise<void> = Promise.resolve();
+
 const overlayPlayback: TtsPlayback = {
-  async play(filePath, mime) {
-    const clean = filePath.replace(/^file:\/\//, '');
-    const base64 = await ReactNativeBlobUtil.fs.readFile(clean, 'base64');
-    await orbOverlay.playTts(base64, mime);
+  speak(text, onStart) {
+    // ?complete=1: a plain player needs the duration frame the streaming
+    // endpoint omits, or it clips the final syllable.
+    const synth = synthesizeWithElevenLabs(text, { complete: true });
+    const p = overlayChain.then(async () => {
+      const filePath = await synth;
+      const clean = filePath.replace(/^file:\/\//, '');
+      try {
+        const base64 = await ReactNativeBlobUtil.fs.readFile(clean, 'base64');
+        onStart?.();
+        await orbOverlay.playTts(base64, mimeForPath(clean));
+      } finally {
+        ReactNativeBlobUtil.fs.unlink(clean).catch(() => {});
+      }
+    });
+    overlayChain = p.catch(() => {});
+    return p;
   },
   stop() {
     orbOverlay.stopTts();
@@ -102,22 +122,16 @@ function captureTurn(): Promise<TurnAudio> {
   });
 }
 
-// Synthesis is time-boxed so a dead TTS backend can never block the next
-// capture. Playback gets its own GENEROUS cap: one shared budget used to cut
-// clips off mid-word ("გამარჯ—") whenever synth ate most of it. Both playback
-// backends resolve on real completion and have native hang guards, so the
-// play timeout is a last resort, not the normal end.
+// Time-boxed so a dead TTS backend can never block the next capture. Synthesis
+// now happens inside playback.speak(), so the old split budget (synth vs play)
+// collapses into one: the cap has to cover both or it would cut clips off
+// mid-word ("გამარჯ—") whenever synth ate most of it. Both backends resolve on
+// real completion and have native hang guards, so this is a last resort, not the
+// normal end.
+const SPEAK_TIMEOUT_MS = GREETING_SYNTH_TIMEOUT_MS + GREETING_PLAY_TIMEOUT_MS;
+
 async function speak(text: string, playback: TtsPlayback): Promise<void> {
-  const path = await withTimeout(
-    synthesizeForVoice(text),
-    GREETING_SYNTH_TIMEOUT_MS,
-    'greeting synth',
-  );
-  await withTimeout(
-    playback.play(path, mimeForPath(path)),
-    GREETING_PLAY_TIMEOUT_MS,
-    'greeting play',
-  );
+  await withTimeout(playback.speak(text), SPEAK_TIMEOUT_MS, 'greeting speak');
 }
 
 export async function runWakeSession(): Promise<void> {
