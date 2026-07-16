@@ -1,6 +1,7 @@
 // POST /api/synthesize-elevenlabs
 // Body: { text: string, voiceId?: string }
-// Returns: audio/mpeg, streamed directly from ElevenLabs.
+// Returns: audio/mpeg — a complete MP3 with duration metadata (see the URL below
+// for why this is not the streaming endpoint).
 //
 // Uses Flash v2.5 (eleven_flash_v2_5) for ~75ms model latency. Voice ID and
 // model come from env so the mobile client just sends text.
@@ -48,8 +49,14 @@ export async function POST(request: Request) {
       );
     }
 
-    // Stream endpoint: returns audio bytes immediately as the model generates.
-    const url = `https://api.elevenlabs.io/v1/text-to-speech/${voice}/stream?output_format=${outputFormat}`;
+    // NOT the /stream endpoint, deliberately. Streamed MP3s carry no Xing/Info
+    // frame, so they have no duration metadata and a player must estimate length
+    // from the bitrate. The orb's WebView <audio> guesses short and fires 'ended'
+    // before the final frames play, clipping the last syllable of every sentence
+    // (Android's native MediaPlayer doesn't, which is why only the orb clipped).
+    // Streaming also bought nothing here: the client awaits the complete file
+    // before playing, and measured on Georgian this endpoint is no slower.
+    const url = `https://api.elevenlabs.io/v1/text-to-speech/${voice}?output_format=${outputFormat}`;
     const res = await fetch(url, {
       method: "POST",
       headers: {
