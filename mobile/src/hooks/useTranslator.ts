@@ -44,7 +44,8 @@ async function speak(text: string) {
       ReactNativeBlobUtil.fs.unlink(path).catch(() => {});
     }
   } catch (e) {
-    console.warn('[Translator] speak failed', e);
+    // The turn stays visible but silent — a real failure worth release logs.
+    console.error('[Translator] speak failed', e);
   }
 }
 

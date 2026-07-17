@@ -1,7 +1,11 @@
 import { streamChat } from '@/api/chat';
 import { expireSessionIf401 } from '@/api/client';
+import { dlog } from '@/lib/log';
 import { runClientToolCalls } from '@/lib/tools/runClientCalls';
-import { useConversationStore } from '@/stores/conversationStore';
+import {
+  selectActiveMessages,
+  useConversationStore,
+} from '@/stores/conversationStore';
 import { getEffectiveCity, useLocationStore } from '@/stores/locationStore';
 import { useVoiceStore } from '@/stores/voiceStore';
 
@@ -67,9 +71,8 @@ export async function runAssistantTurn({
     timestamp: Date.now(),
   });
 
-  const history = useConversationStore
-    .getState()
-    .messages.slice(-11, -1)
+  const history = selectActiveMessages(useConversationStore.getState())
+    .slice(-11, -1)
     .map(({ role, content }) => ({ role, content }));
 
   voice.setThinking(true);
@@ -124,7 +127,7 @@ export async function runAssistantTurn({
     };
     spoken.push(
       playback.speak(t, onStart).catch((e) => {
-        console.warn('[TTS] speak failed:', e);
+        dlog('[TTS] speak failed:', e); // includes deliberate interrupts
       }),
     );
   };
@@ -191,7 +194,7 @@ export async function runAssistantTurn({
   try {
     await Promise.all(spoken);
   } catch (e) {
-    console.warn('[TTS] playback error:', e);
+    dlog('[TTS] playback error:', e);
   } finally {
     if (isCurrent()) {
       onChatAbort?.(null);

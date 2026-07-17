@@ -5,6 +5,7 @@ import { transcribeGooglePcm } from '@/api/transcribeGoogle';
 import { runAssistantTurn, type TtsPlayback } from '@/lib/assistantTurn';
 import { makeFilePlayback, mimeForPath } from '@/lib/filePlayback';
 import { isGoodbye, pickFarewell, pickGreeting } from '@/lib/greetings';
+import { dlog } from '@/lib/log';
 import { nativePlayback } from '@/lib/nativePlayback';
 import { orbOverlay } from '@/lib/orbOverlay';
 import { wakeWord, type WakeEvent } from '@/lib/wakeWord';
@@ -30,9 +31,7 @@ let running = false;
 
 // Dev-only stage tracing. The wake session runs headless (no Metro attached),
 // so logcat is the only window into it — keep these. Filter: [MiaBg].
-const mlog = (...args: unknown[]) => {
-  if (__DEV__) console.warn('[MiaBg]', ...args);
-};
+const mlog = (...args: unknown[]) => dlog('[MiaBg]', ...args);
 
 // Plays a synthesized file through the floating orb's WebView so the orb
 // visualizes the reply.
@@ -225,7 +224,7 @@ export async function runWakeSession(): Promise<void> {
       );
     }
   } catch (e) {
-    console.warn('[MiaBg] session error', e);
+    console.error('[MiaBg] session error', e);
   } finally {
     unsubTap();
     appStateSub.remove();

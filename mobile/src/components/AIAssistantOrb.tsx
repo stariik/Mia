@@ -4,6 +4,7 @@ import { WebView } from 'react-native-webview';
 import type { SharedValue } from 'react-native-reanimated';
 
 import { buildOrbHtml } from '@/lib/orbHtml';
+import { dlog } from '@/lib/log';
 import { orbAudio } from '@/lib/orbAudio';
 
 export type OrbState = 'idle' | 'listening' | 'thinking' | 'speaking';
@@ -142,16 +143,16 @@ export function AIAssistantOrb({
         onMessage={(e) => {
           try {
             const msg = JSON.parse(e.nativeEvent.data);
-            if (msg.kind === 'error') console.warn('[Orb]', msg.payload);
-            else if (msg.kind === 'ready') console.log('[Orb] ready', msg.payload);
+            if (msg.kind === 'error') console.error('[Orb] page error', msg.payload);
+            else if (msg.kind === 'ready') dlog('[Orb] ready', msg.payload);
             else if (msg.kind === 'tts-started') orbAudio.onEvent('tts-started', msg.payload);
             else if (msg.kind === 'tts-ended') orbAudio.onEvent('tts-ended', msg.payload);
             else if (msg.kind === 'tts-error') {
-              console.warn('[Orb] tts-error', msg.payload);
+              dlog('[Orb] tts-error', msg.payload);
               orbAudio.onEvent('tts-error', msg.payload);
             }
           } catch {
-            console.log('[Orb]', e.nativeEvent.data);
+            dlog('[Orb]', e.nativeEvent.data);
           }
         }}
         onLoadEnd={() => {
@@ -165,12 +166,12 @@ export function AIAssistantOrb({
           // Android killed the WebView's renderer (memory pressure). Unwind any
           // in-flight TTS immediately so the turn doesn't hang on promises the
           // dead page can never settle.
-          console.warn('[Orb] render process gone', e.nativeEvent);
+          console.error('[Orb] render process gone', e.nativeEvent);
           orbAudio.onWebViewGone();
         }}
-        onError={(e) => console.warn('[Orb] webview error', e.nativeEvent)}
+        onError={(e) => console.error('[Orb] webview error', e.nativeEvent)}
         onHttpError={(e) =>
-          console.warn('[Orb] http error', e.nativeEvent.statusCode, e.nativeEvent.url)
+          dlog('[Orb] http error', e.nativeEvent.statusCode, e.nativeEvent.url)
         }
       />
     </View>

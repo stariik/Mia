@@ -1,7 +1,8 @@
-import { makeFilePlayback, mimeForPath } from './filePlayback';
 import ReactNativeBlobUtil from 'react-native-blob-util';
 
 import type { TtsPlayback } from './assistantTurn';
+import { makeFilePlayback, mimeForPath } from './filePlayback';
+import { dlog } from './log';
 import { orbAudio } from './orbAudio';
 
 // Foreground playback backend for the in-app orb.
@@ -39,7 +40,7 @@ export const orbPlayback: TtsPlayback = {
         ) {
           throw e;
         }
-        console.warn('[TTS] stream failed, falling back to file:', e);
+        dlog('[TTS] stream failed, falling back to file:', e);
       }
     }
     return fileFallback.speak(text, onStart);

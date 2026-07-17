@@ -57,8 +57,8 @@ export async function runClientToolCalls(calls: ClientToolCall[]) {
         await music.restart();
       }
     } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn('Client tool failed', call.name, err);
+      // The user asked for something and nothing happened — release-worthy.
+      console.error('Client tool failed', call.name, err);
     }
   }
 }

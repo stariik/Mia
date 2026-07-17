@@ -26,7 +26,7 @@ try {
   const mod = require('@picovoice/react-native-voice-processor');
   VoiceProcessorImpl = mod.VoiceProcessor ?? null;
 } catch (err) {
-  console.warn('[pcmCapture] voice-processor module unavailable:', err);
+  console.error('[pcmCapture] voice-processor module unavailable:', err);
 }
 
 export const PCM_SAMPLE_RATE = 16000;

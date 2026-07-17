@@ -37,7 +37,11 @@ import { haptics } from '@/lib/haptics';
 import { useSilenceAutoStop } from '@/hooks/useSilenceAutoStop';
 import { useVoicePipeline } from '@/hooks/useVoicePipeline';
 import { ensureWakeWordOnLaunch, useWakeTrigger } from '@/hooks/useWakeWord';
-import { useConversationStore, type Message } from '@/stores/conversationStore';
+import {
+  selectActiveMessages,
+  useConversationStore,
+  type Message,
+} from '@/stores/conversationStore';
 import { useVoiceStore } from '@/stores/voiceStore';
 import { brandGradient, colors, fonts, radius, spacing, typography } from '@/theme';
 
@@ -106,7 +110,7 @@ export function HomeScreen() {
     Math.max(220, Math.min(width * 0.88, (height - 170) * 0.58 - 88)),
   );
 
-  const messages = useConversationStore((s) => s.messages);
+  const messages = useConversationStore(selectActiveMessages);
   const {
     isListening,
     isThinking,
