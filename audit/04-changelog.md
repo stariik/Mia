@@ -38,3 +38,11 @@ Each entry = one step of `03-gap-plan.md` = one commit. Verification noted per s
 - **Deleted:** `SpaceGrotesk-Medium.ttf` (now unused, both copies) and `Coiny.zip` (a zip archive sitting in the fonts dir). OFL license + README kept.
 - **Intended visible change:** text that was accidentally Roboto now renders in MarkGEO (per spec: Georgian correctness, one styling pattern).
 - **Verify:** tsc + jest green; grep shows no font literals outside theme. **Visual pass on all screens is yours.**
+
+## Step 6 — Playback consolidated (plan item 12)
+- **New `lib/filePlayback.ts`:** `makeFilePlayback(playFile, stop)` — the one implementation of the synth-complete-file → chain-serialized playback → unlink pattern that three backends had each hand-rolled. `mimeForPath` moved here (out of `assistantTurn`, which is about turns, not MIME types).
+- **`nativePlayback.ts`:** now 13 lines — the factory over `nativeAudio`.
+- **`wakeSession.ts` overlayPlayback:** now the factory over `orbOverlay.playTts` (private chain code deleted).
+- **`orbPlayback.ts`:** streaming path unchanged; its file fallback is now the factory too.
+- **`audioPlayer.ts` deleted:** it was a second, weaker nitro-sound file player (no watchdog, end−60 ms heuristic) used only by the Translator. `nativeAudio` (watchdogged) is now the app's single file player; it gained a guard that settles any in-flight `play()` when a new one starts (replay taps), and the Translator now unlinks its one-shot TTS files after playback (they used to accumulate until the next app launch's sweep).
+- **Verify:** tsc + jest green. **Device checks (yours): translator speak + replay; a "Hey Mia" overlay turn; in-app turn with streaming forced off is unreachable normally — the orb fallback only triggers on stream failure.**

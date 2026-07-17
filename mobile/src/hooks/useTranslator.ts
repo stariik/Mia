@@ -1,9 +1,11 @@
 import { useCallback, useRef, useState } from 'react';
 
+import ReactNativeBlobUtil from 'react-native-blob-util';
+
 import { transcribeGooglePcm } from '@/api/transcribeGoogle';
 import { translateText } from '@/api/translate';
 import { synthesizeWithElevenLabs } from '@/api/synthesize';
-import { playAudioFile, stopAudio } from '@/lib/audioPlayer';
+import { nativeAudio } from '@/lib/nativeAudio';
 import { bcp47 } from '@/lib/translateLanguages';
 
 import { usePcmRecorder } from './usePcmRecorder';
@@ -33,8 +35,13 @@ async function speak(text: string) {
     // One multilingual voice covers ka/ru/en. The old OpenAI fallback is gone:
     // if ElevenLabs fails this now throws and the turn is silent (logged below)
     // rather than switching to a worse voice mid-conversation.
-    const path = await synthesizeWithElevenLabs(text);
-    await playAudioFile(path);
+    const path = (await synthesizeWithElevenLabs(text)).replace(/^file:\/\//, '');
+    try {
+      await nativeAudio.play(path);
+    } finally {
+      // One-shot cache file — a replay re-synthesizes.
+      ReactNativeBlobUtil.fs.unlink(path).catch(() => {});
+    }
   } catch (e) {
     console.warn('[Translator] speak failed', e);
   }
@@ -58,7 +65,7 @@ export function useTranslator() {
     async (source: Lang) => {
       if (status !== 'idle') return;
       setError(null);
-      await stopAudio();
+      nativeAudio.stop();
       try {
         await recorder.start();
         recordingRef.current = true;
@@ -127,7 +134,7 @@ export function useTranslator() {
   }, []);
 
   const clear = useCallback(() => {
-    void stopAudio();
+    nativeAudio.stop();
     setTurns([]);
     setError(null);
   }, []);

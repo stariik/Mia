@@ -1,24 +1,24 @@
 import Sound from 'react-native-nitro-sound';
 
-// Native TTS playback via react-native-nitro-sound (the same lib the file
-// recorder uses). Unlike the orb's WebView player, this needs no Activity/UI,
-// so it's the playback backend for the screen-off headless turn.
+// The app's one nitro-sound file player. Unlike the orb's WebView player it
+// needs no Activity/UI, so it serves both the screen-off headless turn (via
+// nativePlayback) and the Translator's spoken translations.
 //
 // nitro-sound reports playback progress (currentPosition / duration in ms) via
 // a single listener; we resolve when position reaches duration. A watchdog
 // (duration + slack) guards against a missed final tick so a turn can't hang.
 
-let active = false;
 let resolveActive: (() => void) | null = null; // ends the in-flight play()
 
 export const nativeAudio = {
-  /** Play an audio file to completion. Resolves when playback ends. */
+  /** Play an audio file to completion. Resolves when playback ends. Starting a
+   *  new play() settles any in-flight one first (replay taps, cleared queues). */
   async play(filePath: string): Promise<void> {
+    resolveActive?.();
     const path = filePath.replace(/^file:\/\//, '');
     // Snappier completion detection than the ~0.5 s default.
     Sound.setSubscriptionDuration(0.1);
     Sound.removePlayBackListener();
-    active = true;
 
     await new Promise<void>((resolve, reject) => {
       let settled = false;
@@ -27,7 +27,6 @@ export const nativeAudio = {
       const finish = (err?: unknown) => {
         if (settled) return;
         settled = true;
-        active = false;
         resolveActive = null;
         if (watchdog) clearTimeout(watchdog);
         Sound.removePlayBackListener();

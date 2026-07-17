@@ -36,11 +36,6 @@ export interface RunTurnOptions {
   onChatAbort?: (abort: (() => void) | null) => void;
 }
 
-export function mimeForPath(path: string): string {
-  return path.toLowerCase().endsWith('.mp3') ? 'audio/mpeg' : 'audio/wav';
-}
-
-
 /**
  * Orchestrates one assistant turn: chat SSE → per-sentence TTS → playback.
  * Mirrors web/src/app/page.tsx:handleUserMessage. UI-agnostic — it drives the

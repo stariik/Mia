@@ -1,13 +1,9 @@
 import { AppState } from 'react-native';
 import ReactNativeBlobUtil from 'react-native-blob-util';
 
-import { synthesizeWithElevenLabs } from '@/api/synthesize';
 import { transcribeGooglePcm } from '@/api/transcribeGoogle';
-import {
-  mimeForPath,
-  runAssistantTurn,
-  type TtsPlayback,
-} from '@/lib/assistantTurn';
+import { runAssistantTurn, type TtsPlayback } from '@/lib/assistantTurn';
+import { makeFilePlayback, mimeForPath } from '@/lib/filePlayback';
 import { isGoodbye, pickFarewell, pickGreeting } from '@/lib/greetings';
 import { nativePlayback } from '@/lib/nativePlayback';
 import { orbOverlay } from '@/lib/orbOverlay';
@@ -45,31 +41,14 @@ const mlog = (...args: unknown[]) => {
 // a native module, which only exposes playTts(base64), so RN must hand it a
 // finished file. Teaching it to stream means a Kotlin change — worth doing after
 // the in-app path proves out, since it would save ~1.4s here too.
-let overlayChain: Promise<void> = Promise.resolve();
-
-const overlayPlayback: TtsPlayback = {
-  speak(text, onStart) {
-    // ?complete=1: a plain player needs the duration frame the streaming
-    // endpoint omits, or it clips the final syllable.
-    const synth = synthesizeWithElevenLabs(text, { complete: true });
-    const p = overlayChain.then(async () => {
-      const filePath = await synth;
-      const clean = filePath.replace(/^file:\/\//, '');
-      try {
-        const base64 = await ReactNativeBlobUtil.fs.readFile(clean, 'base64');
-        onStart?.();
-        await orbOverlay.playTts(base64, mimeForPath(clean));
-      } finally {
-        ReactNativeBlobUtil.fs.unlink(clean).catch(() => {});
-      }
-    });
-    overlayChain = p.catch(() => {});
-    return p;
+const overlayPlayback: TtsPlayback = makeFilePlayback(
+  async (path, onStart) => {
+    const base64 = await ReactNativeBlobUtil.fs.readFile(path, 'base64');
+    onStart?.();
+    await orbOverlay.playTts(base64, mimeForPath(path));
   },
-  stop() {
-    orbOverlay.stopTts();
-  },
-};
+  () => orbOverlay.stopTts(),
+);
 
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise((resolve, reject) => {
