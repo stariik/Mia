@@ -10,8 +10,8 @@
 // record at a time — which is fine, the mic is single anyway and the foreground
 // and headless paths never run together.
 
-// Loaded via require so a missing native module fails cleanly (the pipeline
-// falls back to the file-based recorder; the headless turn just no-ops).
+// Loaded via require so a missing native module fails cleanly with a real
+// error instead of crashing at import time (dev builds before linking).
 let VoiceProcessorImpl:
   | {
       instance: {

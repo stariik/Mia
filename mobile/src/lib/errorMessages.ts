@@ -12,7 +12,7 @@ type Rule = { test: RegExp; message: string };
 const RULES: Rule[] = [
   // Couldn't hear / understand the user.
   {
-    test: /empty (recording|transcription)|transcription (timed out|stream stalled)|chirp 2/i,
+    test: /empty (recording|transcription)|transcription timed out|chirp 2/i,
     message: 'ვერ გავიგე — გაიმეორეთ, გთხოვთ',
   },
   // The model reply never arrived / stalled mid-stream.

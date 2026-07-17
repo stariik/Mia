@@ -23,3 +23,10 @@ Each entry = one step of `03-gap-plan.md` = one commit. Verification noted per s
 - **`App.tsx`:** `GestureHandlerRootView` wrapper removed.
 - **`tsconfig.json`:** dropped `react-native-config` types; **`apiUrl.test.ts`** rewritten without the config mock (asserts against the dev URL).
 - **Verify:** tsc clean, jest 20/20, `compileDebugKotlin` green (autolinking picked up the removals). Behavior change: none at runtime (Config was already inert); dev-URL override via `.env` never worked anyway.
+
+## Step 4 — Fallback STT pipeline removed (plan item 10)
+- **Deleted:** `hooks/useAudioRecorder.ts` (nitro-sound m4a recorder), `api/transcribe.ts` (SSE consumer), `web/src/app/api/transcribe-stream/route.ts` (gpt-4o-transcribe endpoint).
+- **`hooks/useVoicePipeline.ts`:** collapsed to the single PCM→Chirp 2 path; removed the recorder-kind state machine and dev-only `dlog` around the fallback attempt. A Picovoice start failure now surfaces as a user-visible error instead of a silent downgrade — the module is compiled into every build, so this can only mean something is genuinely broken.
+- **Cleanups:** stale references in `useSilenceAutoStop`/`audioLevel`/`pcmCapture` comments; `errorMessages` no longer matches "transcription stream stalled" (that stream is gone).
+- **Why:** spec §4 — one capture path, one STT provider. ~350 lines and a second STT vendor deleted.
+- **Verify:** mobile tsc + jest 20/20; web tsc clean (after clearing stale generated `.next/types`). **Device check needed (yours): one full voice turn.**

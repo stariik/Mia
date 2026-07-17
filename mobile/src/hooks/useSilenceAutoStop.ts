@@ -4,9 +4,9 @@ import { audioLevel } from '@/lib/audioLevel';
 
 // Voice activity detection (VAD) with hysteresis + adaptive noise floor.
 //
-// The audioLevel SharedValue is dBFS mapped to 0..1 and smoothed by withTiming
-// in useAudioRecorder. Anything below -60 dB is clamped to 0 there, but
-// "background hiss" still surfaces (typically 0.05–0.18 in a quiet room).
+// The audioLevel SharedValue is dBFS mapped to 0..1 (rmsLevel in pcmCapture,
+// written per frame by usePcmRecorder). Anything below -60 dB is clamped to 0
+// there, but "background hiss" still surfaces (typically 0.05–0.18 quiet room).
 //
 // Phases:
 //   1. CAL_MS calibration — track loudest ambient sample. Voice-start threshold

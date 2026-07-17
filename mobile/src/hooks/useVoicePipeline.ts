@@ -1,17 +1,14 @@
 import { useCallback, useRef } from 'react';
 
 import { transcribeGooglePcm } from '@/api/transcribeGoogle';
-import { streamTranscribe } from '@/api/transcribe';
 import { runAssistantTurn } from '@/lib/assistantTurn';
 import { orbPlayback } from '@/lib/orbPlayback';
 import { wakeWord } from '@/lib/wakeWord';
 import { useVoiceStore } from '@/stores/voiceStore';
 
-import { useAudioRecorder } from './useAudioRecorder';
 import { usePcmRecorder } from './usePcmRecorder';
 
 type Mode = 'idle' | 'recording';
-type RecorderKind = 'pcm' | 'file';
 
 // Orchestrates record → STT → assistant turn (chat SSE → TTS → playback).
 //
@@ -19,22 +16,14 @@ type RecorderKind = 'pcm' | 'file';
 // shared verbatim with the screen-off headless wake turn; this hook owns the
 // foreground concerns: recording, turn/interrupt bookkeeping, and orb playback.
 //
-// Two recording paths:
-//   `pcm`  (preferred) — usePcmRecorder captures raw PCM16 locally, then sends
-//                        the whole buffer to Chirp 2 on stop.
-//   `file` (fallback)  — nitro-sound records an .m4a, uploaded to
-//                        /api/transcribe-stream as SSE.
-
-// Dev-only pipeline diagnostics; silenced in release builds.
-const dlog = (...args: unknown[]) => {
-  if (__DEV__) console.warn('[Pipeline]', ...args);
-};
+// Capture is raw PCM16 (usePcmRecorder → Picovoice voice-processor), buffered
+// locally and sent whole to Chirp 2 on stop. There is no fallback recorder: the
+// native module is compiled into every build, so a start failure is a real
+// error the user should see, not a silent downgrade.
 
 export function useVoicePipeline() {
-  const recorder = useAudioRecorder();
   const pcmRecorder = usePcmRecorder();
   const modeRef = useRef<Mode>('idle');
-  const activeKindRef = useRef<RecorderKind>('pcm');
 
   // Each user turn gets a monotonic id. Anything async (chat SSE, sentence
   // playback) checks it before touching audio or shared state, so an interrupt
@@ -79,27 +68,8 @@ export function useVoicePipeline() {
     // don't fight over it (no-op when the wake word isn't running).
     wakeWord.pauseDetection();
 
-    // Try the PCM recorder first.
     try {
-      dlog('attempting PCM recorder start…');
       await pcmRecorder.start();
-      activeKindRef.current = 'pcm';
-      modeRef.current = 'recording';
-      useVoiceStore.getState().setListening(true);
-      dlog('PCM recorder active');
-      return;
-    } catch (err) {
-      dlog(
-        'PCM recorder start failed, falling back to file recorder:',
-        err instanceof Error ? err.message : err,
-      );
-    }
-
-    // Fallback: file recorder + /api/transcribe-stream upload.
-    try {
-      dlog('using file recorder fallback');
-      await recorder.start();
-      activeKindRef.current = 'file';
       modeRef.current = 'recording';
       useVoiceStore.getState().setListening(true);
     } catch (err) {
@@ -110,35 +80,22 @@ export function useVoicePipeline() {
       // Recording never started — let the wake word listen again.
       wakeWord.resumeDetection();
     }
-  }, [recorder, pcmRecorder]);
+  }, [pcmRecorder]);
 
   const stopListeningAndSend = useCallback(async () => {
     if (modeRef.current !== 'recording') return;
-    const kind = activeKindRef.current;
     modeRef.current = 'idle';
     useVoiceStore.getState().setListening(false);
 
     let text = '';
     try {
-      if (kind === 'pcm') {
-        const { audioBase64, sampleRate } = await pcmRecorder.stop();
-        if (!audioBase64) {
-          useVoiceStore.getState().setError('Empty recording.');
-          return;
-        }
-        useVoiceStore.getState().setTranscript('Transcribing…');
-        text = (await transcribeGooglePcm(audioBase64, sampleRate)).trim();
-      } else {
-        const path = await recorder.stop();
-        if (!path) return;
-        useVoiceStore.getState().setTranscript('Transcribing…');
-        const { promise } = streamTranscribe({
-          filePath: path,
-          onPartial: (partial) =>
-            useVoiceStore.getState().setTranscript(partial),
-        });
-        text = (await promise).trim();
+      const { audioBase64, sampleRate } = await pcmRecorder.stop();
+      if (!audioBase64) {
+        useVoiceStore.getState().setError('Empty recording.');
+        return;
       }
+      useVoiceStore.getState().setTranscript('Transcribing…');
+      text = (await transcribeGooglePcm(audioBase64, sampleRate)).trim();
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Transcription failed';
       useVoiceStore.getState().setError(msg);
@@ -155,7 +112,7 @@ export function useVoicePipeline() {
       return;
     }
     await handleText(text);
-  }, [recorder, pcmRecorder, handleText]);
+  }, [pcmRecorder, handleText]);
 
   const stopSpeaking = useCallback(() => {
     cancelActiveTurn();
