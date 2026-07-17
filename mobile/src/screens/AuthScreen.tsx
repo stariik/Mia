@@ -1,7 +1,6 @@
 import React, { useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Animated,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,9 +10,12 @@ import {
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import Reanimated, {
+  interpolate,
   useAnimatedStyle,
   useSharedValue,
+  withSequence,
   withSpring,
+  withTiming,
 } from 'react-native-reanimated';
 import Svg, { Circle, Line, Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -70,8 +72,8 @@ export function AuthScreen() {
   // passes (confirm field mounting/unmounting) can't stomp the transform the
   // way they could with RN Animated's native driver.
   const slide = useSharedValue(0);
-  const fadeAnim = useRef(new Animated.Value(1)).current;
-  const shakeAnim = useRef(new Animated.Value(0)).current;
+  const fade = useSharedValue(1);
+  const shake = useSharedValue(0);
   const loginStore = useAuthStore((s) => s.login);
 
   const pwRef = useRef<TextInput>(null);
@@ -85,6 +87,10 @@ export function AuthScreen() {
     }),
     [pillW],
   );
+  const fadeStyle = useAnimatedStyle(() => ({ opacity: fade.value }));
+  const shakeStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: interpolate(shake.value, [-1, 1], [-8, 8]) }],
+  }));
   const canSubmit =
     email.trim().length > 0 &&
     password.length > 0 &&
@@ -100,23 +106,23 @@ export function AuthScreen() {
       damping: 18,
       stiffness: 220,
     });
-    Animated.sequence([
-      Animated.timing(fadeAnim, { toValue: 0.4, duration: 100, useNativeDriver: true }),
-      Animated.timing(fadeAnim, { toValue: 1, duration: 160, useNativeDriver: true }),
-    ]).start();
+    fade.value = withSequence(
+      withTiming(0.4, { duration: 100 }),
+      withTiming(1, { duration: 160 }),
+    );
     setTab(next);
   }
 
   function showError(msg: string) {
     setError(msg);
     haptics.warn();
-    shakeAnim.setValue(0);
-    Animated.sequence([
-      Animated.timing(shakeAnim, { toValue: 1, duration: 50, useNativeDriver: true }),
-      Animated.timing(shakeAnim, { toValue: -1, duration: 50, useNativeDriver: true }),
-      Animated.timing(shakeAnim, { toValue: 1, duration: 50, useNativeDriver: true }),
-      Animated.timing(shakeAnim, { toValue: 0, duration: 50, useNativeDriver: true }),
-    ]).start();
+    shake.value = 0;
+    shake.value = withSequence(
+      withTiming(1, { duration: 50 }),
+      withTiming(-1, { duration: 50 }),
+      withTiming(1, { duration: 50 }),
+      withTiming(0, { duration: 50 }),
+    );
   }
 
   async function submit() {
@@ -214,7 +220,7 @@ export function AuthScreen() {
             </View>
 
             {/* Fields */}
-            <Animated.View style={[styles.fields, { opacity: fadeAnim }]}>
+            <Reanimated.View style={[styles.fields, fadeStyle]}>
               {/* Email */}
               <View style={styles.fieldWrap}>
                 <Text style={styles.fieldLabel}>ელ. ფოსტა</Text>
@@ -313,27 +319,13 @@ export function AuthScreen() {
                   </View>
                 </View>
               )}
-            </Animated.View>
+            </Reanimated.View>
 
             {/* Error */}
             {error ? (
-              <Animated.View
-                style={[
-                  styles.errorBox,
-                  {
-                    transform: [
-                      {
-                        translateX: shakeAnim.interpolate({
-                          inputRange: [-1, 1],
-                          outputRange: [-8, 8],
-                        }),
-                      },
-                    ],
-                  },
-                ]}
-              >
+              <Reanimated.View style={[styles.errorBox, shakeStyle]}>
                 <Text style={styles.errorText}>{error}</Text>
-              </Animated.View>
+              </Reanimated.View>
             ) : null}
 
             {/* CTA */}

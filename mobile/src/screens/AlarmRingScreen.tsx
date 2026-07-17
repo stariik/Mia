@@ -19,6 +19,8 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+
 import { useToolsStore } from '@/stores/toolsStore';
 import {
   dismissAlarm,
@@ -26,14 +28,12 @@ import {
   snoozeAlarm,
 } from '@/lib/tools/platform/native';
 import { haptics } from '@/lib/haptics';
+import type { RootStackParamList } from '@/navigation/navigationRef';
 import { colors, fonts, radius, spacing, typography } from '@/theme';
 
 const VIBRATE_PATTERN = [0, 800, 400, 800, 400, 800];
 
-type Props = {
-  route: { params?: { alarmId: string } };
-  navigation: { goBack: () => void; canGoBack: () => boolean; navigate: (n: string) => void };
-};
+type Props = NativeStackScreenProps<RootStackParamList, 'AlarmRing'>;
 
 function formatTime(ts: number) {
   const d = new Date(ts);

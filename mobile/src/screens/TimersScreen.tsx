@@ -11,8 +11,11 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
+import { useNavigation } from '@react-navigation/native';
+
 import { AuroraBackdrop } from '@/components/AuroraBackdrop';
 import { nativePlatform } from '@/lib/tools/platform/native';
+import type { RootNav } from '@/navigation/navigationRef';
 import { useToolsStore } from '@/stores/toolsStore';
 import { haptics } from '@/lib/haptics';
 import { colors, fonts, radius, spacing, typography } from '@/theme';
@@ -40,11 +43,9 @@ function newTimerId() {
   return `timer_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
-type Props = {
-  onBack: () => void;
-};
-
-export function TimersScreen({ onBack }: Props) {
+export function TimersScreen() {
+  const navigation = useNavigation<RootNav>();
+  const onBack = () => navigation.goBack();
   const timers = useToolsStore((s) => s.timers);
   const [now, setNow] = useState(() => Date.now());
   const [hh, setHh] = useState('00');

@@ -10,14 +10,16 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path, Rect } from 'react-native-svg';
 
+import { useNavigation } from '@react-navigation/native';
+
 import { AuroraBackdrop } from '@/components/AuroraBackdrop';
+import type { RootNav } from '@/navigation/navigationRef';
 import { useTranslator, type Lang, type Turn } from '@/hooks/useTranslator';
 import { useSilenceAutoStop } from '@/hooks/useSilenceAutoStop';
 import { languageNameKa } from '@/lib/translateLanguages';
 import { haptics } from '@/lib/haptics';
 import { colors, fonts, radius, spacing, typography } from '@/theme';
 
-type Props = { onBack: () => void };
 
 const FOREIGN_OPTIONS: { code: 'ru' | 'en'; label: string }[] = [
   { code: 'ru', label: 'რუსული' },
@@ -80,7 +82,9 @@ function TurnRow({ turn, onReplay }: { turn: Turn; onReplay: () => void }) {
   );
 }
 
-export function TranslatorScreen({ onBack }: Props) {
+export function TranslatorScreen() {
+  const navigation = useNavigation<RootNav>();
+  const onBack = () => navigation.goBack();
   const {
     other,
     setOther,

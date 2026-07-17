@@ -10,9 +10,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Line, Path } from 'react-native-svg';
 
+import { useNavigation } from '@react-navigation/native';
+
 import { AlarmEditSheet } from '@/components/AlarmEditSheet';
 import { AuroraBackdrop } from '@/components/AuroraBackdrop';
 import { nativePlatform } from '@/lib/tools/platform/native';
+import type { RootNav } from '@/navigation/navigationRef';
 import { useToolsStore, type ActiveAlarm } from '@/stores/toolsStore';
 import { colors, fonts, radius, spacing, typography } from '@/theme';
 
@@ -46,11 +49,9 @@ function describeDays(days?: number[]) {
     .join(' · ');
 }
 
-type Props = {
-  onBack: () => void;
-};
-
-export function AlarmsScreen({ onBack }: Props) {
+export function AlarmsScreen() {
+  const navigation = useNavigation<RootNav>();
+  const onBack = () => navigation.goBack();
   const alarms = useToolsStore((s) => s.alarms);
   const [editing, setEditing] = useState<ActiveAlarm | null>(null);
   const [showAdd, setShowAdd] = useState(false);

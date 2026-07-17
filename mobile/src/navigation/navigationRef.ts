@@ -1,4 +1,5 @@
 import { createNavigationContainerRef } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 export type RootStackParamList = {
   Auth: undefined;
@@ -8,6 +9,9 @@ export type RootStackParamList = {
   Translator: undefined;
   AlarmRing: { alarmId: string };
 };
+
+/** The one navigation prop type — screens use `useNavigation<RootNav>()`. */
+export type RootNav = NativeStackNavigationProp<RootStackParamList>;
 
 export const navigationRef = createNavigationContainerRef<RootStackParamList>();
 

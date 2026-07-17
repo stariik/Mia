@@ -58,3 +58,10 @@ Each entry = one step of `03-gap-plan.md` = one commit. Verification noted per s
 - **`stores/conversationStore.ts`:** dropped the derived `messages` mirror ("kept for backwards-compatible selectors") — consumers use the new `selectActiveMessages` selector (stable reference; HomeScreen + assistantTurn updated); every action stops maintaining the duplicate, and the custom persist `merge` disappears with it.
 - **Debounced persistence:** `updateLastAssistant` fires per streamed token, and persist wrote (stringify of all ≤30 conversations) on every one. A custom `PersistStorage` now debounces 300 ms *above* the JSON layer — one stringify per flush, latest state wins. Cost accepted per plan: a hard kill inside the window loses the trailing ~300 ms of streamed text from history only.
 - **Verify:** tsc clean; jest 23/23; grep confirms no ungated console calls.
+
+## Step 9 — Navigation typing + AuthScreen animation consistency (plan items 18, 19)
+- **`navigationRef.ts`:** exports `RootNav` (`NativeStackNavigationProp<RootStackParamList>`), the one navigation prop type.
+- **`RootNavigator.tsx`:** the three `any`-typed wrapper components (`AlarmsRoute`/`TimersRoute`/`TranslatorRoute`) are gone — screens register directly.
+- **Alarms/Timers/Translator screens:** `onBack` prop removed; each uses `useNavigation<RootNav>()` + `goBack()`. **HomeScreen:** `useNavigation<any>` → `useNavigation<RootNav>`. **AlarmRingScreen:** hand-rolled route/navigation prop types → `NativeStackScreenProps<RootStackParamList, 'AlarmRing'>`.
+- **AuthScreen:** the two RN-`Animated` values (tab-switch fade, error shake) converted to Reanimated shared values (`withSequence`/`withTiming`, `interpolate` for the shake translate). One animation system per file now; RN `Animated` import gone.
+- **Verify:** tsc clean; jest 23/23. Same navigation behavior, same animations (identical timings/curves).

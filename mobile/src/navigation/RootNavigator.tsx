@@ -28,16 +28,6 @@ const theme = {
   },
 };
 
-function AlarmsRoute({ navigation }: any) {
-  return <AlarmsScreen onBack={() => navigation.goBack()} />;
-}
-function TimersRoute({ navigation }: any) {
-  return <TimersScreen onBack={() => navigation.goBack()} />;
-}
-function TranslatorRoute({ navigation }: any) {
-  return <TranslatorScreen onBack={() => navigation.goBack()} />;
-}
-
 export function RootNavigator() {
   const { token, hydrated, hydrate } = useAuthStore();
 
@@ -57,9 +47,9 @@ export function RootNavigator() {
         ) : (
           <>
             <Stack.Screen name="Home" component={HomeScreen} />
-            <Stack.Screen name="Alarms" component={AlarmsRoute} />
-            <Stack.Screen name="Timers" component={TimersRoute} />
-            <Stack.Screen name="Translator" component={TranslatorRoute} />
+            <Stack.Screen name="Alarms" component={AlarmsScreen} />
+            <Stack.Screen name="Timers" component={TimersScreen} />
+            <Stack.Screen name="Translator" component={TranslatorScreen} />
             <Stack.Screen
               name="AlarmRing"
               component={AlarmRingScreen}

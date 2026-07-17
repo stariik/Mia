@@ -37,6 +37,7 @@ import { haptics } from '@/lib/haptics';
 import { useSilenceAutoStop } from '@/hooks/useSilenceAutoStop';
 import { useVoicePipeline } from '@/hooks/useVoicePipeline';
 import { ensureWakeWordOnLaunch, useWakeTrigger } from '@/hooks/useWakeWord';
+import type { RootNav } from '@/navigation/navigationRef';
 import {
   selectActiveMessages,
   useConversationStore,
@@ -121,7 +122,7 @@ export function HomeScreen() {
   } = useVoiceStore();
 
   const pipeline = useVoicePipeline();
-  const navigation = useNavigation<any>();
+  const navigation = useNavigation<RootNav>();
   const [showSettings, setShowSettings] = useState(false);
   const [showDrawer, setShowDrawer] = useState(false);
   const [showInput, setShowInput] = useState(false);
