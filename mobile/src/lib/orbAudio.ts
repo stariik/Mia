@@ -31,6 +31,36 @@ let webRef: WebView | null = null;
 const streamPending = new Map<string, Pending>();
 let nextId = 0;
 
+// If sentences are in flight but the WebView produces no tts event for this
+// long, treat it as dead/wedged and fail everything — otherwise the turn's
+// awaiters hang forever and the orb sticks on "speaking". Generous: covers a
+// slow synth + a long sentence with a wide margin.
+const STALL_MS = 45_000;
+let stallTimer: ReturnType<typeof setTimeout> | null = null;
+
+function failEverything(err: Error) {
+  if (stallTimer) clearTimeout(stallTimer);
+  stallTimer = null;
+  inject('window.stopTTSAudio && window.stopTTSAudio()');
+  if (pending) {
+    pending.reject(err);
+    pending = null;
+  }
+  settleAllStreams(err);
+}
+
+/** (Re)arm the stall watchdog; self-clears once nothing is pending. Called on
+ *  every enqueue and every event from the WebView. */
+function armStallWatchdog() {
+  if (stallTimer) clearTimeout(stallTimer);
+  stallTimer = null;
+  if (streamPending.size === 0 && !pending) return;
+  stallTimer = setTimeout(
+    () => failEverything(new Error('orb tts stalled')),
+    STALL_MS,
+  );
+}
+
 function inject(js: string) {
   webRef?.injectJavaScript(js + '; true;');
 }
@@ -73,6 +103,7 @@ export const orbAudio = {
     const id = `s${nextId++}`;
     return new Promise<void>((resolve, reject) => {
       streamPending.set(id, { resolve, reject, onStart });
+      armStallWatchdog();
       const payload = JSON.stringify({
         id,
         text,
@@ -91,6 +122,7 @@ export const orbAudio = {
     }
     return new Promise<void>((resolve, reject) => {
       pending = { resolve, reject };
+      armStallWatchdog();
       const payload = JSON.stringify({ base64, mime });
       inject(`window.playTTSAudio && window.playTTSAudio(${payload})`);
     });
@@ -105,10 +137,19 @@ export const orbAudio = {
     // stopTTSAudio drops the WebView's queue without reporting each item, so
     // resolve them here or every in-flight sentence would hang forever.
     settleAllStreams();
+    armStallWatchdog(); // nothing pending — clears the timer
+  },
+
+  /** The orb's Android WebView render process died (OS memory pressure). All
+   *  in-flight audio is gone with it — fail everything so the current turn
+   *  unwinds immediately instead of waiting out the stall watchdog. */
+  onWebViewGone() {
+    failEverything(new Error('orb webview terminated'));
   },
 
   // Called from the orb component's onMessage handler.
   onEvent(kind: 'tts-started' | 'tts-ended' | 'tts-error', payload?: unknown) {
+    armStallWatchdog(); // the WebView is alive — push the deadline out
     const id =
       payload && typeof payload === 'object' && 'id' in payload
         ? String((payload as { id: unknown }).id)
@@ -122,6 +163,7 @@ export const orbAudio = {
         return; // still playing — don't settle
       }
       streamPending.delete(id);
+      if (streamPending.size === 0 && !pending) armStallWatchdog(); // clears
       if (kind === 'tts-ended') p.resolve();
       else {
         const e =
@@ -138,6 +180,7 @@ export const orbAudio = {
     if (!pending) return;
     const p = pending;
     pending = null;
+    armStallWatchdog(); // pending cleared — clears the timer if queue is empty
     if (kind === 'tts-ended') p.resolve();
     else p.reject(new Error(typeof payload === 'string' ? payload : 'TTS playback failed'));
   },

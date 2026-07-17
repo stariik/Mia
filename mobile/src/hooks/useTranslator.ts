@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 
 import ReactNativeBlobUtil from 'react-native-blob-util';
 
+import { expireSessionIf401 } from '@/api/client';
 import { transcribeGooglePcm } from '@/api/transcribeGoogle';
 import { translateText } from '@/api/translate';
 import { synthesizeWithElevenLabs } from '@/api/synthesize';
@@ -111,7 +112,9 @@ export function useTranslator() {
       setActiveSource(null);
       void speak(translated);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'თარგმნა ვერ მოხერხდა');
+      const msg = e instanceof Error ? e.message : 'თარგმნა ვერ მოხერხდა';
+      expireSessionIf401(msg);
+      setError(msg);
       setStatus('idle');
       setActiveSource(null);
     }

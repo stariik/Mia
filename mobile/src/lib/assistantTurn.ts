@@ -1,4 +1,5 @@
 import { streamChat } from '@/api/chat';
+import { expireSessionIf401 } from '@/api/client';
 import { runClientToolCalls } from '@/lib/tools/runClientCalls';
 import { useConversationStore } from '@/stores/conversationStore';
 import { getEffectiveCity, useLocationStore } from '@/stores/locationStore';
@@ -157,14 +158,16 @@ export async function runAssistantTurn({
         runClientToolCalls(calls);
       },
       onError: (msg) => {
+        expireSessionIf401(msg);
         if (isCurrent()) useVoiceStore.getState().setError(msg);
       },
     });
     onChatAbort?.(abort);
     await promise;
   } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Chat failed';
+    expireSessionIf401(msg);
     if (isCurrent()) {
-      const msg = err instanceof Error ? err.message : 'Chat failed';
       useVoiceStore.getState().setError(msg);
       useVoiceStore.getState().setThinking(false);
     }

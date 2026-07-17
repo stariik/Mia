@@ -1,5 +1,6 @@
 import { useCallback, useRef } from 'react';
 
+import { expireSessionIf401 } from '@/api/client';
 import { transcribeGooglePcm } from '@/api/transcribeGoogle';
 import { runAssistantTurn } from '@/lib/assistantTurn';
 import { orbPlayback } from '@/lib/orbPlayback';
@@ -61,6 +62,10 @@ export function useVoicePipeline() {
 
   const startListening = useCallback(async () => {
     if (modeRef.current === 'recording') return;
+    // Supersede a transcription still in flight from the PREVIOUS recording —
+    // otherwise its result would fire a ghost turn while the user is already
+    // re-recording (stopListeningAndSend checks this id after the STT await).
+    turnIdRef.current += 1;
     useVoiceStore.getState().setError(null);
     useVoiceStore.getState().setTranscript('');
 
@@ -87,25 +92,36 @@ export function useVoicePipeline() {
     modeRef.current = 'idle';
     useVoiceStore.getState().setListening(false);
 
+    // This send is stale once anything bumps the turn id (a new recording, an
+    // interrupt) while we're waiting on STT below.
+    const myTurn = turnIdRef.current;
+    const isStale = () => turnIdRef.current !== myTurn;
+
     let text = '';
     try {
       const { audioBase64, sampleRate } = await pcmRecorder.stop();
       if (!audioBase64) {
-        useVoiceStore.getState().setError('Empty recording.');
+        if (!isStale()) useVoiceStore.getState().setError('Empty recording.');
         return;
       }
       useVoiceStore.getState().setTranscript('Transcribing…');
       text = (await transcribeGooglePcm(audioBase64, sampleRate)).trim();
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Transcription failed';
-      useVoiceStore.getState().setError(msg);
-      useVoiceStore.getState().setTranscript('');
+      expireSessionIf401(msg);
+      if (!isStale()) {
+        useVoiceStore.getState().setError(msg);
+        useVoiceStore.getState().setTranscript('');
+      }
       return;
     } finally {
       // Mic is free again — resume wake-word listening (no-op if disabled).
-      wakeWord.resumeDetection();
+      // Not when superseded: a NEW recording owns the mic now and will resume
+      // detection itself when it finishes.
+      if (!isStale()) wakeWord.resumeDetection();
     }
 
+    if (isStale()) return; // superseded during STT — drop the ghost turn
     useVoiceStore.getState().setTranscript('');
     if (!text) {
       useVoiceStore.getState().setError('Empty transcription.');

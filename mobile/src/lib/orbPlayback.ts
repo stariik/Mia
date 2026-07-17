@@ -29,7 +29,16 @@ export const orbPlayback: TtsPlayback = {
       } catch (e) {
         // Don't fall back on an interrupt — stop() rejects in-flight sentences
         // on purpose, and re-synthesizing them would talk over the next turn.
-        if (String(e).includes('interrupt')) throw e;
+        // Nor on a dead/wedged WebView: the fallback plays through the same
+        // WebView, so it would just stall again.
+        const msg = String(e);
+        if (
+          msg.includes('interrupt') ||
+          msg.includes('stalled') ||
+          msg.includes('webview terminated')
+        ) {
+          throw e;
+        }
         console.warn('[TTS] stream failed, falling back to file:', e);
       }
     }

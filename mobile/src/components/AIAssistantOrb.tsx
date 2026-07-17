@@ -161,6 +161,13 @@ export function AIAssistantOrb({
             `window.setOrbState && window.setOrbState('${stateRef.current}'); true;`,
           );
         }}
+        onRenderProcessGone={(e) => {
+          // Android killed the WebView's renderer (memory pressure). Unwind any
+          // in-flight TTS immediately so the turn doesn't hang on promises the
+          // dead page can never settle.
+          console.warn('[Orb] render process gone', e.nativeEvent);
+          orbAudio.onWebViewGone();
+        }}
         onError={(e) => console.warn('[Orb] webview error', e.nativeEvent)}
         onHttpError={(e) =>
           console.warn('[Orb] http error', e.nativeEvent.statusCode, e.nativeEvent.url)

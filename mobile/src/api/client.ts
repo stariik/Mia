@@ -17,3 +17,19 @@ export function authHeaders(): Record<string, string> {
   const token = useAuthStore.getState().token;
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
+
+/**
+ * Call with any failed request's error message. A 401 means the 30-day token
+ * expired (or was revoked) — sign the user out so RootNavigator routes back to
+ * AuthScreen. Without this the user is dead-ended: every call fails with
+ * "სესია ამოიწურა" but nothing offers a way back to login.
+ */
+export function expireSessionIf401(message: string | null | undefined): void {
+  if (!message) return;
+  if (!/\b401\b|unauthorized/i.test(message)) return;
+  if (!useAuthStore.getState().token) return; // already signed out
+  useAuthStore
+    .getState()
+    .logout()
+    .catch(() => {});
+}
