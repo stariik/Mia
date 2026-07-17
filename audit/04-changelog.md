@@ -11,3 +11,8 @@ Each entry = one step of `03-gap-plan.md` = one commit. Verification noted per s
 - **Tests:** `runClientCalls.test.ts` updated (play_music/stop_music cases removed with the feature).
 - **Why:** spec §4 — Mia must not pretend to search music; no iOS; no dead surface.
 - **Verify:** grep clean, `tsc --noEmit` clean, jest 20/20 green. Behavior change: none (all deleted paths were unreachable).
+
+## Step 2 — Dead Kotlin + manifest queries (plan item 6-Kotlin)
+- **`MusicControlModule.kt`:** removed `playFromSearch`, `isProviderInstalled`, `stop` (JS no longer declares/calls any of them) and their now-unused imports; doc comment updated to state the module is transport-only by design.
+- **`AndroidManifest.xml`:** removed the whole `<queries>` block (three music-app package queries + `MEDIA_PLAY_FROM_SEARCH` intent) — it existed only to resolve the deleted search intent. Media-key dispatch needs no package visibility.
+- **Verify:** grep clean; `gradlew :app:compileDebugKotlin` succeeds. Behavior change: none (media transport untouched).
