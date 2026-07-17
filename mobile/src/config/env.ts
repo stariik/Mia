@@ -1,9 +1,5 @@
-import Config from 'react-native-config';
-
 // ─────────────────────────────────────────────────────────────────────────────
 // PRODUCTION CONFIG — set these before building the Play Store release.
-// (react-native-config is NOT wired into the Android build, so Config.* is
-// undefined at runtime and these constants are what actually ships.)
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** HTTPS base URL of the deployed web/ backend.
@@ -15,15 +11,13 @@ const PROD_API_BASE_URL = 'https://api.miavoice.online';
 /** Sentry project DSN — crash reporting is silently OFF while empty. */
 const PROD_SENTRY_DSN = '';
 
-const DEV_API_BASE_URL = Config.API_BASE_URL || 'http://localhost:3002';
+// Dev talks to the local Next.js server through `adb reverse tcp:3002`
+// (npm run tunnels / npm run device).
+const DEV_API_BASE_URL = 'http://localhost:3002';
 
 export const env = {
   apiBaseUrl: __DEV__ ? DEV_API_BASE_URL : PROD_API_BASE_URL,
-  sentryDsn: Config.SENTRY_DSN || PROD_SENTRY_DSN,
-
-  // NOTE: the "Hey Mia" wake word no longer needs any key — it runs fully
-  // on-device via openWakeWord (see android/.../wake/OwwEngine.kt). The old
-  // PICOVOICE_ACCESS_KEY was removed.
+  sentryDsn: PROD_SENTRY_DSN,
 };
 
 /** True when the build has a usable backend URL. Release builds without

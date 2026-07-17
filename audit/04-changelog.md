@@ -16,3 +16,10 @@ Each entry = one step of `03-gap-plan.md` = one commit. Verification noted per s
 - **`MusicControlModule.kt`:** removed `playFromSearch`, `isProviderInstalled`, `stop` (JS no longer declares/calls any of them) and their now-unused imports; doc comment updated to state the module is transport-only by design.
 - **`AndroidManifest.xml`:** removed the whole `<queries>` block (three music-app package queries + `MEDIA_PLAY_FROM_SEARCH` intent) — it existed only to resolve the deleted search intent. Media-key dispatch needs no package visibility.
 - **Verify:** grep clean; `gradlew :app:compileDebugKotlin` succeeds. Behavior change: none (media transport untouched).
+
+## Step 3 — Dependency prune (plan items 8, 9)
+- **Removed deps:** `@react-native/new-app-screen` (template leftover, 0 imports), `react-native-permissions` (0 imports — `PermissionsAndroid` used directly), `react-native-config` (never wired into the Android build; `Config.*` was always undefined at runtime), `react-native-gesture-handler` (only `GestureHandlerRootView`, no gestures anywhere; native-stack doesn't need it).
+- **`config/env.ts`:** rewritten without `Config` — dev URL is a plain `__DEV__` constant (`http://localhost:3002` via adb reverse), prod values unchanged.
+- **`App.tsx`:** `GestureHandlerRootView` wrapper removed.
+- **`tsconfig.json`:** dropped `react-native-config` types; **`apiUrl.test.ts`** rewritten without the config mock (asserts against the dev URL).
+- **Verify:** tsc clean, jest 20/20, `compileDebugKotlin` green (autolinking picked up the removals). Behavior change: none at runtime (Config was already inert); dev-URL override via `.env` never worked anyway.
