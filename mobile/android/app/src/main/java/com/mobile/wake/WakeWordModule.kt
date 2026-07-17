@@ -153,22 +153,6 @@ class WakeWordModule(private val reactCtx: ReactApplicationContext) :
     promise.resolve(pending)
   }
 
-  /** True if the configured custom "Mia" .onnx model is bundled in assets. */
-  @ReactMethod
-  fun hasCustomKeyword(promise: Promise) {
-    val name = prefs().getString(WakeWordService.KEY_KEYWORD_ASSET, null)
-    if (name.isNullOrBlank()) {
-      promise.resolve(false)
-      return
-    }
-    val exists = try {
-      reactCtx.assets.open(name).use { true }
-    } catch (e: Exception) {
-      false
-    }
-    promise.resolve(exists)
-  }
-
   // NativeEventEmitter bookkeeping — no-ops, but required or RN logs warnings.
   @ReactMethod fun addListener(eventName: String) {}
 

@@ -70,3 +70,22 @@ Each entry = one step of `03-gap-plan.md` = one commit. Verification noted per s
 - **Deleted:** `spike/` (old pipeline experiment with its own lockfile), `mia-obs/` (abandoned 2-file Obsidian vault), `PLAN.md` (Whisper-era architecture doc that contradicted the code — superseded by `audit/02-target-spec.md`), `tts-samples/` on disk (was already gitignored). `AUDIT.md` kept as a dated historical report.
 - **Stale comments fixed:** `api/chat.ts` and `assistantTurn.ts` no longer claim to "mirror web/src/app/page.tsx:handleUserMessage" (that file is a 40-line landing stub now); `tools/platform/index.ts` no longer claims an identical web counterpart exists.
 - **Verify:** tsc clean (comment-only code changes).
+
+## Step 11 — Final conformance pass
+Re-read the full tree against `02-target-spec.md`. Last stragglers found and removed:
+- `theme.motion` — exported, imported nowhere ("motion" elsewhere was only prose in comments).
+- `wakeWord.hasCustomKeyword` + its Kotlin `@ReactMethod` — the check existed for the pre-`mia.onnx` era; nothing calls it.
+- `MIA_MODEL_ASSET` un-exported (only used inside `wakeWord.ts`).
+
+**Kept deliberately (each has a recorded reason):**
+- `translateLanguages.ts`'s 10-language table — mirrors the server's `languages.ts`, whose comment defines the sync contract and the add-a-language path.
+- `authStore`'s manual hydrate (vs persist middleware) — the headless wake runtime needs an awaitable `hydrate()`; documented in `wakeSession.ts`.
+- The alarm engine's three-way state (store / notifee triggers / in-process handles) — inherent to Android's alarm model, reconciled in `reconcileTools`.
+- The wake stack and orbHtml WebGL — untouched per plan.
+
+**Final state:** 66 source files (from 73), 20 runtime deps (from 24), mobile tsc clean, web tsc clean, jest 23/23, `compileDebugKotlin` green. Net diff across Phase 4: roughly −2,000 lines.
+
+**Open items that are yours, not code:**
+1. Device checks: one full voice turn; translator speak + replay; a "Hey Mia" overlay session; a killed-app alarm fire; visual font pass (text formerly Roboto now renders MarkGEO).
+2. Spec C14: set `PROD_SENTRY_DSN` in `mobile/src/config/env.ts` before the next release — crash reporting is still off.
+3. Release `.aab` build to confirm ProGuard/autolinking after the dependency prune.

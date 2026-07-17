@@ -26,7 +26,6 @@ type WakeNative = {
   isEnabled(): Promise<boolean>;
   isRunning(): Promise<boolean>;
   getInitialWakeTrigger(): Promise<boolean>;
-  hasCustomKeyword(): Promise<boolean>;
 };
 
 const Native =
@@ -37,11 +36,10 @@ const Native =
 // Must match WakeWordService.EVENT_NAME.
 const WAKE_EVENT = 'WakeWordEvent';
 
-// The custom openWakeWord model the service looks for in
-// android/app/src/main/assets/. Until it's trained + dropped in, the service
-// falls back to the bundled pretrained model so the flow is testable.
+// The custom openWakeWord model in android/app/src/main/assets/. If it were
+// ever missing, the service falls back to its bundled pretrained model.
 // Must match WakeWordService.MIA_MODEL_ASSET.
-export const MIA_MODEL_ASSET = 'mia.onnx';
+const MIA_MODEL_ASSET = 'mia.onnx';
 
 // openWakeWord detection threshold (score in [0,1]); higher = fewer false
 // triggers but more misses. Must match WakeWordService.DEFAULT_THRESHOLD.
@@ -120,12 +118,6 @@ export const wakeWord = {
   async consumeInitialWakeTrigger(): Promise<boolean> {
     if (!Native) return false;
     return Native.getInitialWakeTrigger();
-  },
-
-  /** True if the custom "Mia" .onnx model is actually bundled in assets. */
-  async hasCustomKeyword(): Promise<boolean> {
-    if (!Native) return false;
-    return Native.hasCustomKeyword();
   },
 
   /** Subscribe to wake events. Returns an unsubscribe fn. */

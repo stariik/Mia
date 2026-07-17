@@ -62,11 +62,4 @@ export const brandGradient = [
   colors.gradientEnd,
 ] as const;
 
-export const motion = {
-  fast: 180,
-  base: 260,
-  slow: 420,
-  cinematic: 720,
-};
-
 export type ColorToken = keyof typeof colors;
