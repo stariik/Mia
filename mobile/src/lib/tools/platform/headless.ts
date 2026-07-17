@@ -122,11 +122,6 @@ async function scheduleAlarmHeadless(
             { title: 'გაჩერება', pressAction: { id: 'dismiss' } },
           ],
         },
-        ios: {
-          sound: 'alarm.caf',
-          interruptionLevel: 'timeSensitive',
-          categoryId: 'alarm',
-        },
       },
       {
         type: TriggerType.TIMESTAMP,
@@ -156,10 +151,6 @@ async function scheduleTimerHeadless(
           autoCancel: true,
           smallIcon: 'ic_launcher',
           pressAction: { id: 'default', launchActivity: 'default' },
-        },
-        ios: {
-          sound: 'alarm.caf',
-          interruptionLevel: 'timeSensitive',
         },
       },
       {

@@ -4,7 +4,6 @@ jest.mock('@/lib/tools/platform/native', () => ({
     scheduleAlarm: jest.fn().mockResolvedValue(undefined),
     cancelTimer: jest.fn().mockResolvedValue(undefined),
     cancelAlarm: jest.fn().mockResolvedValue(undefined),
-    notify: jest.fn().mockResolvedValue(undefined),
   },
 }));
 
@@ -15,10 +14,7 @@ jest.mock('@/lib/tools/music', () => ({
     togglePlay: jest.fn().mockResolvedValue(undefined),
     skipNext: jest.fn().mockResolvedValue(undefined),
     skipPrevious: jest.fn().mockResolvedValue(undefined),
-    stop: jest.fn().mockResolvedValue(undefined),
     restart: jest.fn().mockResolvedValue(undefined),
-    playFromSearch: jest.fn().mockResolvedValue(undefined),
-    isProviderInstalled: jest.fn().mockResolvedValue(true),
   },
 }));
 
@@ -72,35 +68,6 @@ describe('runClientToolCalls', () => {
     expect(nativePlatform.scheduleAlarm).not.toHaveBeenCalled();
   });
 
-  test('play_music forwards query and provider', async () => {
-    await runClientToolCalls([
-      {
-        id: 'm1',
-        name: 'play_music',
-        args: { query: 'მზე და ცა', provider: 'spotify' },
-      },
-    ]);
-    expect(music.playFromSearch).toHaveBeenCalledWith('მზე და ცა', 'spotify');
-  });
-
-  test('play_music falls back to undefined provider when invalid', async () => {
-    await runClientToolCalls([
-      {
-        id: 'm2',
-        name: 'play_music',
-        args: { query: 'lullaby', provider: 'tidal' },
-      },
-    ]);
-    expect(music.playFromSearch).toHaveBeenCalledWith('lullaby', undefined);
-  });
-
-  test('play_music ignored when query is empty', async () => {
-    await runClientToolCalls([
-      { id: 'm3', name: 'play_music', args: { query: '   ' } },
-    ]);
-    expect(music.playFromSearch).not.toHaveBeenCalled();
-  });
-
   test.each([
     ['pause_music', 'pause'],
     ['resume_music', 'resume'],
@@ -108,7 +75,6 @@ describe('runClientToolCalls', () => {
     ['skip_next', 'skipNext'],
     ['skip_previous', 'skipPrevious'],
     ['restart_track', 'restart'],
-    ['stop_music', 'stop'],
   ])('%s dispatches music.%s', async (toolName, method) => {
     await runClientToolCalls([{ id: 't', name: toolName, args: {} }]);
     expect((music as unknown as Record<string, jest.Mock>)[method]).toHaveBeenCalledTimes(1);

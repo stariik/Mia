@@ -1,28 +1,13 @@
-import { music, type MusicProvider } from './music';
+import { music } from './music';
 import { nativePlatform } from './platform/native';
 import type { ClientToolCall } from './types';
 
-const VALID_PROVIDERS: MusicProvider[] = [
-  'spotify',
-  'apple_music',
-  'samsung_music',
-];
-
-function parseProvider(value: unknown): MusicProvider | undefined {
-  return typeof value === 'string' &&
-    (VALID_PROVIDERS as string[]).includes(value)
-    ? (value as MusicProvider)
-    : undefined;
-}
-
 // Maps the LLM's client-side tool calls onto the native platform adapter.
-// Mirrors the logic in web/src/app/page.tsx:runClientToolCalls but uses
-// nativePlatform (notifee + setTimeout) instead of webPlatform.
+// The set of names here must match the client tools in
+// web/src/lib/tools/registry.ts — the server only ever emits those.
 export async function runClientToolCalls(calls: ClientToolCall[]) {
-  console.warn('[ToolCall] received', calls.map((c) => c.name).join(','));
   for (const call of calls) {
     try {
-      console.warn('[ToolCall] dispatching', call.name, JSON.stringify(call.args));
       if (call.name === 'set_timer') {
         const seconds = Number(call.args.duration_seconds);
         const label =
@@ -58,12 +43,6 @@ export async function runClientToolCalls(calls: ClientToolCall[]) {
             ringsAt: when.getTime(),
           });
         }
-      } else if (call.name === 'play_music') {
-        const query =
-          typeof call.args.query === 'string' ? call.args.query.trim() : '';
-        if (query) {
-          await music.playFromSearch(query, parseProvider(call.args.provider));
-        }
       } else if (call.name === 'pause_music') {
         await music.pause();
       } else if (call.name === 'resume_music') {
@@ -76,8 +55,6 @@ export async function runClientToolCalls(calls: ClientToolCall[]) {
         await music.skipPrevious();
       } else if (call.name === 'restart_track') {
         await music.restart();
-      } else if (call.name === 'stop_music') {
-        await music.stop();
       }
     } catch (err) {
       // eslint-disable-next-line no-console

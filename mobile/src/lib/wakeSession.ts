@@ -32,8 +32,8 @@ const MAX_TURNS = 10; // safety cap on a runaway conversation loop
 
 let running = false;
 
-// TEMP diagnostic — stage tracing for the "Hey Jarvis" session. Remove once the
-// stall is fixed. Shows under ReactNativeJS in logcat (filter: [MiaBg]).
+// Dev-only stage tracing. The wake session runs headless (no Metro attached),
+// so logcat is the only window into it — keep these. Filter: [MiaBg].
 const mlog = (...args: unknown[]) => {
   if (__DEV__) console.warn('[MiaBg]', ...args);
 };

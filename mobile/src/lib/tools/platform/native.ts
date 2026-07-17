@@ -4,7 +4,6 @@ import notifee, {
   AndroidImportance,
   AndroidVisibility,
   EventType,
-  RepeatFrequency,
   TimestampTrigger,
   TriggerType,
 } from '@notifee/react-native';
@@ -161,12 +160,6 @@ async function scheduleAlarmTrigger(
             },
           ],
         },
-        ios: {
-          sound: 'alarm.caf',
-          critical: false,
-          interruptionLevel: 'timeSensitive',
-          categoryId: 'alarm',
-        },
       },
       trigger,
     );
@@ -209,74 +202,16 @@ async function scheduleTimerTrigger(
             },
           ],
         },
-        ios: {
-          sound: 'alarm.caf',
-          interruptionLevel: 'timeSensitive',
-        },
       },
       trigger,
     );
   } catch {}
 }
 
-/**
- * iOS fallback for recurring weekday alarms: notifee `WEEKLY` triggers fire
- * once per week, so a 5-day weekday alarm needs 5 separate scheduled
- * notifications — one per weekday. Their IDs are namespaced as
- * `${alarmId}__d${weekday}` so we can cancel them as a group.
- */
-async function scheduleAlarmIOSRecurring(
-  baseId: string,
-  title: string,
-  body: string,
-  hour: number,
-  minute: number,
-  days: number[],
-) {
-  for (const dow of days) {
-    // Find next Date with that weekday at hour:minute
-    const next = new Date();
-    next.setSeconds(0, 0);
-    next.setHours(hour, minute, 0, 0);
-    while (next.getDay() !== dow || next.getTime() <= Date.now()) {
-      next.setDate(next.getDate() + 1);
-    }
-    const trigger: TimestampTrigger = {
-      type: TriggerType.TIMESTAMP,
-      timestamp: next.getTime(),
-      repeatFrequency: RepeatFrequency.WEEKLY,
-    };
-    try {
-      await notifee.createTriggerNotification(
-        {
-          id: `${baseId}__d${dow}`,
-          title,
-          body,
-          data: { kind: 'alarm', alarmId: baseId },
-          ios: {
-            sound: 'alarm.caf',
-            interruptionLevel: 'timeSensitive',
-            categoryId: 'alarm',
-          },
-        },
-        trigger,
-      );
-    } catch {}
-  }
-}
-
 async function cancelAlarmTriggers(id: string) {
   try {
     await notifee.cancelTriggerNotification(id);
   } catch {}
-  // Best-effort cancel of iOS per-weekday IDs.
-  if (Platform.OS === 'ios') {
-    for (let dow = 0; dow < 7; dow++) {
-      try {
-        await notifee.cancelTriggerNotification(`${id}__d${dow}`);
-      } catch {}
-    }
-  }
 }
 
 function armTimerHandle(id: string, fireAt: number) {
@@ -420,26 +355,12 @@ export const nativePlatform: ToolPlatform = {
       days: req.days,
     });
     armAlarmHandle(req.id, initialFire, req.days);
-
-    if (Platform.OS === 'ios' && req.days && req.days.length > 0) {
-      // iOS uses per-weekday weekly triggers.
-      const d = new Date(initialFire);
-      await scheduleAlarmIOSRecurring(
-        req.id,
-        'მაღვიძარა',
-        req.label || 'გაღვიძების დროა',
-        d.getHours(),
-        d.getMinutes(),
-        req.days,
-      );
-    } else {
-      await scheduleAlarmTrigger(
-        req.id,
-        'მაღვიძარა',
-        req.label || 'გაღვიძების დროა',
-        initialFire,
-      );
-    }
+    await scheduleAlarmTrigger(
+      req.id,
+      'მაღვიძარა',
+      req.label || 'გაღვიძების დროა',
+      initialFire,
+    );
   },
 
   async cancelAlarm(id: string) {
@@ -450,20 +371,6 @@ export const nativePlatform: ToolPlatform = {
     await cancelAlarmTriggers(id);
     try {
       await notifee.cancelDisplayedNotification(id);
-    } catch {}
-  },
-
-  async notify(title: string, body?: string) {
-    await requestPermission();
-    try {
-      await notifee.displayNotification({
-        title,
-        body,
-        android: {
-          channelId: TIMER_CHANNEL_ID,
-          pressAction: { id: 'default' },
-        },
-      });
     } catch {}
   },
 };

@@ -21,5 +21,4 @@ export interface ToolPlatform {
   cancelTimer(id: string): Promise<void>;
   scheduleAlarm(req: AlarmRequest): Promise<void>;
   cancelAlarm(id: string): Promise<void>;
-  notify(title: string, body?: string): Promise<void>;
 }
