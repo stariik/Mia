@@ -12,7 +12,7 @@ import {
 
 import { nativePlatform } from '@/lib/tools/platform/native';
 import { useToolsStore, type ActiveAlarm } from '@/stores/toolsStore';
-import { colors, radius, spacing, typography } from '@/theme';
+import { colors, fonts, radius, spacing, typography } from '@/theme';
 
 const DAY_LABELS_GE = ['კვ', 'ორ', 'სმ', 'ოთ', 'ხუ', 'პარ', 'შაბ'];
 
@@ -301,7 +301,7 @@ const styles = StyleSheet.create({
   timeInput: {
     width: 96,
     height: 96,
-    fontFamily: 'SpaceGrotesk-Bold',
+    fontFamily: fonts.numeric,
     fontSize: 64,
     lineHeight: 72,
     textAlign: 'center',
@@ -312,7 +312,7 @@ const styles = StyleSheet.create({
     borderColor: colors.stroke,
   },
   timeColon: {
-    fontFamily: 'SpaceGrotesk-Bold',
+    fontFamily: fonts.numeric,
     fontSize: 56,
     color: colors.textMuted,
   },
@@ -340,7 +340,7 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
   },
   dayChipText: {
-    fontFamily: 'Manrope-SemiBold',
+    fontFamily: fonts.bodyBold,
     fontSize: 12,
     color: colors.textMuted,
   },
@@ -361,7 +361,7 @@ const styles = StyleSheet.create({
     borderColor: colors.stroke,
   },
   presetText: {
-    fontFamily: 'Manrope-Regular',
+    fontFamily: fonts.body,
     fontSize: 12,
     color: colors.textMuted,
   },
@@ -373,7 +373,7 @@ const styles = StyleSheet.create({
     borderColor: colors.stroke,
     borderRadius: radius.lg,
     color: colors.text,
-    fontFamily: 'Manrope-Regular',
+    fontFamily: fonts.body,
     fontSize: 15,
   },
   actions: {
@@ -394,7 +394,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,180,171,0.40)',
   },
   deleteText: {
-    fontFamily: 'Manrope-SemiBold',
+    fontFamily: fonts.bodyBold,
     color: colors.danger,
   },
   cancelBtn: {
@@ -406,7 +406,7 @@ const styles = StyleSheet.create({
   },
   cancelText: {
     color: colors.textMuted,
-    fontFamily: 'Manrope-Regular',
+    fontFamily: fonts.body,
   },
   saveBtn: {
     height: 48,
@@ -428,6 +428,6 @@ const styles = StyleSheet.create({
   },
   saveText: {
     color: colors.primaryOn,
-    fontFamily: 'Manrope-SemiBold',
+    fontFamily: fonts.bodyBold,
   },
 });

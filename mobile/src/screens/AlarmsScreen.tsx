@@ -14,7 +14,7 @@ import { AlarmEditSheet } from '@/components/AlarmEditSheet';
 import { AuroraBackdrop } from '@/components/AuroraBackdrop';
 import { nativePlatform } from '@/lib/tools/platform/native';
 import { useToolsStore, type ActiveAlarm } from '@/stores/toolsStore';
-import { colors, radius, spacing, typography } from '@/theme';
+import { colors, fonts, radius, spacing, typography } from '@/theme';
 
 const DAY_LABELS_GE = ['კვ', 'ორ', 'სმ', 'ოთ', 'ხუ', 'პარ', 'შაბ'];
 
@@ -222,7 +222,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   rowTime: {
-    fontFamily: 'SpaceGrotesk-Bold',
+    fontFamily: fonts.numeric,
     fontSize: 36,
     lineHeight: 40,
     color: colors.text,

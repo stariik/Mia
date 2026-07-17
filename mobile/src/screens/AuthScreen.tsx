@@ -23,7 +23,7 @@ import { AuroraBackdrop } from '@/components/AuroraBackdrop';
 import { MiaWordmark } from '@/components/MiaWordmark';
 import { haptics } from '@/lib/haptics';
 import { useAuthStore } from '@/stores/authStore';
-import { brandGradient, colors, radius, spacing, typography } from '@/theme';
+import { brandGradient, colors, fonts, radius, spacing, typography } from '@/theme';
 
 type Tab = 'login' | 'register';
 type FocusKey = 'email' | 'password' | 'confirm' | null;
@@ -538,7 +538,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   ctaText: {
-    fontFamily: 'MarkGEO-Bold',
+    fontFamily: fonts.bodyBold,
     fontSize: 16,
     color: '#ffffff',
     letterSpacing: 0.3,
@@ -556,6 +556,6 @@ const styles = StyleSheet.create({
   },
   switchHintAccent: {
     color: colors.primary,
-    fontFamily: 'MarkGEO-Bold',
+    fontFamily: fonts.bodyBold,
   },
 });

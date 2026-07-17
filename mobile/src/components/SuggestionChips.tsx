@@ -4,7 +4,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import Svg, { Circle, Path } from 'react-native-svg';
 
 import { haptics } from '@/lib/haptics';
-import { colors, radius, spacing } from '@/theme';
+import { colors, fonts, radius, spacing } from '@/theme';
 
 // First-run discovery: one example per core capability (weather, timer,
 // alarm, music) so a new user immediately learns what Mia can do. Each chip
@@ -127,7 +127,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.lg,
   },
   title: {
-    fontFamily: 'MarkGEO-CAPS',
+    fontFamily: fonts.caps,
     fontSize: 10.5,
     letterSpacing: 1.6,
     color: colors.outline,
@@ -153,7 +153,7 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.97 }],
   },
   chipText: {
-    fontFamily: 'Manrope-Regular',
+    fontFamily: fonts.body,
     fontSize: 12.5,
     color: colors.textMuted,
   },

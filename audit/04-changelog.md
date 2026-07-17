@@ -30,3 +30,11 @@ Each entry = one step of `03-gap-plan.md` = one commit. Verification noted per s
 - **Cleanups:** stale references in `useSilenceAutoStop`/`audioLevel`/`pcmCapture` comments; `errorMessages` no longer matches "transcription stream stalled" (that stream is gone).
 - **Why:** spec §4 — one capture path, one STT provider. ~350 lines and a second STT vendor deleted.
 - **Verify:** mobile tsc + jest 20/20; web tsc clean (after clearing stale generated `.next/types`). **Device check needed (yours): one full voice turn.**
+
+## Step 5 — Fonts routed through theme tokens (plan item 11)
+- **The defect:** ~39 style entries across 13 files hardcoded `fontFamily: 'Manrope-*'` — Manrope has never been in `assets/fonts/`, so all of that text silently rendered in Roboto, off the design system.
+- **`theme/typography.ts`:** comment corrected (it claimed Manrope files exist); added two deliberate tokens — `fonts.numeric` (`SpaceGrotesk-Bold`, big clock/countdown numerals) and `fonts.brand` (`Coiny-Regular`, the wordmark).
+- **Replacements everywhere:** `Manrope-SemiBold`→`fonts.bodyBold` (MarkGEO-Bold), `Manrope-Regular`→`fonts.body` (MarkGEO-Regular), `SpaceGrotesk-Bold`→`fonts.numeric`, `SpaceGrotesk-Medium`→`fonts.body` (its one use was a Georgian time-ago label that SpaceGrotesk can't even render — Latin-only face), MarkGEO/Coiny literals→tokens. Zero `fontFamily` literals remain outside `theme/`.
+- **Deleted:** `SpaceGrotesk-Medium.ttf` (now unused, both copies) and `Coiny.zip` (a zip archive sitting in the fonts dir). OFL license + README kept.
+- **Intended visible change:** text that was accidentally Roboto now renders in MarkGEO (per spec: Georgian correctness, one styling pattern).
+- **Verify:** tsc + jest green; grep shows no font literals outside theme. **Visual pass on all screens is yours.**

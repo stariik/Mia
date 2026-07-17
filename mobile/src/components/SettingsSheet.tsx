@@ -16,7 +16,7 @@ import { useWakeWordToggle } from '@/hooks/useWakeWord';
 import { refreshLocation } from '@/lib/location';
 import { useAuthStore } from '@/stores/authStore';
 import { useLocationStore } from '@/stores/locationStore';
-import { brandGradient, colors, radius, spacing, typography } from '@/theme';
+import { brandGradient, colors, fonts, radius, spacing, typography } from '@/theme';
 
 type Props = {
   visible: boolean;
@@ -401,7 +401,7 @@ const styles = StyleSheet.create({
   },
   doneText: {
     color: '#ffffff',
-    fontFamily: 'Manrope-SemiBold',
+    fontFamily: fonts.bodyBold,
     fontSize: 15,
     letterSpacing: 0.3,
   },

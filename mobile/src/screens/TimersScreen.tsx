@@ -15,7 +15,7 @@ import { AuroraBackdrop } from '@/components/AuroraBackdrop';
 import { nativePlatform } from '@/lib/tools/platform/native';
 import { useToolsStore } from '@/stores/toolsStore';
 import { haptics } from '@/lib/haptics';
-import { colors, radius, spacing, typography } from '@/theme';
+import { colors, fonts, radius, spacing, typography } from '@/theme';
 
 const QUICK_DURATIONS_SEC = [
   { label: '1 წთ', sec: 60 },
@@ -309,7 +309,7 @@ const styles = StyleSheet.create({
     borderRadius: 2,
   },
   activeTime: {
-    fontFamily: 'SpaceGrotesk-Bold',
+    fontFamily: fonts.numeric,
     fontSize: 32,
     lineHeight: 36,
     color: colors.primary,
@@ -328,7 +328,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,180,171,0.40)',
   },
   stopText: {
-    fontFamily: 'Manrope-SemiBold',
+    fontFamily: fonts.bodyBold,
     color: colors.danger,
     fontSize: 13,
   },
@@ -351,7 +351,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceElev,
   },
   quickText: {
-    fontFamily: 'Manrope-SemiBold',
+    fontFamily: fonts.bodyBold,
     color: colors.text,
     fontSize: 15,
   },
@@ -364,7 +364,7 @@ const styles = StyleSheet.create({
   customInput: {
     width: 76,
     height: 76,
-    fontFamily: 'SpaceGrotesk-Bold',
+    fontFamily: fonts.numeric,
     fontSize: 40,
     textAlign: 'center',
     color: colors.text,
@@ -374,7 +374,7 @@ const styles = StyleSheet.create({
     borderColor: colors.stroke,
   },
   customColon: {
-    fontFamily: 'SpaceGrotesk-Bold',
+    fontFamily: fonts.numeric,
     fontSize: 36,
     color: colors.textMuted,
   },
@@ -385,7 +385,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   customLabel: {
-    fontFamily: 'Manrope-Regular',
+    fontFamily: fonts.body,
     fontSize: 12,
     color: colors.outline,
     width: 76,
@@ -399,7 +399,7 @@ const styles = StyleSheet.create({
     borderColor: colors.stroke,
     borderRadius: radius.lg,
     color: colors.text,
-    fontFamily: 'Manrope-Regular',
+    fontFamily: fonts.body,
     fontSize: 15,
   },
   startBtn: {
@@ -414,7 +414,7 @@ const styles = StyleSheet.create({
     opacity: 0.35,
   },
   startText: {
-    fontFamily: 'Manrope-SemiBold',
+    fontFamily: fonts.bodyBold,
     color: colors.primaryOn,
     fontSize: 16,
   },

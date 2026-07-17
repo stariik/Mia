@@ -14,7 +14,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import type { OrbState } from '@/components/AIAssistantOrb';
-import { colors, radius, spacing } from '@/theme';
+import { colors, fonts, radius, spacing } from '@/theme';
 
 // ── Tiny animated indicators ─────────────────────────────────────────────
 
@@ -191,7 +191,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,77,139,0.07)',
   },
   label: {
-    fontFamily: 'Manrope-Regular',
+    fontFamily: fonts.body,
     fontSize: 14,
     lineHeight: 20,
     color: colors.textMuted,
@@ -203,7 +203,7 @@ const styles = StyleSheet.create({
   },
   sub: {
     marginTop: spacing.xs,
-    fontFamily: 'Manrope-Regular',
+    fontFamily: fonts.body,
     fontSize: 12,
     color: colors.outline,
   },

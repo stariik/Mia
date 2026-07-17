@@ -26,7 +26,7 @@ import {
   snoozeAlarm,
 } from '@/lib/tools/platform/native';
 import { haptics } from '@/lib/haptics';
-import { colors, radius, spacing, typography } from '@/theme';
+import { colors, fonts, radius, spacing, typography } from '@/theme';
 
 const VIBRATE_PATTERN = [0, 800, 400, 800, 400, 800];
 
@@ -180,7 +180,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   time: {
-    fontFamily: 'SpaceGrotesk-Bold',
+    fontFamily: fonts.numeric,
     fontSize: 96,
     lineHeight: 100,
     letterSpacing: -2,

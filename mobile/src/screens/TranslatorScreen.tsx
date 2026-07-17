@@ -15,7 +15,7 @@ import { useTranslator, type Lang, type Turn } from '@/hooks/useTranslator';
 import { useSilenceAutoStop } from '@/hooks/useSilenceAutoStop';
 import { languageNameKa } from '@/lib/translateLanguages';
 import { haptics } from '@/lib/haptics';
-import { colors, radius, spacing, typography } from '@/theme';
+import { colors, fonts, radius, spacing, typography } from '@/theme';
 
 type Props = { onBack: () => void };
 
@@ -249,12 +249,12 @@ const styles = StyleSheet.create({
     borderColor: colors.stroke,
   },
   kaChipText: {
-    fontFamily: 'Manrope-SemiBold',
+    fontFamily: fonts.bodyBold,
     color: colors.text,
     fontSize: 15,
   },
   swap: {
-    fontFamily: 'SpaceGrotesk-Bold',
+    fontFamily: fonts.numeric,
     fontSize: 18,
     color: colors.textMuted,
   },
@@ -274,7 +274,7 @@ const styles = StyleSheet.create({
   },
   segBtnOn: { backgroundColor: colors.primary },
   segText: {
-    fontFamily: 'Manrope-SemiBold',
+    fontFamily: fonts.bodyBold,
     color: colors.textMuted,
     fontSize: 14,
   },
@@ -292,12 +292,12 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   emptyTitle: {
-    fontFamily: 'Manrope-SemiBold',
+    fontFamily: fonts.bodyBold,
     color: colors.text,
     fontSize: 17,
   },
   emptyBody: {
-    fontFamily: 'Manrope-Regular',
+    fontFamily: fonts.body,
     color: colors.textMuted,
     fontSize: 14,
     textAlign: 'center',
@@ -312,7 +312,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   turnHeardLang: {
-    fontFamily: 'Manrope-SemiBold',
+    fontFamily: fonts.bodyBold,
     color: colors.outline,
     fontSize: 11,
     textTransform: 'uppercase',
@@ -320,7 +320,7 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   turnHeard: {
-    fontFamily: 'Manrope-Regular',
+    fontFamily: fonts.body,
     color: colors.textMuted,
     fontSize: 15,
   },
@@ -333,7 +333,7 @@ const styles = StyleSheet.create({
     borderTopColor: 'rgba(255,255,255,0.06)',
   },
   turnTransLang: {
-    fontFamily: 'Manrope-SemiBold',
+    fontFamily: fonts.bodyBold,
     color: colors.primary,
     fontSize: 11,
     textTransform: 'uppercase',
@@ -341,7 +341,7 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   turnTrans: {
-    fontFamily: 'Manrope-SemiBold',
+    fontFamily: fonts.bodyBold,
     color: colors.text,
     fontSize: 19,
     lineHeight: 26,
@@ -356,7 +356,7 @@ const styles = StyleSheet.create({
     marginLeft: spacing.sm,
   },
   error: {
-    fontFamily: 'Manrope-Regular',
+    fontFamily: fonts.body,
     color: colors.danger,
     fontSize: 13,
     textAlign: 'center',
@@ -364,7 +364,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.sm,
   },
   working: {
-    fontFamily: 'Manrope-SemiBold',
+    fontFamily: fonts.bodyBold,
     color: colors.primary,
     fontSize: 14,
     textAlign: 'center',
@@ -394,7 +394,7 @@ const styles = StyleSheet.create({
   },
   micDisabled: { opacity: 0.4 },
   micLabel: {
-    fontFamily: 'Manrope-SemiBold',
+    fontFamily: fonts.bodyBold,
     color: colors.text,
     fontSize: 14,
   },

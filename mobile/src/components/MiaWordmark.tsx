@@ -2,7 +2,7 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Text as SvgText } from 'react-native-svg';
 
-import { colors } from '@/theme';
+import { colors, fonts } from '@/theme';
 
 export function MiaWordmark({ size = 22 }: { size?: number }) {
   const mSize = Math.round(size * 1.3);
@@ -22,7 +22,7 @@ export function MiaWordmark({ size = 22 }: { size?: number }) {
         <SvgText
           x={0}
           y={mSize * 0.86}
-          fontFamily="Coiny-Regular"
+          fontFamily={fonts.brand}
           fontSize={mSize}
           fill="url(#mGrad)"
           textAnchor="start"
@@ -43,7 +43,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   ia: {
-    fontFamily: 'Coiny-Regular',
+    fontFamily: fonts.brand,
     color: colors.text,
     includeFontPadding: false,
   },

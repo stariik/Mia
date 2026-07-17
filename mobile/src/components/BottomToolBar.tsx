@@ -9,7 +9,7 @@ import Animated, {
 import Svg, { Circle, Path } from 'react-native-svg';
 
 import { haptics } from '@/lib/haptics';
-import { colors, radius, spacing } from '@/theme';
+import { colors, fonts, radius, spacing } from '@/theme';
 
 type ToolKey = 'translate' | 'timer' | 'alarm' | 'settings';
 
@@ -165,7 +165,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
   },
   label: {
-    fontFamily: 'Manrope-SemiBold',
+    fontFamily: fonts.bodyBold,
     fontSize: 11,
     color: colors.textMuted,
     letterSpacing: 0.1,

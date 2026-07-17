@@ -1,13 +1,12 @@
 // On Android, `fontFamily` matches the TTF filename stem (not the PostScript name).
-// Filenames under assets/fonts/:
-//   MarkGEO-Regular.ttf
-//   MarkGEO-Bold.ttf
-//   MarkGEO-CAPS.ttf       (all-caps variant — designed for uppercase labels)
-//   SpaceGrotesk-Medium.ttf, SpaceGrotesk-Bold.ttf  (kept as fallback)
-//   Manrope-Regular.ttf, Manrope-SemiBold.ttf      (kept as fallback)
+// Filenames under assets/fonts/ (the ONLY families that exist in the APK):
+//   MarkGEO-Regular.ttf / MarkGEO-Bold.ttf / MarkGEO-CAPS.ttf
+//   SpaceGrotesk-Bold.ttf   (numeric/clock displays — Latin+digits only)
+//   Coiny-Regular.ttf       (the "Mia" wordmark)
 //
-// MarkGEO is now the project's primary font — it has proper Georgian glyphs.
-// Latin renders fine in it too, so the same family covers brand titles.
+// MarkGEO is the primary font — proper Georgian glyphs; Latin renders fine in
+// it too. Every fontFamily in the app MUST come from `fonts` below: a literal
+// naming a family that isn't bundled silently falls back to Roboto.
 
 import type { TextStyle } from 'react-native';
 
@@ -17,6 +16,10 @@ export const fonts = {
   body: 'MarkGEO-Regular',
   bodyBold: 'MarkGEO-Bold',
   caps: 'MarkGEO-CAPS',
+  /** Big clock/countdown numerals (Latin digits only — no Georgian glyphs). */
+  numeric: 'SpaceGrotesk-Bold',
+  /** The "Mia" brand wordmark only. */
+  brand: 'Coiny-Regular',
 };
 
 export const typography: Record<string, TextStyle> = {

@@ -39,7 +39,7 @@ import { useVoicePipeline } from '@/hooks/useVoicePipeline';
 import { ensureWakeWordOnLaunch, useWakeTrigger } from '@/hooks/useWakeWord';
 import { useConversationStore, type Message } from '@/stores/conversationStore';
 import { useVoiceStore } from '@/stores/voiceStore';
-import { brandGradient, colors, radius, spacing, typography } from '@/theme';
+import { brandGradient, colors, fonts, radius, spacing, typography } from '@/theme';
 
 
 function orbState(
@@ -403,7 +403,7 @@ const styles = StyleSheet.create({
     borderColor: colors.stroke,
   },
   historyLabel: {
-    fontFamily: 'Manrope-SemiBold',
+    fontFamily: fonts.bodyBold,
     fontSize: 13,
     color: colors.text,
   },
@@ -479,7 +479,7 @@ const styles = StyleSheet.create({
   },
   userText: {
     color: colors.text,
-    fontFamily: 'Manrope-Regular',
+    fontFamily: fonts.body,
     fontSize: 15,
     lineHeight: 22,
   },
@@ -493,7 +493,7 @@ const styles = StyleSheet.create({
   },
   aiText: {
     color: colors.text,
-    fontFamily: 'Manrope-Regular',
+    fontFamily: fonts.body,
     fontSize: 15,
     lineHeight: 22,
   },
@@ -515,7 +515,7 @@ const styles = StyleSheet.create({
     borderColor: colors.strokeBrandSoft,
     borderRadius: 24,
     color: colors.text,
-    fontFamily: 'Manrope-Regular',
+    fontFamily: fonts.body,
     fontSize: 15,
   },
   sendBtn: {

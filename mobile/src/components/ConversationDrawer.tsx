@@ -19,7 +19,7 @@ import Animated, {
 
 import { BrandMark } from '@/components/BrandMark';
 import { useConversationStore } from '@/stores/conversationStore';
-import { brandGradient, colors, radius, spacing, typography } from '@/theme';
+import { brandGradient, colors, fonts, radius, spacing, typography } from '@/theme';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const DRAWER_W = Math.min(330, Math.round(SCREEN_W * 0.84));
@@ -250,7 +250,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,77,139,0.06)',
   },
   newBtnLabel: {
-    fontFamily: 'Manrope-SemiBold',
+    fontFamily: fonts.bodyBold,
     fontSize: 12,
     color: colors.primary,
     letterSpacing: 0.2,
@@ -267,13 +267,13 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   emptyTitle: {
-    fontFamily: 'SpaceGrotesk-Medium',
+    fontFamily: fonts.body,
     fontSize: 18,
     color: colors.text,
     marginTop: spacing.sm,
   },
   emptyHint: {
-    fontFamily: 'Manrope-Regular',
+    fontFamily: fonts.body,
     fontSize: 13,
     color: colors.textMuted,
     textAlign: 'center',
@@ -294,7 +294,7 @@ const styles = StyleSheet.create({
   },
   emptyCtaText: {
     color: '#ffffff',
-    fontFamily: 'Manrope-SemiBold',
+    fontFamily: fonts.bodyBold,
     fontSize: 15,
     letterSpacing: 0.2,
   },
