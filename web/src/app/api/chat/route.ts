@@ -14,6 +14,9 @@ import type {
 
 type ChatRequestMessage = { role: "user" | "assistant"; content: string };
 
+type ActiveTimer = { id: string; label?: string; remainingSeconds: number };
+type ActiveAlarm = { id: string; label?: string; hour: number; minute: number };
+
 type ChatRequestBody = {
   message: string;
   history: ChatRequestMessage[];
@@ -25,10 +28,47 @@ type ChatRequestBody = {
     lon?: number;
     timezone?: string;
     coords?: { lat: number; lon: number };
+    // The client's currently-active timers/alarms, so the model can cancel the
+    // right one by id (see cancel_timer / cancel_alarm).
+    timers?: ActiveTimer[];
+    alarms?: ActiveAlarm[];
   };
 };
 
 const MAX_TOOL_ROUNDS = 3;
+
+/**
+ * A Georgian system message describing the user's active timers/alarms so the
+ * model can target a specific one for cancellation. Returns null when nothing
+ * is active (no message injected — keeps the prompt lean).
+ */
+function formatActiveState(ctx: ChatRequestBody["userContext"]): string | null {
+  const timers = ctx?.timers ?? [];
+  const alarms = ctx?.alarms ?? [];
+  if (timers.length === 0 && alarms.length === 0) return null;
+
+  const lines = [
+    "მომხმარებლის ამჟამად აქტიური ტაიმერები და მაღვიძარები. გამოიყენე მხოლოდ გასაუქმებლად (cancel_timer / cancel_alarm), id-ის მიხედვით. სხვა შემთხვევაში ნუ ახსენებ.",
+  ];
+  if (timers.length > 0) {
+    lines.push("ტაიმერები:");
+    for (const t of timers) {
+      const mins = Math.max(0, Math.round(t.remainingSeconds / 60));
+      const label = t.label ? `, "${t.label}"` : "";
+      lines.push(`  - id=${t.id}${label}, დარჩა დაახლოებით ${mins} წუთი`);
+    }
+  }
+  if (alarms.length > 0) {
+    lines.push("მაღვიძარები:");
+    for (const a of alarms) {
+      const hh = String(a.hour).padStart(2, "0");
+      const mm = String(a.minute).padStart(2, "0");
+      const label = a.label ? `, "${a.label}"` : "";
+      lines.push(`  - id=${a.id}, ${hh}:${mm}${label}`);
+    }
+  }
+  return lines.join("\n");
+}
 
 export async function POST(request: Request) {
   const g = guard(request);
@@ -51,8 +91,10 @@ export async function POST(request: Request) {
         : undefined);
     const toolCtx: ToolContext = { userCoords };
 
+    const activeState = formatActiveState(userContext);
     const messages: ChatCompletionMessageParam[] = [
       { role: "system", content: GEORGIAN_ASSISTANT_SYSTEM_PROMPT },
+      ...(activeState ? [{ role: "system" as const, content: activeState }] : []),
       ...history.map((m) => ({ role: m.role, content: m.content })),
       { role: "user", content: message },
     ];

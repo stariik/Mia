@@ -18,12 +18,24 @@ jest.mock('@/lib/tools/music', () => ({
   },
 }));
 
+const mockTimers: { id: string }[] = [];
+const mockAlarms: { id: string }[] = [];
+jest.mock('@/stores/toolsStore', () => ({
+  useToolsStore: {
+    getState: () => ({ timers: mockTimers, alarms: mockAlarms }),
+  },
+}));
+
 import { runClientToolCalls } from '@/lib/tools/runClientCalls';
 import { nativePlatform } from '@/lib/tools/platform/native';
 import { music } from '@/lib/tools/music';
 
 describe('runClientToolCalls', () => {
-  afterEach(() => jest.clearAllMocks());
+  afterEach(() => {
+    jest.clearAllMocks();
+    mockTimers.length = 0;
+    mockAlarms.length = 0;
+  });
 
   test('set_timer passes through duration + label', async () => {
     await runClientToolCalls([
@@ -66,6 +78,45 @@ describe('runClientToolCalls', () => {
     await runClientToolCalls([{ id: 'x', name: 'bogus', args: {} }]);
     expect(nativePlatform.scheduleTimer).not.toHaveBeenCalled();
     expect(nativePlatform.scheduleAlarm).not.toHaveBeenCalled();
+  });
+
+  test('cancel_timer targets the id the model passed', async () => {
+    mockTimers.push({ id: 'timer_a' }, { id: 'timer_b' });
+    await runClientToolCalls([
+      { id: 'x', name: 'cancel_timer', args: { id: 'timer_b' } },
+    ]);
+    expect(nativePlatform.cancelTimer).toHaveBeenCalledTimes(1);
+    expect(nativePlatform.cancelTimer).toHaveBeenCalledWith('timer_b');
+  });
+
+  test('cancel_timer with all=true clears every timer', async () => {
+    mockTimers.push({ id: 'timer_a' }, { id: 'timer_b' });
+    await runClientToolCalls([
+      { id: 'x', name: 'cancel_timer', args: { all: true } },
+    ]);
+    expect(nativePlatform.cancelTimer).toHaveBeenCalledWith('timer_a');
+    expect(nativePlatform.cancelTimer).toHaveBeenCalledWith('timer_b');
+    expect(nativePlatform.cancelTimer).toHaveBeenCalledTimes(2);
+  });
+
+  test('cancel_timer with no id cancels the sole active timer', async () => {
+    mockTimers.push({ id: 'only' });
+    await runClientToolCalls([{ id: 'x', name: 'cancel_timer', args: {} }]);
+    expect(nativePlatform.cancelTimer).toHaveBeenCalledWith('only');
+  });
+
+  test('cancel_timer with no id is a no-op when several are active', async () => {
+    mockTimers.push({ id: 'a' }, { id: 'b' });
+    await runClientToolCalls([{ id: 'x', name: 'cancel_timer', args: {} }]);
+    expect(nativePlatform.cancelTimer).not.toHaveBeenCalled();
+  });
+
+  test('cancel_alarm targets the id the model passed', async () => {
+    mockAlarms.push({ id: 'alarm_1' });
+    await runClientToolCalls([
+      { id: 'x', name: 'cancel_alarm', args: { id: 'alarm_1' } },
+    ]);
+    expect(nativePlatform.cancelAlarm).toHaveBeenCalledWith('alarm_1');
   });
 
   test.each([

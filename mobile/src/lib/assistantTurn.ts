@@ -7,6 +7,7 @@ import {
   useConversationStore,
 } from '@/stores/conversationStore';
 import { getEffectiveCity, useLocationStore } from '@/stores/locationStore';
+import { useToolsStore } from '@/stores/toolsStore';
 import { useVoiceStore } from '@/stores/voiceStore';
 
 // A pluggable TTS playback backend. Two implementations exist:
@@ -96,11 +97,28 @@ export async function runAssistantTurn({
   };
 
   const locState = useLocationStore.getState();
+  const toolsState = useToolsStore.getState();
+  const now = Date.now();
   const userContext = {
     city: getEffectiveCity(locState),
     lat: locState.lat,
     lon: locState.lon,
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || undefined,
+    // Let the model cancel the right timer/alarm by id (see cancel_* tools).
+    timers: toolsState.timers.map((t) => ({
+      id: t.id,
+      label: t.label || undefined,
+      remainingSeconds: Math.max(0, Math.round((t.endsAt - now) / 1000)),
+    })),
+    alarms: toolsState.alarms.map((a) => {
+      const d = new Date(a.ringsAt);
+      return {
+        id: a.id,
+        label: a.label || undefined,
+        hour: d.getHours(),
+        minute: d.getMinutes(),
+      };
+    }),
   };
 
   // Hand each sentence to the playback backend the moment it's complete. The

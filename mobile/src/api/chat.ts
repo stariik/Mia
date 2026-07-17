@@ -11,6 +11,9 @@ export type UserContext = {
   lat?: number;
   lon?: number;
   timezone?: string;
+  // Active timers/alarms so the server can let the model cancel one by id.
+  timers?: { id: string; label?: string; remainingSeconds: number }[];
+  alarms?: { id: string; label?: string; hour: number; minute: number }[];
 };
 
 export type StreamChatParams = {

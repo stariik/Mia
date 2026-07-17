@@ -1,3 +1,5 @@
+import { useToolsStore } from '@/stores/toolsStore';
+
 import { music } from './music';
 import { nativePlatform } from './platform/native';
 import type { ClientToolCall } from './types';
@@ -42,6 +44,26 @@ export async function runClientToolCalls(calls: ClientToolCall[]) {
             label,
             ringsAt: when.getTime(),
           });
+        }
+      } else if (call.name === 'cancel_timer') {
+        // id targets one; all=true clears everything; neither + exactly one
+        // active cancels that one (the model omitted the id for a lone timer).
+        const timers = useToolsStore.getState().timers;
+        if (call.args.all === true) {
+          for (const t of [...timers]) await nativePlatform.cancelTimer(t.id);
+        } else if (typeof call.args.id === 'string') {
+          await nativePlatform.cancelTimer(call.args.id);
+        } else if (timers.length === 1) {
+          await nativePlatform.cancelTimer(timers[0].id);
+        }
+      } else if (call.name === 'cancel_alarm') {
+        const alarms = useToolsStore.getState().alarms;
+        if (call.args.all === true) {
+          for (const a of [...alarms]) await nativePlatform.cancelAlarm(a.id);
+        } else if (typeof call.args.id === 'string') {
+          await nativePlatform.cancelAlarm(call.args.id);
+        } else if (alarms.length === 1) {
+          await nativePlatform.cancelAlarm(alarms[0].id);
         }
       } else if (call.name === 'pause_music') {
         await music.pause();
