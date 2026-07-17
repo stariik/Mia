@@ -1,6 +1,6 @@
-// Platform adapter — identical shape to web/src/lib/tools/platform/index.ts.
-// Client-side tool side-effects route through this so RN and web share
-// tool dispatch logic.
+// Types for the client-side tool platform (timers + alarms). The server
+// decides WHAT to schedule (web/src/lib/tools/registry.ts); this layer is HOW
+// it lands on the device (notifee, AlarmManager, the tools store).
 
 export type TimerRequest = {
   id: string;

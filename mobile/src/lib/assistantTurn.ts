@@ -43,10 +43,10 @@ export interface RunTurnOptions {
 
 /**
  * Orchestrates one assistant turn: chat SSE → per-sentence TTS → playback.
- * Mirrors web/src/app/page.tsx:handleUserMessage. UI-agnostic — it drives the
- * shared Zustand stores via getState() and plays audio through the injected
- * `playback` backend, so it runs identically in the foreground (orb playback)
- * and in a screen-off headless task (native playback).
+ * UI-agnostic — it drives the shared Zustand stores via getState() and plays
+ * audio through the injected `playback` backend, so it runs identically in the
+ * foreground (orb playback) and in a screen-off headless task (native
+ * playback).
  *
  * STT happens upstream; this takes the final transcript.
  */

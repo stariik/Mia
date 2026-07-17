@@ -32,8 +32,7 @@ type StreamedEvent =
 /**
  * Streams GPT responses from /api/chat as server-sent events.
  * Returns a promise that resolves when the stream closes or rejects on error.
- *
- * Mirrors the consumer logic in web/src/app/page.tsx:handleUserMessage.
+ * Server side: web/src/app/api/chat/route.ts.
  */
 export function streamChat({
   message,

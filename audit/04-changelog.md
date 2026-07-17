@@ -65,3 +65,8 @@ Each entry = one step of `03-gap-plan.md` = one commit. Verification noted per s
 - **Alarms/Timers/Translator screens:** `onBack` prop removed; each uses `useNavigation<RootNav>()` + `goBack()`. **HomeScreen:** `useNavigation<any>` → `useNavigation<RootNav>`. **AlarmRingScreen:** hand-rolled route/navigation prop types → `NativeStackScreenProps<RootStackParamList, 'AlarmRing'>`.
 - **AuthScreen:** the two RN-`Animated` values (tab-switch fade, error shake) converted to Reanimated shared values (`withSequence`/`withTiming`, `interpolate` for the shake translate). One animation system per file now; RN `Animated` import gone.
 - **Verify:** tsc clean; jest 23/23. Same navigation behavior, same animations (identical timings/curves).
+
+## Step 10 — Repo-root cleanup + stale comments (plan items 20, 22)
+- **Deleted:** `spike/` (old pipeline experiment with its own lockfile), `mia-obs/` (abandoned 2-file Obsidian vault), `PLAN.md` (Whisper-era architecture doc that contradicted the code — superseded by `audit/02-target-spec.md`), `tts-samples/` on disk (was already gitignored). `AUDIT.md` kept as a dated historical report.
+- **Stale comments fixed:** `api/chat.ts` and `assistantTurn.ts` no longer claim to "mirror web/src/app/page.tsx:handleUserMessage" (that file is a 40-line landing stub now); `tools/platform/index.ts` no longer claims an identical web counterpart exists.
+- **Verify:** tsc clean (comment-only code changes).
