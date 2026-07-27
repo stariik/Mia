@@ -80,3 +80,6 @@ yarn-error.log
 # Release signing — never commit the upload key or its passwords.
 android/keystore.properties
 android/app/upload-keystore.jks
+
+# Sentry Config File
+sentry.properties

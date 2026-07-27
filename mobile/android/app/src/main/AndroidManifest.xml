@@ -74,5 +74,27 @@
     <service
       android:name=".wake.WakeTurnService"
       android:exported="false" />
+  
+    <!-- Crash reporting. The DSN is a public client key by design — it only
+         allows POSTing events, so shipping it in the APK is expected. -->
+    <meta-data android:name="io.sentry.dsn" android:value="https://f168a97cf5948e7a15ff20291611f813@o4511756148736000.ingest.de.sentry.io/4511756151816272" />
+
+    <!-- Screenshots and PII stay OFF on purpose. A crash screenshot would carry
+         the on-screen conversation off the device, and send-default-pii adds IP
+         + device name — both would contradict the Play Data Safety answers in
+         LAUNCH-CHECKLIST.md ("chat text never leaves the device"). Turning
+         either on means re-declaring on Play first. -->
+    <meta-data android:name="io.sentry.send-default-pii" android:value="false" />
+    <meta-data android:name="io.sentry.attach-screenshot" android:value="false" />
+
+    <!-- View hierarchy is structure only (view classes + bounds, no text), so
+         it carries no conversation content. -->
+    <meta-data android:name="io.sentry.attach-view-hierarchy" android:value="true" />
+
+    <!-- enable automatic breadcrumbs for user interactions (clicks, swipes, scrolls) -->
+    <meta-data android:name="io.sentry.traces.user-interaction.enable" android:value="true" />
+
+    <!-- enable the performance API by setting a sample-rate, adjust in production env -->
+    <meta-data android:name="io.sentry.traces.sample-rate" android:value="1.0" />
   </application>
 </manifest>
