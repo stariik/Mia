@@ -41,9 +41,20 @@ Verified from outside: `/`, `/privacy`, `/delete-account` → 200 with valid TLS
 
 ## 3. Sentry (recommended before launch, 15 min)
 
-- [ ] Create a project at sentry.io → copy the DSN into
+- [x] Create a project at sentry.io → copy the DSN into
       `mobile/src/config/env.ts` → `PROD_SENTRY_DSN`. The SDK is already
       wired (JS + native + headless tasks); it's a no-op until the DSN is set.
+- [ ] `mobile/android/sentry.properties` holds the sentry-cli auth token and is
+      gitignored, so a fresh clone must recreate it. It has to live under
+      `android/` — the Gradle plugin searches the module and the Gradle root,
+      never the RN root, so a copy at `mobile/sentry.properties` alone fails the
+      release build with "Auth token is required" at
+      `uploadSentryProguardMappingsRelease`. Without a token, build with
+      `-x uploadSentryProguardMappingsRelease -x sentryUploadSourceBundleRelease`;
+      the APK is identical, only crash symbolication is skipped.
+- [ ] Screenshots and `send-default-pii` are deliberately OFF in
+      `AndroidManifest.xml` — turning either on sends conversation text or IP
+      off-device and contradicts the Data Safety answers in §5 below.
 
 ## 4. Privacy policy (required — the mic permission makes this non-optional)
 
@@ -51,9 +62,10 @@ Verified from outside: `/`, `/privacy`, `/delete-account` → 200 with valid TLS
       as the backend). It must state, truthfully (verified against the code):
       - Voice recordings are captured only while you actively use the mic and
         are sent over HTTPS to Mia's server, which forwards them to Google
-        (speech recognition) and OpenAI (fallback recognition); replies are
-        synthesized via ElevenLabs/Camb/OpenAI. **Recordings are not stored**
-        on Mia's servers.
+        (speech recognition). The transcribed text is processed by OpenAI
+        (assistant replies, translation); replies are synthesized via
+        ElevenLabs. Only Google ever receives audio. **Recordings are not
+        stored** on Mia's servers.
       - Conversations are stored **only on your device**.
       - Account data: email address + hashed password. Deletable in-app
         (Settings → ანგარიშის წაშლა) or at `https://<your-domain>/delete-account`.
@@ -67,7 +79,7 @@ Verified from outside: `/`, `/privacy`, `/delete-account` → 200 with valid TLS
 | Question | Answer |
 |---|---|
 | Does your app collect or share user data? | **Yes** |
-| **Voice or sound recordings** | Collected. NOT shared for advertising; shared with service providers (Google/OpenAI/ElevenLabs) for app functionality. **Not stored** (processed ephemerally). Collection is required for core functionality. Encrypted in transit. Not deletable (nothing is retained). |
+| **Voice or sound recordings** | Collected. NOT shared for advertising; shared with a service provider (Google, speech recognition) for app functionality — OpenAI/ElevenLabs receive text only, never audio. **Not stored** (processed ephemerally). Collection is required for core functionality. Encrypted in transit. Not deletable (nothing is retained). |
 | **Email address** | Collected, for account management. Not shared. Stored. Encrypted in transit. **Deletable** (in-app + web URL). |
 | **Approximate location** | Collected (optional), app functionality (weather). Not shared beyond the weather provider. Not stored. |
 | **Messages (chat text)** | Processed for functionality; transcripts stored on-device only → answer "not collected" per Play's definition (never leaves ephemeral processing / device). |

@@ -89,3 +89,15 @@ Re-read the full tree against `02-target-spec.md`. Last stragglers found and rem
 1. Device checks: one full voice turn; translator speak + replay; a "Hey Mia" overlay session; a killed-app alarm fire; visual font pass (text formerly Roboto now renders MarkGEO).
 2. Spec C14: set `PROD_SENTRY_DSN` in `mobile/src/config/env.ts` before the next release — crash reporting is still off.
 3. Release `.aab` build to confirm ProGuard/autolinking after the dependency prune.
+
+## Delta — post-audit commit review (2026-07-18)
+
+One commit landed after Step 11: `16d9f4a` "Add voice cancel for timers and alarms (cancel_timer / cancel_alarm)". Reviewed against `02-target-spec.md`:
+
+- **Justifies under spec:** C6 already lists "schedule/**cancel**/snooze/dismiss/recur"; B1 lists timer/alarm as client-side tools. No new dependency, no new pattern — dispatch follows the existing `runClientCalls` branch style with the same per-call try/catch + `console.error`; the client/server tool-name contract (comment in `runClientCalls.ts`) still holds; prompt addition is in Georgian and matches the existing tool-instruction voice.
+- **Design note:** the user's active timers/alarms (ids, labels, times) are now sent in `userContext` and injected as a second system message *only when non-empty* — prompt stays lean when nothing is set, and the model refuses to hallucinate cancellations when nothing is active.
+- **Known nit (recorded, not fixed):** recurring alarms inject only `hour`/`minute`, not their `days` — the model can't verbally distinguish "the Monday 7:00 alarm" from a one-shot 7:00. Cancel-by-id still works; only disambiguation phrasing is lossy. Add `days` to the injected context if users hit it.
+- **Spec sync:** added voice-cancel to the §2 journey line so the contract matches the shipped behavior.
+- **Verify:** mobile tsc clean; web tsc clean; jest 28/28 (23 prior + 5 new cancel tests).
+
+Open items from Step 11 remain open: on-device checks, `PROD_SENTRY_DSN` (spec C14), release `.aab` ProGuard confirmation.

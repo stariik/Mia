@@ -24,7 +24,7 @@ A **Georgian-language voice assistant for Android**, distributed on the Play Sto
 6. Errors surface as a dismissible Georgian toast; the pipeline always returns to idle.
 
 ### Acting on the phone
-- "დამიყენე ტაიმერი ხუთ წუთზე" → timer scheduled (notifee + AlarmManager), visible/cancelable in TimersScreen, fires as a notification even if the app is killed.
+- "დამიყენე ტაიმერი ხუთ წუთზე" → timer scheduled (notifee + AlarmManager), visible/cancelable in TimersScreen, fires as a notification even if the app is killed. "გააუქმე ტაიმერი" cancels by voice (by id from injected context; all=true for all; asks which when ambiguous).
 - "გამაღვიძე ხვალ რვაზე" → one-shot alarm; fires full-screen over the lock screen with snooze (9 min)/dismiss; survives reboot (BootReceiver re-arm); recurring alarms manageable in AlarmsScreen (weekday picker).
 - "გააჩერე / გააგრძელე / შემდეგი / წინა / თავიდან" → media-key transport controlling whatever app is playing. Mia **cannot search or launch music** and says so.
 - "რა ამინდია?" → weather for detected city (coarse location, reverse-geocoded) or manually set city; asks which city if unknown.
