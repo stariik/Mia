@@ -34,6 +34,7 @@ jest.mock('@/lib/wakeWord', () => ({
 jest.mock('@/api/client', () => ({ expireSessionIf401: jest.fn() }));
 
 import React from 'react';
+import { AppState, type AppStateStatus } from 'react-native';
 import TestRenderer, { act } from 'react-test-renderer';
 
 import { transcribeGooglePcm } from '@/api/transcribeGoogle';
@@ -43,6 +44,10 @@ import { useVoiceStore } from '@/stores/voiceStore';
 
 type Pipeline = ReturnType<typeof useVoicePipeline>;
 
+// Captures the AppState handler the hook registers, so tests can drive
+// foreground/background transitions.
+let appStateHandler: ((s: AppStateStatus) => void) | null = null;
+
 // The probe never subscribes to the store (the hook reads it via getState), so
 // it renders once and the returned callbacks stay valid for the whole test.
 async function mountPipeline(): Promise<Pipeline> {
@@ -51,6 +56,12 @@ async function mountPipeline(): Promise<Pipeline> {
     api = useVoicePipeline();
     return null;
   }
+  jest
+    .spyOn(AppState, 'addEventListener')
+    .mockImplementation((_event, handler) => {
+      appStateHandler = handler as (s: AppStateStatus) => void;
+      return { remove: jest.fn() } as never;
+    });
   await act(async () => {
     TestRenderer.create(React.createElement(Probe));
   });
@@ -61,7 +72,9 @@ const mockTranscribe = transcribeGooglePcm as jest.Mock;
 const mockTurn = runAssistantTurn as jest.Mock;
 
 beforeEach(() => {
+  jest.restoreAllMocks();
   jest.clearAllMocks();
+  appStateHandler = null;
   mockRecorder.start.mockResolvedValue(undefined);
   mockRecorder.stop.mockResolvedValue({ audioBase64: 'AAAA', sampleRate: 16000 });
   mockTranscribe.mockResolvedValue('რა ამინდია');
@@ -159,6 +172,43 @@ describe('hands-free conversation loop', () => {
     expect(mockTurn).not.toHaveBeenCalled();
     expect(mockRecorder.start).toHaveBeenCalledTimes(1);
     expect(p.isConversationActive()).toBe(false);
+  });
+
+  test('backgrounding the app releases the mic and drops the recording', async () => {
+    const p = await mountPipeline();
+
+    await act(async () => {
+      await p.startListening();
+    });
+    expect(useVoiceStore.getState().isListening).toBe(true);
+
+    // RN pauses JS timers while backgrounded, so the silence VAD can't close
+    // this turn — without the AppState hook the mic would stay open.
+    await act(async () => {
+      appStateHandler?.('background');
+    });
+
+    expect(mockRecorder.stop).toHaveBeenCalledTimes(1);
+    expect(mockTranscribe).not.toHaveBeenCalled(); // audio dropped, not sent
+    expect(p.isConversationActive()).toBe(false);
+    expect(useVoiceStore.getState().isListening).toBe(false);
+  });
+
+  test('the mic-permission dialog pausing the app does not kill the session', async () => {
+    const p = await mountPipeline();
+
+    // Android reports a pause while the permission dialog is up. That happens
+    // inside startListening, before recording begins — nothing is in flight.
+    await act(async () => {
+      appStateHandler?.('background');
+    });
+    expect(mockRecorder.stop).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await p.startListening();
+    });
+    expect(p.isConversationActive()).toBe(true);
+    expect(useVoiceStore.getState().isListening).toBe(true);
   });
 
   test('stopConversation discards the recording rather than sending it', async () => {

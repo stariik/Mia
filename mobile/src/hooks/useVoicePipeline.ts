@@ -1,4 +1,5 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
+import { AppState } from 'react-native';
 
 import { expireSessionIf401 } from '@/api/client';
 import { transcribeGooglePcm } from '@/api/transcribeGoogle';
@@ -194,6 +195,34 @@ export function useVoicePipeline() {
       wakeWord.resumeDetection();
     }
   }, [cancelActiveTurn, pcmRecorder]);
+
+  // Leaving the foreground ends the session and drops the recording.
+  //
+  // This is not just tidiness: RN pauses JS timers once no Activity is resumed
+  // (see WakeWordService.startBackgroundTurn), so useSilenceAutoStop's interval
+  // stops firing and the VAD can never auto-close the turn. Nothing else
+  // releases the mic — usePcmRecorder's cleanup runs on unmount, and
+  // backgrounding doesn't unmount — so the orb would sit recording until the
+  // user came back, then ship the whole buffered stretch to STT. With "Hey Mia"
+  // enabled that capture is real audio, not silence: pauseDetection() keeps the
+  // service foreground, so the process still holds a microphone-type FGS.
+  //
+  // Background and screen-off conversations are the wake word's job, and it has
+  // the service and headless runtime to do them properly.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active') return;
+      // Only when a turn is genuinely in flight. Android reports a pause while
+      // the runtime mic-permission dialog is up, which happens inside
+      // startListening() before `recording` is set — reacting to that would
+      // close the session the user is in the middle of opening.
+      const { isThinking, isSpeaking } = useVoiceStore.getState();
+      if (modeRef.current === 'recording' || isThinking || isSpeaking) {
+        void stopConversation();
+      }
+    });
+    return () => sub.remove();
+  }, [stopConversation]);
 
   const stopSpeaking = useCallback(() => {
     cancelActiveTurn();
