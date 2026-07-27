@@ -17,7 +17,9 @@ import { audioLevel } from '@/lib/audioLevel';
 //   3. Latch — needs MIN_VOICE_LATCH_MS of continuous voice before we mark
 //      "user has spoken". Blocks single-sample blips from arming the timer.
 //   4. Stop — after SILENCE_MS without continuation level OR after total
-//      PRE_SPEECH_GRACE_MS with no speech at all.
+//      PRE_SPEECH_GRACE_MS with no speech at all. `onStop` is told which one it
+//      was: the caller sends the recording when the user spoke, and treats a
+//      silent window as "user is done" (HomeScreen ends the hands-free loop).
 
 const CAL_MS = 400;
 const NOISE_FLOOR_MULTIPLIER = 2.2;
@@ -35,7 +37,10 @@ const SILENCE_MS = 750;
 const PRE_SPEECH_GRACE_MS = 7000;
 const POLL_MS = 80;
 
-export function useSilenceAutoStop(active: boolean, onStop: () => void) {
+export function useSilenceAutoStop(
+  active: boolean,
+  onStop: (spoke: boolean) => void,
+) {
   useEffect(() => {
     if (!active) return;
     const startedAt = Date.now();
@@ -49,10 +54,10 @@ export function useSilenceAutoStop(active: boolean, onStop: () => void) {
     let stopped = false;
     let peak = 0; // loudest level this turn (for peak-relative silence)
 
-    const stop = () => {
+    const stop = (spoke: boolean) => {
       if (stopped) return;
       stopped = true;
-      onStop();
+      onStop(spoke);
     };
 
     const id = setInterval(() => {
@@ -109,11 +114,11 @@ export function useSilenceAutoStop(active: boolean, onStop: () => void) {
       voiceRunStart = 0;
 
       if (!hasSpoken) {
-        if (elapsed > PRE_SPEECH_GRACE_MS) stop();
+        if (elapsed > PRE_SPEECH_GRACE_MS) stop(false);
         return;
       }
 
-      if (now - lastVoiceAt > SILENCE_MS) stop();
+      if (now - lastVoiceAt > SILENCE_MS) stop(true);
     }, POLL_MS);
 
     return () => clearInterval(id);
