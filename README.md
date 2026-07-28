@@ -6,11 +6,15 @@ Android app built with React Native, backed by a Next.js API server. Live at [mi
 
 ## Screenshots
 
-<!-- Drop your images into docs/screenshots/ and they'll appear here -->
-
-| Home | Translator | Alarms |
+| Home — tap the orb and talk | Interpreter mode | Timers |
 |:---:|:---:|:---:|
-| ![Home](docs/screenshots/home.png) | ![Translator](docs/screenshots/translator.png) | ![Alarms](docs/screenshots/alarms.png) |
+| <img src="docs/screenshots/home.jpg" width="240" /> | <img src="docs/screenshots/translator.jpg" width="240" /> | <img src="docs/screenshots/timer.jpg" width="240" /> |
+
+| Alarms | Settings |
+|:---:|:---:|
+| <img src="docs/screenshots/alarms.jpg" width="240" /> | <img src="docs/screenshots/settings.jpg" width="240" /> |
+
+The whole UI is in Georgian.
 
 ## What it can do
 
