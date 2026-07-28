@@ -9,7 +9,7 @@
 const PROD_API_BASE_URL = 'https://api.miavoice.online';
 
 /** Sentry project DSN — crash reporting is silently OFF while empty. */
-const PROD_SENTRY_DSN = '';
+const PROD_SENTRY_DSN = 'https://f168a97cf5948e7a15ff20291611f813@o4511756148736000.ingest.de.sentry.io/4511756151816272';
 
 // Dev talks to the local Next.js server through `adb reverse tcp:3002`
 // (npm run tunnels / npm run device).

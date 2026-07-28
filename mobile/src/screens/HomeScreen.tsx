@@ -143,17 +143,21 @@ export function HomeScreen() {
     transform: [{ scale: orbScale.value }],
   }));
 
+  // The orb is a single toggle for the whole hands-free conversation: first tap
+  // opens it, the next one closes it — whether Mia is listening, thinking or
+  // mid-sentence. Between turns the mic re-arms itself, so the tap is only ever
+  // needed to start and to stop.
   const onMic = () => {
     haptics.tap();
-    if (isSpeaking || isThinking) {
-      // Interrupt: cancel the in-flight turn (mid-sentence or still waiting on
-      // the model — a slow backend must never trap the user) and re-listen.
-      pipeline.stopSpeaking();
-      pipeline.startListening();
-      return;
-    }
-    if (isListening) {
-      pipeline.stopListeningAndSend();
+    if (
+      pipeline.isConversationActive() ||
+      isListening ||
+      isThinking ||
+      isSpeaking
+    ) {
+      // The extra flags cover a turn started by TYPING, which has no session of
+      // its own but must still be interruptible from the orb.
+      pipeline.stopConversation();
       return;
     }
     pipeline.startListening();
@@ -161,7 +165,21 @@ export function HomeScreen() {
 
   // Auto-close recording after sustained silence (or grace timeout if user
   // never speaks). VAD reads the same SharedValue the orb uses.
-  useSilenceAutoStop(isListening, pipeline.stopListeningAndSend);
+  // Destructured because `pipeline` is a fresh object each render while these
+  // are stable — passing the object's identity would restart the VAD interval
+  // every render and it would never reach its silence threshold.
+  const { stopListeningAndSend, stopConversation } = pipeline;
+  const onSilenceStop = useCallback(
+    (spoke: boolean) => {
+      // Silence for the whole window means the user has nothing more to say —
+      // end the conversation quietly instead of sending an empty recording to
+      // STT and re-arming the mic forever.
+      if (spoke) stopListeningAndSend();
+      else stopConversation();
+    },
+    [stopListeningAndSend, stopConversation],
+  );
+  useSilenceAutoStop(isListening, onSilenceStop);
 
   // Re-arm the background "Hey Mia" service on launch if the user left it on.
   useEffect(() => {
