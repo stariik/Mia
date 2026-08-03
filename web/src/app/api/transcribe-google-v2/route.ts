@@ -21,13 +21,20 @@ import { guard } from "@/lib/apiGuard";
 type V2SpeechClient = InstanceType<typeof v2.SpeechClient>;
 
 /**
- * Peak-normalize PCM16 audio so the loudest sample sits at -3 dBFS (just
- * below clipping). Mobile mic gain varies wildly across phones and rooms —
- * normalizing makes Chirp 2 see consistently-leveled input, which measurably
- * improves accuracy on quiet recordings without distorting loud ones.
+ * RMS-normalize PCM16 audio to -20 dBFS (the level ASR pipelines expect).
+ * Mobile mic gain varies wildly across phones and rooms — normalizing makes
+ * Chirp 2 see consistently-leveled input, which measurably improves accuracy
+ * on quiet recordings.
  *
- * No-op if the audio is already at or above target peak (don't reduce
- * a clean recording).
+ * This used to peak-normalize, which is fragile: a single click, pop or door
+ * slam sets the peak, so genuinely quiet speech got no gain at all — exactly
+ * the recording this is here to rescue. RMS reflects the bulk of the signal,
+ * so a transient can't hijack it; a peak guard then keeps the result from
+ * clipping.
+ *
+ * Boost only, never attenuate (attenuating can't undo clipping in an
+ * already-too-loud take), and capped at +18 dB so near-silence isn't
+ * amplified into a wall of hiss.
  */
 function normalizePcm(pcm: Buffer): Buffer {
   if (pcm.length < 4) return pcm;
@@ -35,18 +42,26 @@ function normalizePcm(pcm: Buffer): Buffer {
     pcm.buffer.slice(pcm.byteOffset, pcm.byteOffset + pcm.length),
   );
 
+  let sumSquares = 0;
   let peak = 0;
   for (let i = 0; i < samples.length; i++) {
+    sumSquares += samples[i] * samples[i];
     const abs = Math.abs(samples[i]);
     if (abs > peak) peak = abs;
   }
   if (peak === 0) return pcm;
 
-  // Target = -3 dBFS = 32768 * 10^(-3/20) ≈ 23197
-  const TARGET_PEAK = 23197;
-  if (peak >= TARGET_PEAK) return pcm;
+  const rms = Math.sqrt(sumSquares / samples.length);
+  if (rms === 0) return pcm;
 
-  const gain = TARGET_PEAK / peak;
+  // Target = -20 dBFS RMS = 32768 * 10^(-20/20) ≈ 3277
+  const TARGET_RMS = 3277;
+  const MAX_GAIN = 8; // +18 dB
+  let gain = Math.min(MAX_GAIN, TARGET_RMS / rms);
+  // Peak guard: leave 10% headroom so normalization never introduces clipping.
+  gain = Math.min(gain, (32767 * 0.9) / peak);
+  if (gain <= 1) return pcm; // already loud enough — don't touch it
+
   const normalized = new Int16Array(samples.length);
   for (let i = 0; i < samples.length; i++) {
     const scaled = Math.round(samples[i] * gain);
@@ -60,10 +75,21 @@ function normalizePcm(pcm: Buffer): Buffer {
 }
 
 /**
- * Trim leading and trailing silence from raw PCM16 mono audio. Mobile
- * captures continuously from streaming-start to user-stop, often producing
- * 30-90 seconds of audio with only ~2 seconds of actual speech. Chirp 2's
- * sync recognize caps at 60s. After trimming we typically get 2-5 seconds.
+ * Trim leading and trailing silence from raw PCM16 mono audio. The native wake
+ * capture sends its whole buffer, and Chirp 2's sync recognize caps at 60s, so
+ * this bounds what we send. (The foreground app already trims client-side to
+ * shrink the upload; a second pass over trimmed audio is near-idempotent.)
+ *
+ * The threshold is derived from the clip's own ambient level rather than a
+ * fixed number. A fixed threshold clipped the first word of any utterance that
+ * started softly and got louder — the leading edge landed on the loud part and
+ * the padding couldn't reach back to the onset. The first word is usually the
+ * intent word, so that was expensive.
+ *
+ * Deliberately biased toward keeping audio: a generous leading pad, a
+ * conservative threshold floor, and the whole clip returned when nothing
+ * clearly reads as speech. Trimming exists for upload size and the 60s cap —
+ * it can only ever hurt accuracy, so it errs toward doing less.
  */
 function trimSilence(pcm: Buffer, sampleRate: number): Buffer {
   if (pcm.length < 4) return pcm;
@@ -73,39 +99,46 @@ function trimSilence(pcm: Buffer, sampleRate: number): Buffer {
   );
 
   const windowSize = Math.max(1, Math.floor(sampleRate * 0.03)); // 30ms
-  const padWindows = 5; // 150ms of padding either side
-  const threshold = 600; // average |amplitude| above this == speech
+  const leadPadWindows = 10; // 300ms before speech — soft onsets live here
+  const tailPadWindows = 8; // 240ms after
 
-  const isLoud = (start: number) => {
-    let sum = 0;
-    const end = Math.min(aligned.length, start + windowSize);
-    for (let i = start; i < end; i++) sum += Math.abs(aligned[i]);
-    return sum / (end - start) > threshold;
-  };
-
-  // Find first speech window
-  let firstSpeech = -1;
+  // Per-window mean |amplitude|.
+  const energies: number[] = [];
   for (let i = 0; i + windowSize <= aligned.length; i += windowSize) {
-    if (isLoud(i)) {
-      firstSpeech = i;
+    let sum = 0;
+    for (let j = i; j < i + windowSize; j++) sum += Math.abs(aligned[j]);
+    energies.push(sum / windowSize);
+  }
+  if (energies.length === 0) return pcm;
+
+  // 20th percentile ≈ this room's noise floor. Speech has to clear 3x that,
+  // bounded so a noisy clip can't push the bar above real speech and a silent
+  // one can't drop it onto hiss.
+  const sorted = [...energies].sort((a, b) => a - b);
+  const noiseFloor = sorted[Math.floor(sorted.length * 0.2)] ?? 0;
+  const threshold = Math.min(1200, Math.max(250, noiseFloor * 3));
+
+  let firstIdx = -1;
+  for (let w = 0; w < energies.length; w++) {
+    if (energies[w] > threshold) {
+      firstIdx = w;
       break;
     }
   }
-  if (firstSpeech === -1) return pcm; // no speech detected — pass through
+  if (firstIdx === -1) return pcm; // nothing clearly speech — send it all
 
-  // Find last speech window
-  let lastSpeech = firstSpeech;
-  for (let i = aligned.length - windowSize; i >= 0; i -= windowSize) {
-    if (isLoud(i)) {
-      lastSpeech = i;
+  let lastIdx = firstIdx;
+  for (let w = energies.length - 1; w >= firstIdx; w--) {
+    if (energies[w] > threshold) {
+      lastIdx = w;
       break;
     }
   }
 
-  const startIdx = Math.max(0, firstSpeech - windowSize * padWindows);
+  const startIdx = Math.max(0, (firstIdx - leadPadWindows) * windowSize);
   const endIdx = Math.min(
     aligned.length,
-    lastSpeech + windowSize * (padWindows + 1),
+    (lastIdx + 1 + tailPadWindows) * windowSize,
   );
   const trimmed = aligned.slice(startIdx, endIdx);
   return Buffer.from(trimmed.buffer, trimmed.byteOffset, trimmed.byteLength);
@@ -151,6 +184,15 @@ function getClient(): { client: V2SpeechClient; projectId: string } {
   });
   return { client: cachedClient, projectId: cachedProjectId };
 }
+
+// Boost strength for the phrase set below. Google's range is 0-20, and high
+// values cause over-triggering — the recognizer substituting a boosted phrase
+// for what was actually said. `STT_PHRASE_BOOST=0` disables adaptation
+// entirely, which is worth A/B-ing: Chirp models have historically ignored
+// model adaptation (accepting the field and silently dropping it), in which
+// case this whole block is dead weight and the accuracy lever is elsewhere.
+// Compare the `raw` values in the log line below with it on vs off.
+const BOOST = Number(process.env.STT_PHRASE_BOOST ?? 10);
 
 // Phrase context for biasing recognition toward our domain vocabulary.
 // v2's "adaptation" feature works differently from v1's speechContexts —
@@ -281,9 +323,10 @@ export async function POST(request: Request) {
   }
 
   // Decode + clean the audio once; reused across recognizers.
-  const audioContent = normalizePcm(
-    trimSilence(Buffer.from(body.audioBase64, "base64"), sampleRateHertz),
-  );
+  const t0 = Date.now();
+  const decoded = Buffer.from(body.audioBase64, "base64");
+  const audioContent = normalizePcm(trimSilence(decoded, sampleRateHertz));
+  const secs = (b: Buffer) => (b.length / 2 / sampleRateHertz).toFixed(1);
 
   // Recognize with a SINGLE language code. Chirp 2 rejects multiple codes in
   // one request (INVALID_ARGUMENT), and its "auto" mode can't handle Georgian,
@@ -310,20 +353,21 @@ export async function POST(request: Request) {
             features: { enableAutomaticPunctuation: true },
             // Georgian domain phrase boost — only for the Georgian recognizer;
             // these phrases would bias a foreign transcript.
-            ...(isKa && {
-              adaptation: {
-                phraseSets: [
-                  {
-                    inlinePhraseSet: {
-                      phrases: PHRASE_BOOST.map((value) => ({
-                        value,
-                        boost: 10,
-                      })),
+            ...(isKa &&
+              BOOST > 0 && {
+                adaptation: {
+                  phraseSets: [
+                    {
+                      inlinePhraseSet: {
+                        phrases: PHRASE_BOOST.map((value) => ({
+                          value,
+                          boost: BOOST,
+                        })),
+                      },
                     },
-                  },
-                ],
-              },
-            }),
+                  ],
+                },
+              }),
           },
           content: audioContent,
         },
@@ -359,6 +403,7 @@ export async function POST(request: Request) {
       return !best.text && c.text ? c : best;
     }, candidates[0]);
 
+    const tRecognized = Date.now();
     const rawText = winner.text;
     const winnerIsKa = winner.code === "ka-GE";
 
@@ -371,13 +416,19 @@ export async function POST(request: Request) {
     const text =
       rawText && needsProofread ? await correctTranscript(rawText) : rawText;
 
-    if (process.env.NODE_ENV !== "production") {
-      console.log(
-        `[Chirp] codes=[${languageCodes.join(",")}] winner=${winner.code} ` +
-          `conf=${winner.confidence.toFixed(2)} "${rawText}"` +
-          (text !== rawText ? ` → corrected "${text}"` : ""),
-      );
-    }
+    // Always logged, not dev-only: this line is how STT accuracy gets tuned.
+    // `raw` vs corrected shows whether the proofreader is earning its ~400ms,
+    // `conf` shows whether the PROOFREAD_CONFIDENCE_MAX gate ever fires (Chirp 2
+    // returns 0 for "unknown", which is below the bar and always proofreads),
+    // and the audio seconds show whether trimSilence is eating speech.
+    console.log(
+      `[Chirp] boost=${BOOST} codes=[${languageCodes.join(",")}] ` +
+        `winner=${winner.code} conf=${winner.confidence.toFixed(2)} ` +
+        `audio=${secs(decoded)}s→${secs(audioContent)}s ` +
+        `recognize=${tRecognized - t0}ms proofread=${Date.now() - tRecognized}ms ` +
+        `raw="${rawText}"` +
+        (text !== rawText ? ` → corrected "${text}"` : ""),
+    );
 
     return Response.json({
       text,

@@ -30,10 +30,19 @@ const CONTINUE_RATIO = 0.75; // continueThreshold = startThreshold × this
 // sits near the calibrated floor, so a purely floor-based threshold never
 // clears it and the turn never auto-stops. "Still talking" = level at/above
 // max(floor-based continue, peak × this).
-const CONTINUE_PEAK_RATIO = 0.55;
+//
+// 0.4, not the 0.55 this used to be: speech swings ~20 dB within a sentence, so
+// demanding 55% of the loudest moment cut people off as they trailed off at the
+// end of a phrase. On this dBFS-mapped 0..1 scale 0.4 still sits well clear of
+// a quiet room (0.05–0.18), so it doesn't reintroduce the never-stops problem.
+const CONTINUE_PEAK_RATIO = 0.4;
 const CONTINUE_DEBOUNCE_MS = 160; // sustained above-threshold to count as ongoing speech
 const MIN_VOICE_LATCH_MS = 200;
-const SILENCE_MS = 750;
+// How long a pause has to last before the turn is considered over. This is the
+// single knob for "she cuts me off mid-sentence" (raise it) vs "she waits too
+// long after I finish" (lower it) — a thinking pause mid-sentence easily
+// exceeds 750ms, which is why this is no longer 750.
+const SILENCE_MS = 900;
 const PRE_SPEECH_GRACE_MS = 7000;
 const POLL_MS = 80;
 
