@@ -10,6 +10,9 @@ import { nativePlayback } from '@/lib/nativePlayback';
 import { orbOverlay } from '@/lib/orbOverlay';
 import { wakeWord, type WakeEvent } from '@/lib/wakeWord';
 import { useAuthStore } from '@/stores/authStore';
+import { useConversationStore } from '@/stores/conversationStore';
+import { useLocationStore } from '@/stores/locationStore';
+import { useToolsStore } from '@/stores/toolsStore';
 
 // The app-closed "Hey Jarvis / Hey Mia" session. Triggered by the native wake
 // service (index.js → 'turn' event or the MiaWakeTurn headless task):
@@ -33,14 +36,17 @@ let running = false;
 // so logcat is the only window into it — keep these. Filter: [MiaBg].
 const mlog = (...args: unknown[]) => dlog('[MiaBg]', ...args);
 
-// Plays a synthesized file through the floating orb's WebView so the orb
-// visualizes the reply.
+// Playback through the floating orb's WebView, which visualizes the reply.
 //
-// Unlike the in-app orb this does NOT stream: the overlay's WebView is owned by
-// a native module, which only exposes playTts(base64), so RN must hand it a
-// finished file. Teaching it to stream means a Kotlin change — worth doing after
-// the in-app path proves out, since it would save ~1.4s here too.
-const overlayPlayback: TtsPlayback = makeFilePlayback(
+// Preferred path: the overlay's WebView fetches the audio and plays it through
+// MediaSource as it arrives, so sound starts on the first bytes (~1.4s) instead
+// of after the complete MP3 (~2.7s) plus a base64 hop across the bridge. This is
+// the same window.speakTTSStream the in-app orb uses — the overlay hosts the
+// identical buildOrbHtml output, it just never called it until now.
+//
+// Fallback: synthesize to a file in RN and hand it over as base64 (the path this
+// used to take), kept because it is the difference between "slower" and "mute".
+const overlayFileFallback = makeFilePlayback(
   async (path, onStart) => {
     const base64 = await ReactNativeBlobUtil.fs.readFile(path, 'base64');
     onStart?.();
@@ -48,6 +54,30 @@ const overlayPlayback: TtsPlayback = makeFilePlayback(
   },
   () => orbOverlay.stopTts(),
 );
+
+const overlayPlayback: TtsPlayback = {
+  async speak(text, onStart) {
+    if (orbOverlay.canStream()) {
+      try {
+        // Fired before audio is truly audible — same as the file path below,
+        // and nothing in an overlay session consumes it (the session sets the
+        // orb state itself), so there's no tts-started plumbing to justify.
+        onStart?.();
+        await orbOverlay.speakStream(text);
+        return;
+      } catch (e) {
+        // A deliberate stop (tap, teardown) RESOLVES on the native side, so
+        // reaching here means the stream genuinely failed — falling back can't
+        // talk over a turn the user already ended.
+        mlog('stream TTS failed, falling back to file:', String(e));
+      }
+    }
+    return overlayFileFallback.speak(text, onStart);
+  },
+  stop() {
+    orbOverlay.stopTts();
+  },
+};
 
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -123,6 +153,19 @@ export async function runWakeSession(): Promise<void> {
   if (!useAuthStore.getState().hydrated) {
     await useAuthStore.getState().hydrate();
   }
+
+  // The other three stores use zustand `persist`, which rehydrates from
+  // AsyncStorage ASYNCHRONOUSLY on first import and has no hydration gate. In
+  // the app that always finishes long before the user speaks (RootNavigator
+  // mounts first). On a COLD headless turn the race is live: runAssistantTurn
+  // could read an empty history, no city and no timers, and answer differently
+  // from the in-app orb for the same question. Awaiting is idempotent and
+  // ~free when the runtime is already warm.
+  await Promise.all([
+    useConversationStore.persist.rehydrate(),
+    useLocationStore.persist.rehydrate(),
+    useToolsStore.persist.rehydrate(),
+  ]);
 
   let cancelled = false;
   let activePlayback: TtsPlayback | null = null;
