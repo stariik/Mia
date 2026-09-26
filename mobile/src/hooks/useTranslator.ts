@@ -1,11 +1,10 @@
 import { useCallback, useRef, useState } from 'react';
 
-import ReactNativeBlobUtil from 'react-native-blob-util';
-
 import { expireSessionIf401 } from '@/api/client';
 import { transcribeGooglePcm } from '@/api/transcribeGoogle';
 import { translateText } from '@/api/translate';
 import { synthesizeWithElevenLabs } from '@/api/synthesize';
+import { fs } from '@/lib/fs';
 import { nativeAudio } from '@/lib/nativeAudio';
 import { bcp47 } from '@/lib/translateLanguages';
 
@@ -41,7 +40,7 @@ async function speak(text: string) {
       await nativeAudio.play(path);
     } finally {
       // One-shot cache file — a replay re-synthesizes.
-      ReactNativeBlobUtil.fs.unlink(path).catch(() => {});
+      fs.unlink(path);
     }
   } catch (e) {
     // The turn stays visible but silent — a real failure worth release logs.

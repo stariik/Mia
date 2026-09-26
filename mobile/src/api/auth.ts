@@ -2,7 +2,7 @@ import { apiUrl } from './client';
 
 type AuthResponse = { token: string; user: { id: string; email: string } };
 
-async function post(path: string, body: { email: string; password: string }): Promise<AuthResponse> {
+async function post(path: string, body: object): Promise<AuthResponse> {
   const res = await fetch(apiUrl(path), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -18,6 +18,8 @@ export const authApi = {
     post('/api/auth/login', { email, password }),
   register: (email: string, password: string) =>
     post('/api/auth/register', { email, password }),
+  /** Dev-only guest session — the server refuses it in production. */
+  guest: () => post('/api/auth/guest', {}),
 
   /** Permanent account deletion (Play requirement). Re-authenticates with the
    *  password so the same server route also serves the public web page. */

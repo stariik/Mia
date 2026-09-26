@@ -1,4 +1,5 @@
-// Plain (non-hook) raw-PCM microphone capture via Picovoice's voice-processor.
+// Plain (non-hook) raw-PCM microphone capture via Picovoice's voice-processor,
+// or via expo-audio's AudioStream inside Expo Go (which lacks Picovoice).
 //
 // Captures PCM16 mono @ 16 kHz. This is the single source of truth for capture
 // so BOTH the foreground recorder hook (usePcmRecorder) and the screen-off
@@ -9,6 +10,11 @@
 // The voice-processor is a process-wide singleton, so only one consumer may
 // record at a time — which is fine, the mic is single anyway and the foreground
 // and headless paths never run together.
+
+import { AudioModule } from 'expo-audio';
+import type { EventSubscription } from 'expo-modules-core';
+
+import { isExpoGo } from './runtime';
 
 // Loaded via require so a missing native module fails cleanly with a real
 // error instead of crashing at import time (dev builds before linking).
@@ -22,11 +28,13 @@ let VoiceProcessorImpl:
       };
     }
   | null = null;
-try {
-  const mod = require('@picovoice/react-native-voice-processor');
-  VoiceProcessorImpl = mod.VoiceProcessor ?? null;
-} catch (err) {
-  console.error('[pcmCapture] voice-processor module unavailable:', err);
+if (!isExpoGo) {
+  try {
+    const mod = require('@picovoice/react-native-voice-processor');
+    VoiceProcessorImpl = mod.VoiceProcessor ?? null;
+  } catch (err) {
+    console.error('[pcmCapture] voice-processor module unavailable:', err);
+  }
 }
 
 export const PCM_SAMPLE_RATE = 16000;
@@ -41,7 +49,7 @@ const B64_CHUNK = 8192; // bytes per fromCharCode.apply — under JS arg limits
  * hearing). Same formula nitro-sound's metering used so the orb and the VAD
  * feel identical across recorders.
  */
-export function rmsLevel(samples: number[]): number {
+export function rmsLevel(samples: ArrayLike<number>): number {
   let sum = 0;
   const len = samples.length;
   for (let i = 0; i < len; i++) {
@@ -161,9 +169,67 @@ let state: 'idle' | 'recording' = 'idle';
 let chunks: Int16Array[] = [];
 let total = 0;
 
+// Expo Go capture (expo-audio AudioStream). Null while not recording.
+type ExpoStream = InstanceType<typeof AudioModule.AudioStream>;
+let expoStream: ExpoStream | null = null;
+let expoSub: EventSubscription | null = null;
+
+/** First channel of an interleaved Int16 buffer, resampled to 16 kHz by
+ *  averaging each output sample's source window (a crude low-pass that is
+ *  plenty for speech-to-text). */
+function toMono16k(
+  data: ArrayBuffer,
+  rate: number,
+  channels: number,
+): Int16Array {
+  const raw = new Int16Array(data);
+  const frames = Math.floor(raw.length / channels);
+  const ratio = rate / PCM_SAMPLE_RATE;
+  if (ratio <= 1 && channels === 1) return raw;
+  const out = new Int16Array(Math.floor(frames / Math.max(ratio, 1)));
+  for (let i = 0; i < out.length; i++) {
+    const from = Math.floor(i * ratio);
+    const to = Math.max(from + 1, Math.floor((i + 1) * ratio));
+    let sum = 0;
+    for (let j = from; j < to; j++) sum += raw[j * channels];
+    out[i] = sum / (to - from);
+  }
+  return out;
+}
+
+async function startExpoStream(
+  onFrame?: (frame: ArrayLike<number>) => void,
+): Promise<void> {
+  const stream = new AudioModule.AudioStream({
+    sampleRate: PCM_SAMPLE_RATE,
+    channels: 1,
+    encoding: 'int16',
+  });
+  expoStream = stream;
+  expoSub = stream.addListener('audioStreamBuffer', (buf) => {
+    const frame = toMono16k(buf.data, buf.sampleRate, buf.channels);
+    if (state === 'recording' && total < MAX_BUFFERED_SAMPLES) {
+      chunks.push(frame);
+      total += frame.length;
+    }
+    onFrame?.(frame);
+  });
+  await stream.start();
+}
+
+function stopExpoStream(): void {
+  expoSub?.remove();
+  expoSub = null;
+  try {
+    expoStream?.stop();
+    expoStream?.release();
+  } catch {}
+  expoStream = null;
+}
+
 export const pcmCapture = {
-  /** True when the voice-processor native module is linked. */
-  available: VoiceProcessorImpl != null,
+  /** True when a capture backend exists (Picovoice, or Expo Go's stream). */
+  available: VoiceProcessorImpl != null || isExpoGo,
 
   isRecording(): boolean {
     return state === 'recording';
@@ -176,8 +242,20 @@ export const pcmCapture = {
    * it (the foreground hook prompts; the headless turn relies on the grant the
    * wake word already required, since there's no Activity to prompt from).
    */
-  async start(onFrame?: (frame: number[]) => void): Promise<void> {
+  async start(onFrame?: (frame: ArrayLike<number>) => void): Promise<void> {
     if (state === 'recording') return;
+    if (!VoiceProcessorImpl && isExpoGo) {
+      state = 'recording';
+      chunks = [];
+      total = 0;
+      try {
+        await startExpoStream(onFrame);
+      } catch (err) {
+        reset();
+        throw err;
+      }
+      return;
+    }
     if (!VoiceProcessorImpl) {
       throw new Error('PCM capture unavailable (voice-processor not linked)');
     }
@@ -207,10 +285,14 @@ export const pcmCapture = {
   /** Stop and return the buffered audio as base64 PCM16. */
   async stop(): Promise<PcmStopResult> {
     state = 'idle';
-    try {
-      await VoiceProcessorImpl?.instance.stop().catch(() => {});
-      VoiceProcessorImpl?.instance.clearFrameListeners();
-    } catch {}
+    if (expoStream) {
+      stopExpoStream();
+    } else {
+      try {
+        await VoiceProcessorImpl?.instance.stop().catch(() => {});
+        VoiceProcessorImpl?.instance.clearFrameListeners();
+      } catch {}
+    }
     const audioBase64 = encodePcm(
       trimSilence(mergeChunks(chunks), PCM_SAMPLE_RATE),
     );
@@ -227,6 +309,10 @@ function reset(): void {
   state = 'idle';
   chunks = [];
   total = 0;
+  if (expoStream) {
+    stopExpoStream();
+    return;
+  }
   try {
     VoiceProcessorImpl?.instance.clearFrameListeners();
     VoiceProcessorImpl?.instance.stop().catch(() => {});

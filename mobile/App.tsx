@@ -1,9 +1,7 @@
 import React, { useEffect } from 'react';
 import { AppState } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import notifee, { EventType } from '@notifee/react-native';
-import BootSplash from 'react-native-bootsplash';
-import ReactNativeBlobUtil from 'react-native-blob-util';
+import { useFonts } from 'expo-font';
 
 import { RootNavigator } from '@/navigation/RootNavigator';
 import { navigateRef } from '@/navigation/navigationRef';
@@ -14,32 +12,50 @@ import {
   setOnAlarmRing,
 } from '@/lib/tools/platform/native';
 import { ensureNotificationPermission } from '@/hooks/usePermissions';
+import { fs } from '@/lib/fs';
+import { notifee } from '@/lib/notifee';
 import { refreshLocation } from '@/lib/location';
+import { isExpoGo } from '@/lib/runtime';
 import { useToolsStore } from '@/stores/toolsStore';
+import { fontFiles } from '@/theme/fontFiles';
+
+// Keep the native splash up until fonts, auth and the first screen are all
+// ready, then crossfade straight into it — hiding it any earlier fades to a
+// blank frame before the UI pops in. Expo Go has no bootsplash.
+function hideSplash() {
+  if (isExpoGo) return;
+  require('react-native-bootsplash')
+    .default.hide({ fade: true })
+    .catch(() => {});
+}
 
 function App() {
-  useEffect(() => {
-    // Hide the native splash once the first frame renders. We don't wait for
-    // tools/auth hydration — RN handles its own initial blank state quickly,
-    // and a 300ms crossfade out of BootSplash hides it.
-    BootSplash.hide({ fade: true }).catch(() => {});
+  // Register the bundled fonts before the first screen draws, so text never
+  // flashes in the system font. On a load error, render anyway with fallbacks.
+  const [fontsLoaded, fontError] = useFonts(fontFiles);
 
-    ensureChannel();
-    ensureNotificationPermission();
+  useEffect(() => {
+    // Expo Go has no Notifee, so the alarm and timer wiring below is
+    // native-only. The splash is hidden by hideSplash once the first screen
+    // is ready.
+    if (!isExpoGo) {
+      ensureChannel();
+      ensureNotificationPermission();
+    }
 
     // TTS cache files are deleted right after playback; this sweeps leftovers
-    // from crashes / interrupted turns (blob-util names them RNFetchBlob*).
-    const cacheDir = ReactNativeBlobUtil.fs.dirs.CacheDir;
-    ReactNativeBlobUtil.fs
-      .ls(cacheDir)
-      .then((names) =>
-        names
-          .filter((n) => n.startsWith('RNFetchBlob'))
-          .forEach((n) =>
-            ReactNativeBlobUtil.fs.unlink(`${cacheDir}/${n}`).catch(() => {}),
-          ),
-      )
-      .catch(() => {});
+    // from crashes / interrupted turns.
+    fs.sweepCache();
+
+    refreshLocation().catch(() => {});
+    const appStateSub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        refreshLocation().catch(() => {});
+      }
+    });
+    if (isExpoGo) {
+      return () => appStateSub.remove();
+    }
 
     const runReconcile = () => {
       reconcileTools();
@@ -55,13 +71,6 @@ function App() {
       navigateRef('AlarmRing', { alarmId });
     });
     const unsubFg = registerForegroundEvents();
-
-    refreshLocation().catch(() => {});
-    const appStateSub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') {
-        refreshLocation().catch(() => {});
-      }
-    });
 
     // Cold start via full-screen-intent: if the user opened the app by
     // tapping (or being launched by) an alarm notification, route there.
@@ -84,9 +93,11 @@ function App() {
     };
   }, []);
 
+  if (!fontsLoaded && !fontError) return null;
+
   return (
     <SafeAreaProvider>
-      <RootNavigator />
+      <RootNavigator onReady={hideSplash} />
     </SafeAreaProvider>
   );
 }

@@ -1,9 +1,9 @@
 import { AppState } from 'react-native';
-import ReactNativeBlobUtil from 'react-native-blob-util';
 
 import { transcribeGooglePcm } from '@/api/transcribeGoogle';
 import { runAssistantTurn, type TtsPlayback } from '@/lib/assistantTurn';
 import { makeFilePlayback, mimeForPath } from '@/lib/filePlayback';
+import { fs } from '@/lib/fs';
 import { isGoodbye, pickFarewell, pickGreeting } from '@/lib/greetings';
 import { dlog } from '@/lib/log';
 import { nativePlayback } from '@/lib/nativePlayback';
@@ -48,7 +48,7 @@ const mlog = (...args: unknown[]) => dlog('[MiaBg]', ...args);
 // used to take), kept because it is the difference between "slower" and "mute".
 const overlayFileFallback = makeFilePlayback(
   async (path, onStart) => {
-    const base64 = await ReactNativeBlobUtil.fs.readFile(path, 'base64');
+    const base64 = await fs.readBase64(path);
     onStart?.();
     await orbOverlay.playTts(base64, mimeForPath(path));
   },
