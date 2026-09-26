@@ -21,7 +21,7 @@ To deliver the voice AI experience, we send specific pieces of data to these ser
 
 | Service | What we send | Their privacy policy |
 |---|---|---|
-| OpenAI (GPT-4o-mini, gpt-4o-transcribe) | Your transcribed speech + recent conversation context | https://openai.com/policies/privacy-policy |
+| Google Gemini API | Your transcribed speech + recent conversation context | https://policies.google.com/privacy |
 | ElevenLabs (Flash v3 TTS) | Mia's reply text, to synthesise audio | https://elevenlabs.io/privacy |
 | Camb.ai (optional Georgian TTS) | Mia's reply text, only if you select Camb in settings | https://www.camb.ai/privacy-policy |
 | Google Cloud (optional STT) | Your audio, only if Google STT mode is enabled | https://policies.google.com/privacy |

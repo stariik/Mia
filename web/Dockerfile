@@ -15,7 +15,7 @@ COPY . .
 # This build runs with NO secrets, on purpose. `next build` imports every route
 # module to collect page data, so any module-level code that requires a real key
 # will break the build here — even though it works locally, where Next silently
-# loads .env.local. Keep secret access lazy or total (see lib/openai.ts,
+# loads .env.local. Keep secret access lazy or total (see lib/gemini.ts,
 # lib/auth/jwt.ts). Verify with: mv .env.local away && npx next build
 RUN npm run build
 

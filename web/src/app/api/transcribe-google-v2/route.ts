@@ -15,7 +15,7 @@
 import { v2 } from "@google-cloud/speech";
 import path from "node:path";
 import fs from "node:fs";
-import openai from "@/lib/openai";
+import { gemini, FAST_MODEL, LOW_THINKING } from "@/lib/gemini";
 import { guard } from "@/lib/apiGuard";
 
 type V2SpeechClient = InstanceType<typeof v2.SpeechClient>;
@@ -239,7 +239,7 @@ const PHRASE_BOOST: string[] = [
 
 /**
  * LLM-based proofreader. Chirp 2 occasionally returns a phonetically-similar
- * wrong word (homophone). GPT-4o-mini with a strict prompt corrects those
+ * wrong word (homophone). A fast Gemini model with a strict prompt corrects those
  * cases while leaving correct transcripts untouched. ~400ms added latency.
  *
  * Falls back to the raw Chirp text if the LLM call fails or returns nothing.
@@ -247,13 +247,15 @@ const PHRASE_BOOST: string[] = [
 async function correctTranscript(text: string): Promise<string> {
   if (!text || text.length < 2) return text;
   try {
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content:
-            "შენ ხარ ქართული ხმოვანი ტრანსკრიფციის გამსწორებელი. " +
+    const response = await gemini().models.generateContent({
+      model: FAST_MODEL,
+      contents: text,
+      config: {
+        temperature: 0.1,
+        maxOutputTokens: 250,
+        thinkingConfig: LOW_THINKING,
+        systemInstruction:
+          "შენ ხარ ქართული ხმოვანი ტრანსკრიფციის გამსწორებელი. " +
             "ავტომატური სისტემა ცდილობს ქართულის ამოცნობას და ხანდახან მცდარად ისმენს ფონეტიკურად მსგავს სიტყვას. " +
             "შენი ერთადერთი დავალება — გაასწორო აშკარა ფონეტიკური შეცდომები. " +
             "წესები: 1) გამოიტანე მხოლოდ გასწორებული ტექსტი, ბრჭყალების ან კომენტარების გარეშე. " +
@@ -261,13 +263,9 @@ async function correctTranscript(text: string): Promise<string> {
             "3) თუ ტექსტი უკვე გასაგებია — დააბრუნე უცვლელად. " +
             "4) ნუ შეცვლი წინადადების სტრუქტურას. " +
             "5) მხოლოდ ცალკეული სიტყვების გასწორება, თუ ფონეტიკურად ცხადია რა ითქვა.",
-        },
-        { role: "user", content: text },
-      ],
-      temperature: 0.1,
-      max_tokens: 250,
+      },
     });
-    const corrected = completion.choices[0]?.message?.content?.trim();
+    const corrected = response.text?.trim();
     return corrected && corrected.length > 0 ? corrected : text;
   } catch (err) {
     console.warn("[Chirp] LLM correction failed:", err);

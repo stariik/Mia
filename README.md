@@ -34,12 +34,12 @@ The whole UI is in Georgian.
   │   React Native 0.85     │  HTTPS  │   Next.js 16                 │
   │                         │ ──────► │                              │
   │  wake word · mic capture│         │  STT: Google Chirp 2         │
-  │  orb UI · playback      │ ◄────── │  LLM: OpenAI (tool calling)  │
+  │  orb UI · playback      │ ◄────── │  LLM: Gemini (tool calling)  │
   │  alarms/timers (notifee)│   SSE   │  TTS: ElevenLabs eleven_v3   │
   └─────────────────────────┘         └──────────────────────────────┘
 ```
 
-A voice turn: the app records audio → the server transcribes it (Google Speech-to-Text **Chirp 2**, one of the few STT models with solid Georgian support) → an OpenAI model decides what to do, calling tools (weather, alarms, music, …) when needed → the reply is synthesized with **ElevenLabs eleven_v3** (Google TTS has no Georgian voices) and streamed back for playback.
+A voice turn: the app records audio → the server transcribes it (Google Speech-to-Text **Chirp 2**, one of the few STT models with solid Georgian support) → a Google Gemini model decides what to do, calling tools (weather, alarms, music, …) when needed → the reply is synthesized with **ElevenLabs eleven_v3** (Google TTS has no Georgian voices) and streamed back for playback.
 
 Wake word detection ("Hey Mia") runs fully on-device via [openWakeWord](https://github.com/dscripka/openWakeWord) ONNX models — no cloud, no API key, works with the app closed.
 
@@ -59,7 +59,7 @@ voice-ai/
 
 ### Backend (`web/`)
 
-Requires Node 22+, an OpenAI API key, an ElevenLabs API key, and a Google Cloud service account with Speech-to-Text enabled.
+Requires Node 22+, a Gemini API key (Google AI Studio), an ElevenLabs API key, and a Google Cloud service account with Speech-to-Text enabled.
 
 ```bash
 cd web
@@ -89,7 +89,7 @@ npm run android
 | **Backend** | Next.js 16, TypeScript, Tailwind CSS 4, WebSocket (ws) |
 | **Speech-to-text** | Google Cloud Speech (Chirp 2) |
 | **Text-to-speech** | ElevenLabs eleven_v3 |
-| **LLM** | OpenAI with function calling |
+| **LLM** | Google Gemini (3.8 Flash) with function calling |
 | **Wake word** | openWakeWord (ONNX, on-device) |
 | **Infra** | Docker + Caddy on Hetzner, Sentry crash reporting |
 

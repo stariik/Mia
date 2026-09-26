@@ -62,8 +62,8 @@ Verified from outside: `/`, `/privacy`, `/delete-account` → 200 with valid TLS
       as the backend). It must state, truthfully (verified against the code):
       - Voice recordings are captured only while you actively use the mic and
         are sent over HTTPS to Mia's server, which forwards them to Google
-        (speech recognition). The transcribed text is processed by OpenAI
-        (assistant replies, translation); replies are synthesized via
+        (speech recognition). The transcribed text is processed by Google
+        Gemini (assistant replies, translation, transcript correction); replies are synthesized via
         ElevenLabs. Only Google ever receives audio. **Recordings are not
         stored** on Mia's servers.
       - Conversations are stored **only on your device**.
@@ -79,7 +79,7 @@ Verified from outside: `/`, `/privacy`, `/delete-account` → 200 with valid TLS
 | Question | Answer |
 |---|---|
 | Does your app collect or share user data? | **Yes** |
-| **Voice or sound recordings** | Collected. NOT shared for advertising; shared with a service provider (Google, speech recognition) for app functionality — OpenAI/ElevenLabs receive text only, never audio. **Not stored** (processed ephemerally). Collection is required for core functionality. Encrypted in transit. Not deletable (nothing is retained). |
+| **Voice or sound recordings** | Collected. NOT shared for advertising; shared with a service provider (Google, speech recognition) for app functionality — Gemini/ElevenLabs receive text only, never audio. **Not stored** (processed ephemerally). Collection is required for core functionality. Encrypted in transit. Not deletable (nothing is retained). |
 | **Email address** | Collected, for account management. Not shared. Stored. Encrypted in transit. **Deletable** (in-app + web URL). |
 | **Approximate location** | Collected (optional), app functionality (weather). Not shared beyond the weather provider. Not stored. |
 | **Messages (chat text)** | Processed for functionality; transcripts stored on-device only → answer "not collected" per Play's definition (never leaves ephemeral processing / device). |

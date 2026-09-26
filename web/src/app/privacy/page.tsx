@@ -66,7 +66,7 @@ export default function PrivacyPolicyPage() {
             <b>Google Cloud</b> — მეტყველების ამოცნობა (ქართული ხმა → ტექსტი).
           </li>
           <li style={li}>
-            <b>OpenAI</b> — ასისტენტის პასუხები, თარგმანი, სათადარიგო ამოცნობა.
+            <b>Google Gemini</b> — ასისტენტის პასუხები, თარგმანი, ამოცნობილი ტექსტის შესწორება.
           </li>
           <li style={li}>
             <b>ElevenLabs</b> — ტექსტის ხმად გადაქცევა (პასუხის წაკითხვა).
@@ -163,7 +163,7 @@ export default function PrivacyPolicyPage() {
         </p>
         <ul style={ul}>
           <li style={li}><b>Google Cloud</b> — speech recognition (Georgian speech to text).</li>
-          <li style={li}><b>OpenAI</b> — assistant replies, translation, fallback recognition.</li>
+          <li style={li}><b>Google Gemini</b> — assistant replies, translation, transcript correction.</li>
           <li style={li}><b>ElevenLabs</b> — text-to-speech (reading replies aloud).</li>
           <li style={li}><b>Open-Meteo</b> — weather data; receives your city or approximate coordinates.</li>
           <li style={li}><b>Sentry</b> (if enabled) — crash diagnostics only.</li>

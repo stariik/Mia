@@ -33,7 +33,7 @@ type StreamedEvent =
   | { error: string };
 
 /**
- * Streams GPT responses from /api/chat as server-sent events.
+ * Streams Gemini responses from /api/chat as server-sent events.
  * Returns a promise that resolves when the stream closes or rejects on error.
  * Server side: web/src/app/api/chat/route.ts.
  */

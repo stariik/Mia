@@ -1,3 +1,4 @@
+import type { FunctionDeclaration } from "@google/genai";
 import type { Tool, ServerTool, ClientTool } from "./types";
 import { getTime } from "./handlers/getTime";
 import { getWeather } from "./handlers/getWeather";
@@ -30,8 +31,12 @@ export const TOOLS: Tool[] = [
   restartTrack,
 ];
 
-export function getToolDefinitions() {
-  return TOOLS.map((t) => t.definition);
+export function getToolDefinitions(): FunctionDeclaration[] {
+  return TOOLS.map(({ definition: { function: f } }) => ({
+    name: f.name,
+    description: f.description,
+    parametersJsonSchema: f.parameters,
+  }));
 }
 
 export function findTool(name: string): Tool | undefined {

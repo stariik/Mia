@@ -3,7 +3,7 @@ import { apiUrl, authHeaders } from './client';
 const TRANSLATE_TIMEOUT_MS = 20_000;
 
 /**
- * Translate `text` from one language to another via /api/translate (gpt-4o).
+ * Translate `text` from one language to another via /api/translate (Gemini).
  * Source and target are ISO codes (ka/ru/en). Returns the translation only.
  */
 export async function translateText(
