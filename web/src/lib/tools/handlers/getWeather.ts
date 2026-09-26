@@ -1,4 +1,5 @@
 import type { ServerTool, ToolContext } from "../types";
+import { lookupIp } from "@/lib/ipLocation";
 
 // Well-known Georgian cities — avoids a geocoder roundtrip and handles the
 // Georgian-script form reliably. Key is lowercased.
@@ -64,7 +65,8 @@ const WMO_KA: Record<number, string> = {
   99: "ძლიერი ჭექა-ქუხილი სეტყვით",
 };
 
-type Geo = { lat: number; lon: number; name: string };
+// `name` is absent only when coords resolve to no known place name.
+type Geo = { lat: number; lon: number; name?: string };
 
 async function geocode(query: string): Promise<Geo | null> {
   const key = query.trim().toLowerCase();
@@ -87,6 +89,53 @@ async function geocode(query: string): Promise<Geo | null> {
   } catch {
     return null;
   }
+}
+
+// Georgian-script city name for GPS coords the phone couldn't name itself.
+async function reverseGeocode(lat: number, lon: number): Promise<string | undefined> {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=10&accept-language=ka`,
+      {
+        headers: { "User-Agent": "mia-voice-ai/1.0" },
+        signal: AbortSignal.timeout(3000),
+      }
+    );
+    if (!res.ok) return undefined;
+    const data = (await res.json()) as {
+      address?: Partial<
+        Record<"city" | "town" | "village" | "municipality" | "county" | "state", string>
+      >;
+    };
+    const a = data.address ?? {};
+    return a.city || a.town || a.village || a.municipality || a.county || a.state;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Where the user is right now, most precise source first: phone GPS (named
+ * after the phone's city), the phone's city alone (the Settings override
+ * arrives without coords), then an IP guess. Null when none resolve.
+ */
+async function currentLocation(ctx: ToolContext): Promise<Geo | null> {
+  if (ctx.userCoords) {
+    const { lat, lon } = ctx.userCoords;
+    return { lat, lon, name: ctx.userCity || (await reverseGeocode(lat, lon)) };
+  }
+  if (ctx.userCity) {
+    const geo = await geocode(ctx.userCity);
+    if (geo) return geo;
+  }
+  if (ctx.clientIp) {
+    const ip = await lookupIp(ctx.clientIp);
+    if (ip) {
+      const known = KNOWN_CITIES[ip.city.toLowerCase()];
+      return { lat: ip.lat, lon: ip.lon, name: known?.name_ka ?? ip.city };
+    }
+  }
+  return null;
 }
 
 type OpenMeteoCurrent = {
@@ -128,7 +177,7 @@ export const getWeather: ServerTool = {
     function: {
       name: "get_weather",
       description:
-        "Get the current weather for a city. If the user mentions a city (Georgian or otherwise), pass it as 'city'. Omit 'city' only if the user explicitly said 'here' / 'my location' — the server may have their coords. If neither is available, the tool will return an error and you should ask the user which city.",
+        "Get the current weather. Pass 'city' only when the user names a city in this request (Georgian or otherwise), or in a short follow-up to an earlier city question. Otherwise omit it: the server resolves the user's current city from their phone. Never fill 'city' from remembered facts such as where the user lives. If the result is 'need_location', ask the user which city.",
       parameters: {
         type: "object",
         properties: {
@@ -154,24 +203,21 @@ export const getWeather: ServerTool = {
           message: `ვერ ვიპოვე ქალაქი: ${city}`,
         };
       }
-    } else if (ctx.userCoords) {
-      geo = {
-        lat: ctx.userCoords.lat,
-        lon: ctx.userCoords.lon,
-        name: "შენი მდებარეობა",
-      };
     } else {
-      return {
-        error: "need_location",
-        message:
-          "No city was provided and user coords are unavailable. Ask the user which city they mean.",
-      };
+      geo = await currentLocation(ctx);
+      if (!geo) {
+        return {
+          error: "need_location",
+          message:
+            "The user's location is unknown. Ask the user which city they mean.",
+        };
+      }
     }
 
     try {
       const current = await fetchCurrent(geo.lat, geo.lon);
       return {
-        city: geo.name,
+        ...(geo.name && { city: geo.name }),
         temperature_c: Math.round(current.temperature_2m),
         feels_like_c: Math.round(current.apparent_temperature),
         humidity_pct: Math.round(current.relative_humidity_2m),

@@ -28,6 +28,10 @@ export type Tool = ServerTool | ClientTool;
 
 export type ToolContext = {
   userCoords?: { lat: number; lon: number };
+  // The phone's city: the Settings override, else reverse-geocoded from GPS.
+  userCity?: string;
+  // Public client IP, for an approximate city when the phone shares none.
+  clientIp?: string;
 };
 
 export type ClientToolCall = {

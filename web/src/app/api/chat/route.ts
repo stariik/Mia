@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Content, Part } from "@google/genai";
 import { gemini, CHAT_MODEL, LOW_THINKING } from "@/lib/gemini";
 import { guard } from "@/lib/apiGuard";
+import { clientIp } from "@/lib/ipLocation";
 import { GEORGIAN_ASSISTANT_SYSTEM_PROMPT } from "@/lib/prompts";
 import {
   actionLine,
@@ -96,7 +97,14 @@ export async function POST(request: Request) {
       typeof userContext?.lon === "number"
         ? { lat: userContext.lat, lon: userContext.lon }
         : undefined);
-    const toolCtx: ToolContext = { userCoords };
+    const toolCtx: ToolContext = {
+      userCoords,
+      userCity:
+        typeof userContext?.city === "string"
+          ? userContext.city.trim().slice(0, 80) || undefined
+          : undefined,
+      clientIp: clientIp(request),
+    };
 
     const systemInstruction = [
       GEORGIAN_ASSISTANT_SYSTEM_PROMPT,

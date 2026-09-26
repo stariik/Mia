@@ -69,7 +69,8 @@ Verified from outside: `/`, `/privacy`, `/delete-account` → 200 with valid TLS
       - Conversations are stored **only on your device**.
       - Account data: email address + hashed password. Deletable in-app
         (Settings → ანგარიშის წაშლა) or at `https://<your-domain>/delete-account`.
-      - Approximate location (if granted) is used for weather only.
+      - Approximate location (if granted) is used for weather only. Without
+        it, the city for weather is estimated from the IP address (ipwho.is).
       - The "Hey Mia" wake word runs entirely on-device; no audio leaves the
         phone until it triggers.
 - [ ] Paste the URL in Play Console → App content → Privacy policy.
@@ -81,7 +82,7 @@ Verified from outside: `/`, `/privacy`, `/delete-account` → 200 with valid TLS
 | Does your app collect or share user data? | **Yes** |
 | **Voice or sound recordings** | Collected. NOT shared for advertising; shared with a service provider (Google, speech recognition) for app functionality — Gemini/ElevenLabs receive text only, never audio. **Not stored** (processed ephemerally). Collection is required for core functionality. Encrypted in transit. Not deletable (nothing is retained). |
 | **Email address** | Collected, for account management. Not shared. Stored. Encrypted in transit. **Deletable** (in-app + web URL). |
-| **Approximate location** | Collected (optional), app functionality (weather). Not shared beyond the weather provider. Not stored. |
+| **Approximate location** | Collected (optional), app functionality (weather). Shared with the weather provider, OpenStreetMap (city name) and ipwho.is (IP-based city estimate when no location is granted). Not stored. |
 | **Messages (chat text)** | Processed for functionality; transcripts stored on-device only → answer "not collected" per Play's definition (never leaves ephemeral processing / device). |
 | Data encrypted in transit? | Yes (HTTPS enforced by network security config) |
 | Account deletion URL | `https://<your-domain>/delete-account` |

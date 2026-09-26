@@ -123,10 +123,12 @@ export async function runAssistantTurn({
   const locState = useLocationStore.getState();
   const toolsState = useToolsStore.getState();
   const now = Date.now();
+  // A Settings city means "I'm here": GPS coords would describe another place.
+  const manual = Boolean(locState.manualCity?.trim());
   const userContext = {
     city: getEffectiveCity(locState),
-    lat: locState.lat,
-    lon: locState.lon,
+    lat: manual ? undefined : locState.lat,
+    lon: manual ? undefined : locState.lon,
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || undefined,
     profile: useProfileStore
       .getState()
