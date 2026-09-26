@@ -1,0 +1,993 @@
+{
+  "recordings": [
+    {
+      "id": "android-01",
+      "file": "android-01.wav",
+      "humanRecorded": false,
+      "device": "android",
+      "split": "tune",
+      "condition": "quiet",
+      "category": "ordinary",
+      "reference": "რა ამინდია დღეს თბილისში?",
+      "critical": [],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "android-02",
+      "file": "android-02.wav",
+      "humanRecorded": false,
+      "device": "android",
+      "split": "tune",
+      "condition": "quiet",
+      "category": "names",
+      "reference": "ხვალ ნინოს დაბადების დღე შემახსენე.",
+      "critical": [
+        "ნინოს"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "android-03",
+      "file": "android-03.wav",
+      "humanRecorded": false,
+      "device": "android",
+      "split": "tune",
+      "condition": "quiet",
+      "category": "numbers",
+      "reference": "დააყენე ტაიმერი ჩვიდმეტი წუთით.",
+      "critical": [
+        "ჩვიდმეტი"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "android-04",
+      "file": "android-04.wav",
+      "humanRecorded": false,
+      "device": "android",
+      "split": "tune",
+      "condition": "quiet",
+      "category": "mixed",
+      "reference": "გახსენი YouTube და მოძებნე ქართული სიმღერა.",
+      "critical": [
+        "YouTube"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "android-05",
+      "file": "android-05.wav",
+      "humanRecorded": false,
+      "device": "android",
+      "split": "tune",
+      "condition": "quiet",
+      "category": "quiet",
+      "reference": "მითხარი ახლა რომელი საათია.",
+      "critical": [],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "android-06",
+      "file": "android-06.wav",
+      "humanRecorded": false,
+      "device": "android",
+      "split": "tune",
+      "condition": "noise",
+      "category": "noise",
+      "reference": "ხვალ ბათუმში იწვიმებს?",
+      "critical": [
+        "ბათუმში"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "android-07",
+      "file": "android-07.wav",
+      "humanRecorded": false,
+      "device": "android",
+      "split": "tune",
+      "condition": "quiet",
+      "category": "pauses",
+      "reference": "მინდა გავიგო, ხვალ დილით, როგორი ამინდი იქნება ქუთაისში.",
+      "critical": [
+        "ქუთაისში"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": true
+    },
+    {
+      "id": "android-08",
+      "file": "android-08.wav",
+      "humanRecorded": false,
+      "device": "android",
+      "split": "tune",
+      "condition": "quiet",
+      "category": "long",
+      "reference": "ხვალ დილით მეგობრებთან ერთად ვაპირებ გასეირნებას და მინდა წინასწარ ვიცოდე, როგორი ამინდი იქნება თბილისში, დაგვჭირდება თუ არა ქოლგა და დღის რომელ მონაკვეთში ჯობს სახლიდან გასვლა.",
+      "critical": [],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": true
+    },
+    {
+      "id": "android-09",
+      "file": "android-09.wav",
+      "humanRecorded": false,
+      "device": "android",
+      "split": "tune",
+      "condition": "quiet",
+      "category": "names",
+      "reference": "მარიამს და გიორგის შეხვედრა გვაქვს ოთხშაბათს.",
+      "critical": [
+        "მარიამს",
+        "გიორგის"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "android-10",
+      "file": "android-10.wav",
+      "humanRecorded": false,
+      "device": "android",
+      "split": "tune",
+      "condition": "quiet",
+      "category": "numbers",
+      "reference": "გამოთვალე ას ოცდახუთს დამატებული სამოცდაშვიდი.",
+      "critical": [
+        "ას ოცდახუთს",
+        "სამოცდაშვიდი"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "android-11",
+      "file": "android-11.wav",
+      "humanRecorded": false,
+      "device": "android",
+      "split": "tune",
+      "condition": "quiet",
+      "category": "mixed",
+      "reference": "Spotify-ში მუსიკა მოძებნე.",
+      "critical": [
+        "Spotify"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "android-12",
+      "file": "android-12.wav",
+      "humanRecorded": false,
+      "device": "android",
+      "split": "tune",
+      "condition": "noise",
+      "category": "noise",
+      "reference": "დააყენე მაღვიძარა დილის რვა საათსა და ოც წუთზე.",
+      "critical": [
+        "რვა",
+        "ოც"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "android-13",
+      "file": "android-13.wav",
+      "humanRecorded": false,
+      "device": "android",
+      "split": "tune",
+      "condition": "quiet",
+      "category": "quiet",
+      "reference": "ათი წუთის შემდეგ ჩაი შემახსენე.",
+      "critical": [
+        "ათი"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "android-14",
+      "file": "android-14.wav",
+      "humanRecorded": false,
+      "device": "android",
+      "split": "tune",
+      "condition": "quiet",
+      "category": "pauses",
+      "reference": "ჯერ მითხარი დრო, მერე, ცოტა ხანში, ამინდიც მაინტერესებს.",
+      "critical": [],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": true
+    },
+    {
+      "id": "android-15",
+      "file": "android-15.wav",
+      "humanRecorded": false,
+      "device": "android",
+      "split": "tune",
+      "condition": "quiet",
+      "category": "long",
+      "reference": "დღეს ბევრი საქმე მაქვს: ჯერ მაღაზიაში უნდა წავიდე, შემდეგ სახლში დავბრუნდე და ვახშამი მოვამზადო, ამიტომ მინდა ნახევარი საათით ტაიმერი დამიყენო და მანამდე მშვიდი მუსიკა მოვისმინო.",
+      "critical": [],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": true
+    },
+    {
+      "id": "android-16",
+      "file": "android-16.wav",
+      "humanRecorded": false,
+      "device": "android",
+      "split": "heldout",
+      "condition": "quiet",
+      "category": "ordinary",
+      "reference": "რამდენი საათია ახლა?",
+      "critical": [],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "android-17",
+      "file": "android-17.wav",
+      "humanRecorded": false,
+      "device": "android",
+      "split": "heldout",
+      "condition": "quiet",
+      "category": "names",
+      "reference": "ლევანს და თეკლას პარასკევს უნდა შევხვდე.",
+      "critical": [
+        "ლევანს",
+        "თეკლას"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "android-18",
+      "file": "android-18.wav",
+      "humanRecorded": false,
+      "device": "android",
+      "split": "heldout",
+      "condition": "quiet",
+      "category": "numbers",
+      "reference": "დააყენე ტაიმერი ოცდასამი წუთით.",
+      "critical": [
+        "ოცდასამი"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "android-19",
+      "file": "android-19.wav",
+      "humanRecorded": false,
+      "device": "android",
+      "split": "heldout",
+      "condition": "quiet",
+      "category": "mixed",
+      "reference": "გახსენი WhatsApp.",
+      "critical": [
+        "WhatsApp"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "android-20",
+      "file": "android-20.wav",
+      "humanRecorded": false,
+      "device": "android",
+      "split": "heldout",
+      "condition": "quiet",
+      "category": "quiet",
+      "reference": "ხვალ დილის შვიდ საათზე გამაღვიძე.",
+      "critical": [
+        "შვიდ"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "android-21",
+      "file": "android-21.wav",
+      "humanRecorded": false,
+      "device": "android",
+      "split": "heldout",
+      "condition": "noise",
+      "category": "noise",
+      "reference": "როგორი ამინდია დღეს რუსთავში?",
+      "critical": [
+        "რუსთავში"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "android-22",
+      "file": "android-22.wav",
+      "humanRecorded": false,
+      "device": "android",
+      "split": "heldout",
+      "condition": "quiet",
+      "category": "pauses",
+      "reference": "ხვალ, დილის ცხრა საათზე, შეხვედრის შესახებ შემახსენე.",
+      "critical": [
+        "ცხრა"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": true
+    },
+    {
+      "id": "android-23",
+      "file": "android-23.wav",
+      "humanRecorded": false,
+      "device": "android",
+      "split": "heldout",
+      "condition": "quiet",
+      "category": "long",
+      "reference": "შაბათს ოჯახთან ერთად ქალაქგარეთ გასვლას ვგეგმავ, მაგრამ ჯერ არ ვიცი ზუსტად რომელ საათზე გავალთ, ამიტომ მითხარი როგორი ამინდი იქნება და ხომ არ არის მოსალოდნელი წვიმა დღის მეორე ნახევარში.",
+      "critical": [],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": true
+    },
+    {
+      "id": "android-24",
+      "file": "android-24.wav",
+      "humanRecorded": false,
+      "device": "android",
+      "split": "heldout",
+      "condition": "quiet",
+      "category": "names",
+      "reference": "სალომეს შეხვედრა აქვს ზუგდიდში.",
+      "critical": [
+        "სალომეს",
+        "ზუგდიდში"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "android-25",
+      "file": "android-25.wav",
+      "humanRecorded": false,
+      "device": "android",
+      "split": "heldout",
+      "condition": "quiet",
+      "category": "numbers",
+      "reference": "რამდენია ორას ოცდათოთხმეტს გამოკლებული ოთხმოცდაცხრამეტი?",
+      "critical": [
+        "ორას ოცდათოთხმეტს",
+        "ოთხმოცდაცხრამეტი"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "android-26",
+      "file": "android-26.wav",
+      "humanRecorded": false,
+      "device": "android",
+      "split": "heldout",
+      "condition": "quiet",
+      "category": "mixed",
+      "reference": "Google Maps-ში მოძებნე თავისუფლების მოედანი.",
+      "critical": [
+        "Google Maps",
+        "თავისუფლების"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "android-27",
+      "file": "android-27.wav",
+      "humanRecorded": false,
+      "device": "android",
+      "split": "heldout",
+      "condition": "noise",
+      "category": "noise",
+      "reference": "გამაღვიძე დილის ექვს საათსა და ორმოცდახუთ წუთზე.",
+      "critical": [
+        "ექვს",
+        "ორმოცდახუთ"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "android-28",
+      "file": "android-28.wav",
+      "humanRecorded": false,
+      "device": "android",
+      "split": "heldout",
+      "condition": "quiet",
+      "category": "quiet",
+      "reference": "შეაჩერე მუსიკა და მითხარი დრო.",
+      "critical": [],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "android-29",
+      "file": "android-29.wav",
+      "humanRecorded": false,
+      "device": "android",
+      "split": "heldout",
+      "condition": "quiet",
+      "category": "pauses",
+      "reference": "მინდა ტაიმერი, არა, ჯერ მითხარი, რამდენი წუთია ერთ საათში.",
+      "critical": [],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": true
+    },
+    {
+      "id": "android-30",
+      "file": "android-30.wav",
+      "humanRecorded": false,
+      "device": "android",
+      "split": "heldout",
+      "condition": "quiet",
+      "category": "long",
+      "reference": "დღის ბოლოს მინდა მშვიდად დავისვენო, მანამდე კი ვაპირებ რამდენიმე საქმის დასრულებას, მეგობართან დარეკვას და ხვალინდელი გეგმის შედგენას, ამიტომ ჯერ მითხარი რომელი საათია და შემდეგ ამინდიც შემახსენე.",
+      "critical": [],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": true
+    },
+    {
+      "id": "android-silence",
+      "file": "android-silence.wav",
+      "humanRecorded": false,
+      "device": "android",
+      "split": "heldout",
+      "condition": "silence",
+      "category": "silence",
+      "reference": "",
+      "critical": [],
+      "speechStartMs": null,
+      "speechEndMs": null
+    },
+    {
+      "id": "android-noise-only",
+      "file": "android-noise-only.wav",
+      "humanRecorded": false,
+      "device": "android",
+      "split": "heldout",
+      "condition": "silence",
+      "category": "noise-only",
+      "reference": "",
+      "critical": [],
+      "speechStartMs": null,
+      "speechEndMs": null
+    },
+    {
+      "id": "iphone-01",
+      "file": "iphone-01.wav",
+      "humanRecorded": false,
+      "device": "iphone",
+      "split": "tune",
+      "condition": "quiet",
+      "category": "ordinary",
+      "reference": "რა ამინდია დღეს თბილისში?",
+      "critical": [],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "iphone-02",
+      "file": "iphone-02.wav",
+      "humanRecorded": false,
+      "device": "iphone",
+      "split": "tune",
+      "condition": "quiet",
+      "category": "names",
+      "reference": "ხვალ ნინოს დაბადების დღე შემახსენე.",
+      "critical": [
+        "ნინოს"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "iphone-03",
+      "file": "iphone-03.wav",
+      "humanRecorded": false,
+      "device": "iphone",
+      "split": "tune",
+      "condition": "quiet",
+      "category": "numbers",
+      "reference": "დააყენე ტაიმერი ჩვიდმეტი წუთით.",
+      "critical": [
+        "ჩვიდმეტი"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "iphone-04",
+      "file": "iphone-04.wav",
+      "humanRecorded": false,
+      "device": "iphone",
+      "split": "tune",
+      "condition": "quiet",
+      "category": "mixed",
+      "reference": "გახსენი YouTube და მოძებნე ქართული სიმღერა.",
+      "critical": [
+        "YouTube"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "iphone-05",
+      "file": "iphone-05.wav",
+      "humanRecorded": false,
+      "device": "iphone",
+      "split": "tune",
+      "condition": "quiet",
+      "category": "quiet",
+      "reference": "მითხარი ახლა რომელი საათია.",
+      "critical": [],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "iphone-06",
+      "file": "iphone-06.wav",
+      "humanRecorded": false,
+      "device": "iphone",
+      "split": "tune",
+      "condition": "noise",
+      "category": "noise",
+      "reference": "ხვალ ბათუმში იწვიმებს?",
+      "critical": [
+        "ბათუმში"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "iphone-07",
+      "file": "iphone-07.wav",
+      "humanRecorded": false,
+      "device": "iphone",
+      "split": "tune",
+      "condition": "quiet",
+      "category": "pauses",
+      "reference": "მინდა გავიგო, ხვალ დილით, როგორი ამინდი იქნება ქუთაისში.",
+      "critical": [
+        "ქუთაისში"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": true
+    },
+    {
+      "id": "iphone-08",
+      "file": "iphone-08.wav",
+      "humanRecorded": false,
+      "device": "iphone",
+      "split": "tune",
+      "condition": "quiet",
+      "category": "long",
+      "reference": "ხვალ დილით მეგობრებთან ერთად ვაპირებ გასეირნებას და მინდა წინასწარ ვიცოდე, როგორი ამინდი იქნება თბილისში, დაგვჭირდება თუ არა ქოლგა და დღის რომელ მონაკვეთში ჯობს სახლიდან გასვლა.",
+      "critical": [],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": true
+    },
+    {
+      "id": "iphone-09",
+      "file": "iphone-09.wav",
+      "humanRecorded": false,
+      "device": "iphone",
+      "split": "tune",
+      "condition": "quiet",
+      "category": "names",
+      "reference": "მარიამს და გიორგის შეხვედრა გვაქვს ოთხშაბათს.",
+      "critical": [
+        "მარიამს",
+        "გიორგის"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "iphone-10",
+      "file": "iphone-10.wav",
+      "humanRecorded": false,
+      "device": "iphone",
+      "split": "tune",
+      "condition": "quiet",
+      "category": "numbers",
+      "reference": "გამოთვალე ას ოცდახუთს დამატებული სამოცდაშვიდი.",
+      "critical": [
+        "ას ოცდახუთს",
+        "სამოცდაშვიდი"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "iphone-11",
+      "file": "iphone-11.wav",
+      "humanRecorded": false,
+      "device": "iphone",
+      "split": "tune",
+      "condition": "quiet",
+      "category": "mixed",
+      "reference": "Spotify-ში მუსიკა მოძებნე.",
+      "critical": [
+        "Spotify"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "iphone-12",
+      "file": "iphone-12.wav",
+      "humanRecorded": false,
+      "device": "iphone",
+      "split": "tune",
+      "condition": "noise",
+      "category": "noise",
+      "reference": "დააყენე მაღვიძარა დილის რვა საათსა და ოც წუთზე.",
+      "critical": [
+        "რვა",
+        "ოც"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "iphone-13",
+      "file": "iphone-13.wav",
+      "humanRecorded": false,
+      "device": "iphone",
+      "split": "tune",
+      "condition": "quiet",
+      "category": "quiet",
+      "reference": "ათი წუთის შემდეგ ჩაი შემახსენე.",
+      "critical": [
+        "ათი"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "iphone-14",
+      "file": "iphone-14.wav",
+      "humanRecorded": false,
+      "device": "iphone",
+      "split": "tune",
+      "condition": "quiet",
+      "category": "pauses",
+      "reference": "ჯერ მითხარი დრო, მერე, ცოტა ხანში, ამინდიც მაინტერესებს.",
+      "critical": [],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": true
+    },
+    {
+      "id": "iphone-15",
+      "file": "iphone-15.wav",
+      "humanRecorded": false,
+      "device": "iphone",
+      "split": "tune",
+      "condition": "quiet",
+      "category": "long",
+      "reference": "დღეს ბევრი საქმე მაქვს: ჯერ მაღაზიაში უნდა წავიდე, შემდეგ სახლში დავბრუნდე და ვახშამი მოვამზადო, ამიტომ მინდა ნახევარი საათით ტაიმერი დამიყენო და მანამდე მშვიდი მუსიკა მოვისმინო.",
+      "critical": [],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": true
+    },
+    {
+      "id": "iphone-16",
+      "file": "iphone-16.wav",
+      "humanRecorded": false,
+      "device": "iphone",
+      "split": "heldout",
+      "condition": "quiet",
+      "category": "ordinary",
+      "reference": "რამდენი საათია ახლა?",
+      "critical": [],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "iphone-17",
+      "file": "iphone-17.wav",
+      "humanRecorded": false,
+      "device": "iphone",
+      "split": "heldout",
+      "condition": "quiet",
+      "category": "names",
+      "reference": "ლევანს და თეკლას პარასკევს უნდა შევხვდე.",
+      "critical": [
+        "ლევანს",
+        "თეკლას"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "iphone-18",
+      "file": "iphone-18.wav",
+      "humanRecorded": false,
+      "device": "iphone",
+      "split": "heldout",
+      "condition": "quiet",
+      "category": "numbers",
+      "reference": "დააყენე ტაიმერი ოცდასამი წუთით.",
+      "critical": [
+        "ოცდასამი"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "iphone-19",
+      "file": "iphone-19.wav",
+      "humanRecorded": false,
+      "device": "iphone",
+      "split": "heldout",
+      "condition": "quiet",
+      "category": "mixed",
+      "reference": "გახსენი WhatsApp.",
+      "critical": [
+        "WhatsApp"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "iphone-20",
+      "file": "iphone-20.wav",
+      "humanRecorded": false,
+      "device": "iphone",
+      "split": "heldout",
+      "condition": "quiet",
+      "category": "quiet",
+      "reference": "ხვალ დილის შვიდ საათზე გამაღვიძე.",
+      "critical": [
+        "შვიდ"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "iphone-21",
+      "file": "iphone-21.wav",
+      "humanRecorded": false,
+      "device": "iphone",
+      "split": "heldout",
+      "condition": "noise",
+      "category": "noise",
+      "reference": "როგორი ამინდია დღეს რუსთავში?",
+      "critical": [
+        "რუსთავში"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "iphone-22",
+      "file": "iphone-22.wav",
+      "humanRecorded": false,
+      "device": "iphone",
+      "split": "heldout",
+      "condition": "quiet",
+      "category": "pauses",
+      "reference": "ხვალ, დილის ცხრა საათზე, შეხვედრის შესახებ შემახსენე.",
+      "critical": [
+        "ცხრა"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": true
+    },
+    {
+      "id": "iphone-23",
+      "file": "iphone-23.wav",
+      "humanRecorded": false,
+      "device": "iphone",
+      "split": "heldout",
+      "condition": "quiet",
+      "category": "long",
+      "reference": "შაბათს ოჯახთან ერთად ქალაქგარეთ გასვლას ვგეგმავ, მაგრამ ჯერ არ ვიცი ზუსტად რომელ საათზე გავალთ, ამიტომ მითხარი როგორი ამინდი იქნება და ხომ არ არის მოსალოდნელი წვიმა დღის მეორე ნახევარში.",
+      "critical": [],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": true
+    },
+    {
+      "id": "iphone-24",
+      "file": "iphone-24.wav",
+      "humanRecorded": false,
+      "device": "iphone",
+      "split": "heldout",
+      "condition": "quiet",
+      "category": "names",
+      "reference": "სალომეს შეხვედრა აქვს ზუგდიდში.",
+      "critical": [
+        "სალომეს",
+        "ზუგდიდში"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "iphone-25",
+      "file": "iphone-25.wav",
+      "humanRecorded": false,
+      "device": "iphone",
+      "split": "heldout",
+      "condition": "quiet",
+      "category": "numbers",
+      "reference": "რამდენია ორას ოცდათოთხმეტს გამოკლებული ოთხმოცდაცხრამეტი?",
+      "critical": [
+        "ორას ოცდათოთხმეტს",
+        "ოთხმოცდაცხრამეტი"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "iphone-26",
+      "file": "iphone-26.wav",
+      "humanRecorded": false,
+      "device": "iphone",
+      "split": "heldout",
+      "condition": "quiet",
+      "category": "mixed",
+      "reference": "Google Maps-ში მოძებნე თავისუფლების მოედანი.",
+      "critical": [
+        "Google Maps",
+        "თავისუფლების"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "iphone-27",
+      "file": "iphone-27.wav",
+      "humanRecorded": false,
+      "device": "iphone",
+      "split": "heldout",
+      "condition": "noise",
+      "category": "noise",
+      "reference": "გამაღვიძე დილის ექვს საათსა და ორმოცდახუთ წუთზე.",
+      "critical": [
+        "ექვს",
+        "ორმოცდახუთ"
+      ],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "iphone-28",
+      "file": "iphone-28.wav",
+      "humanRecorded": false,
+      "device": "iphone",
+      "split": "heldout",
+      "condition": "quiet",
+      "category": "quiet",
+      "reference": "შეაჩერე მუსიკა და მითხარი დრო.",
+      "critical": [],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": false
+    },
+    {
+      "id": "iphone-29",
+      "file": "iphone-29.wav",
+      "humanRecorded": false,
+      "device": "iphone",
+      "split": "heldout",
+      "condition": "quiet",
+      "category": "pauses",
+      "reference": "მინდა ტაიმერი, არა, ჯერ მითხარი, რამდენი წუთია ერთ საათში.",
+      "critical": [],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": true
+    },
+    {
+      "id": "iphone-30",
+      "file": "iphone-30.wav",
+      "humanRecorded": false,
+      "device": "iphone",
+      "split": "heldout",
+      "condition": "quiet",
+      "category": "long",
+      "reference": "დღის ბოლოს მინდა მშვიდად დავისვენო, მანამდე კი ვაპირებ რამდენიმე საქმის დასრულებას, მეგობართან დარეკვას და ხვალინდელი გეგმის შედგენას, ამიტომ ჯერ მითხარი რომელი საათია და შემდეგ ამინდიც შემახსენე.",
+      "critical": [],
+      "speechStartMs": null,
+      "speechEndMs": null,
+      "keepListening": true
+    },
+    {
+      "id": "iphone-silence",
+      "file": "iphone-silence.wav",
+      "humanRecorded": false,
+      "device": "iphone",
+      "split": "heldout",
+      "condition": "silence",
+      "category": "silence",
+      "reference": "",
+      "critical": [],
+      "speechStartMs": null,
+      "speechEndMs": null
+    },
+    {
+      "id": "iphone-noise-only",
+      "file": "iphone-noise-only.wav",
+      "humanRecorded": false,
+      "device": "iphone",
+      "split": "heldout",
+      "condition": "silence",
+      "category": "noise-only",
+      "reference": "",
+      "critical": [],
+      "speechStartMs": null,
+      "speechEndMs": null
+    }
+  ],
+  "deviceGates": {}
+}

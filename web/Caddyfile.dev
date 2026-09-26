@@ -1,0 +1,10 @@
+http://:3000 {
+	handle /api/stt/stream {
+		reverse_proxy 127.0.0.1:3001
+	}
+	handle {
+		reverse_proxy 127.0.0.1:3002 {
+			flush_interval -1
+		}
+	}
+}

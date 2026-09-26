@@ -7,10 +7,15 @@ import { runAssistantTurn } from '@/lib/assistantTurn';
 import { orbPlayback } from '@/lib/orbPlayback';
 import { wakeWord } from '@/lib/wakeWord';
 import { useVoiceStore } from '@/stores/voiceStore';
+import { useAuthStore } from '@/stores/authStore';
+import { streamingEnabled, streamUrl } from '@/stt/client';
+import { SttController, type Socket } from '@/stt/controller';
+import { expoCapture } from '@/stt/expoCapture';
+import { ensureMicrophonePermission } from './usePermissions';
 
 import { usePcmRecorder } from './usePcmRecorder';
 
-type Mode = 'idle' | 'recording';
+type Mode = 'idle' | 'connecting' | 'recording';
 
 // Orchestrates record → STT → assistant turn (chat SSE → TTS → playback).
 //
@@ -18,10 +23,9 @@ type Mode = 'idle' | 'recording';
 // shared verbatim with the screen-off headless wake turn; this hook owns the
 // foreground concerns: recording, turn/interrupt bookkeeping, and orb playback.
 //
-// Capture is raw PCM16 (usePcmRecorder → Picovoice voice-processor), buffered
-// locally and sent whole to Chirp 2 on stop. There is no fallback recorder: the
-// native module is compiled into every build, so a start failure is a real
-// error the user should see, not a silent downgrade.
+// The server selects foreground streaming or the preserved legacy recorder
+// before each utterance. Streaming always uses Expo AudioStream on both
+// platforms. A failed utterance is never replayed through another provider.
 //
 // Turns run as a hands-free CONVERSATION: one tap opens a session and the mic
 // re-arms itself after every answer, so a back-and-forth costs exactly one tap
@@ -31,6 +35,9 @@ type Mode = 'idle' | 'recording';
 export function useVoicePipeline() {
   const pcmRecorder = usePcmRecorder();
   const modeRef = useRef<Mode>('idle');
+  const streamRef = useRef<SttController | null>(null);
+  const configAbort = useRef<AbortController | null>(null);
+  const permissionPending = useRef(false);
 
   // Each user turn gets a monotonic id. Anything async (chat SSE, sentence
   // playback) checks it before touching audio or shared state, so an interrupt
@@ -73,8 +80,8 @@ export function useVoicePipeline() {
     [cancelActiveTurn],
   );
 
-  const startListening = useCallback(async () => {
-    if (modeRef.current === 'recording') return;
+  const startListening = useCallback(async (): Promise<void> => {
+    if (modeRef.current !== 'idle') return;
     // Opening a session (rather than re-arming inside one) gets a fresh id, so
     // turns from an earlier session are orphaned and can't drive this one.
     if (!conversationRef.current) {
@@ -85,6 +92,9 @@ export function useVoicePipeline() {
     // otherwise its result would fire a ghost turn while the user is already
     // re-recording (stopListeningAndSend checks this id after the STT await).
     turnIdRef.current += 1;
+    const myTurn = turnIdRef.current;
+    const mySession = sessionRef.current;
+    modeRef.current = 'connecting';
     useVoiceStore.getState().setError(null);
     useVoiceStore.getState().setTranscript('');
 
@@ -93,11 +103,69 @@ export function useVoicePipeline() {
     wakeWord.pauseDetection();
 
     try {
-      await pcmRecorder.start();
+      const abort = new AbortController();
+      configAbort.current = abort;
+      const timeout = setTimeout(() => abort.abort(), 5000);
+      let streaming: boolean;
+      try { streaming = await streamingEnabled(abort.signal); }
+      finally { clearTimeout(timeout); if (configAbort.current === abort) configAbort.current = null; }
+      if (myTurn !== turnIdRef.current || mySession !== sessionRef.current) return;
+      if (AppState.currentState === 'background') throw new Error('Listening stopped while the app was in the background.');
+      if (streaming) {
+        // Ask permission before connecting; OS permission dialogs briefly background the app.
+        permissionPending.current = true;
+        let granted: boolean;
+        try { granted = await ensureMicrophonePermission(); }
+        finally { permissionPending.current = false; }
+        if (myTurn !== turnIdRef.current || mySession !== sessionRef.current) return;
+        if (!granted) throw new Error('Microphone permission denied');
+        if (String(AppState.currentState) === 'background') throw new Error('Listening stopped while the app was in the background.');
+        const store = useVoiceStore.getState();
+        store.setStt({ streaming: true, sttState: 'connecting', listeningSeconds: 0, keepListening: false });
+        const controller = new SttController({
+          capture: expoCapture(), socket: () => new WebSocket(streamUrl()) as unknown as Socket,
+          token: useAuthStore.getState().token ?? '',
+          identity: { sessionId: `s${mySession}_${Date.now()}`, utteranceId: `u${myTurn}_${Date.now()}` },
+          state: state => {
+            if (myTurn !== turnIdRef.current) return;
+            useVoiceStore.getState().setStt({ sttState: state });
+            useVoiceStore.getState().setListening(state === 'listening');
+            modeRef.current = state === 'listening' ? 'recording' : state === 'connecting' || state === 'finalizing' ? 'connecting' : 'idle';
+          },
+          partial: text => { if (myTurn === turnIdRef.current) useVoiceStore.getState().setTranscript(text); },
+          elapsed: seconds => { if (myTurn === turnIdRef.current) useVoiceStore.getState().setStt({ listeningSeconds: seconds }); },
+        });
+        streamRef.current = controller;
+        void controller.start().then(async text => {
+          if (myTurn !== turnIdRef.current || mySession !== sessionRef.current) return;
+          streamRef.current = null;
+          wakeWord.resumeDetection();
+          useVoiceStore.getState().setTranscript('');
+          if (!text) { conversationRef.current = false; return; }
+          await handleText(text);
+          if (mySession === sessionRef.current && conversationRef.current && !useVoiceStore.getState().error) await startListening();
+          else if (mySession === sessionRef.current) conversationRef.current = false;
+        }).catch(error => {
+          if (myTurn !== turnIdRef.current || mySession !== sessionRef.current) return;
+          streamRef.current = null; conversationRef.current = false; modeRef.current = 'idle';
+          expireSessionIf401(error.message);
+          useVoiceStore.getState().setError(error.message);
+          useVoiceStore.getState().setTranscript('');
+          useVoiceStore.getState().setListening(false);
+          wakeWord.resumeDetection();
+        });
+        return;
+      }
+      useVoiceStore.getState().setStt({ streaming: false, sttState: 'idle' });
+      permissionPending.current = true;
+      try { await pcmRecorder.start(); } finally { permissionPending.current = false; }
+      if (myTurn !== turnIdRef.current || mySession !== sessionRef.current) { await pcmRecorder.stop(); return; }
       modeRef.current = 'recording';
       useVoiceStore.getState().setListening(true);
     } catch (err) {
+      if (myTurn !== turnIdRef.current || mySession !== sessionRef.current) return;
       const msg = err instanceof Error ? err.message : 'Recording failed';
+      expireSessionIf401(msg);
       useVoiceStore.getState().setError(msg);
       useVoiceStore.getState().setListening(false);
       modeRef.current = 'idle';
@@ -105,9 +173,10 @@ export function useVoicePipeline() {
       // Recording never started — let the wake word listen again.
       wakeWord.resumeDetection();
     }
-  }, [pcmRecorder]);
+  }, [pcmRecorder, handleText]);
 
   const stopListeningAndSend = useCallback(async () => {
+    if (streamRef.current) { streamRef.current.finish(); return; }
     if (modeRef.current !== 'recording') return;
     modeRef.current = 'idle';
     useVoiceStore.getState().setListening(false);
@@ -180,6 +249,16 @@ export function useVoicePipeline() {
     conversationRef.current = false;
     sessionRef.current += 1; // orphan any turn still in flight
     cancelActiveTurn();
+    configAbort.current?.abort(); configAbort.current = null;
+    const streaming = streamRef.current;
+    streamRef.current = null;
+    streaming?.cancel();
+    useVoiceStore.getState().setStt({ sttState: 'idle', listeningSeconds: 0, keepListening: false });
+    if (streaming || modeRef.current === 'connecting') {
+      modeRef.current = 'idle';
+      useVoiceStore.getState().setListening(false);
+      wakeWord.resumeDetection();
+    }
     useVoiceStore.getState().setSpeaking(false);
     useVoiceStore.getState().setThinking(false);
     useVoiceStore.getState().setTranscript('');
@@ -217,12 +296,14 @@ export function useVoicePipeline() {
       // startListening() before `recording` is set — reacting to that would
       // close the session the user is in the middle of opening.
       const { isThinking, isSpeaking } = useVoiceStore.getState();
-      if (modeRef.current === 'recording' || isThinking || isSpeaking) {
+      if (streamRef.current || (modeRef.current === 'connecting' && !permissionPending.current) || modeRef.current === 'recording' || isThinking || isSpeaking) {
         void stopConversation();
       }
     });
     return () => sub.remove();
   }, [stopConversation]);
+
+  useEffect(() => () => { void stopConversation(); }, [stopConversation]);
 
   const stopSpeaking = useCallback(() => {
     cancelActiveTurn();
@@ -238,7 +319,11 @@ export function useVoicePipeline() {
     stopListeningAndSend,
     stopConversation,
     isConversationActive: () => conversationRef.current,
-    sendText: handleText,
+    sendText: async (text: string) => { await stopConversation(); await handleText(text); },
+    keepListening: () => {
+      streamRef.current?.keepListening();
+      useVoiceStore.getState().setStt({ keepListening: true });
+    },
     stopSpeaking,
   };
 }

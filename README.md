@@ -96,3 +96,7 @@ npm run android
 ## Status
 
 Android-first, preparing for Play Store launch. iOS is planned after (without the wake word — iOS doesn't allow background mic access for third-party apps).
+
+## Streaming STT migration
+
+The foreground Georgian streaming path is implemented behind a server rollout flag; the existing recognizer remains the default. See [setup, deployment, evaluation, and device-test instructions](docs/stt/README.md) and [verification evidence](docs/stt/VERIFICATION.md).

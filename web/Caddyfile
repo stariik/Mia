@@ -1,9 +1,13 @@
 {$DOMAIN} {
-	reverse_proxy app:3000 {
-		# The chat route streams SSE token-by-token, and the app starts speaking
-		# each sentence as it arrives. Any proxy buffering here would hold the
-		# whole reply back and undo the streaming — disable it explicitly rather
-		# than trust auto-detection.
-		flush_interval -1
+	handle /api/stt/stream {
+		reverse_proxy stt:3001 {
+			flush_interval -1
+		}
+	}
+	handle {
+		reverse_proxy app:3000 {
+			# Preserve chat SSE delivery without proxy buffering.
+			flush_interval -1
+		}
 	}
 }
