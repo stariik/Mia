@@ -137,11 +137,11 @@ export async function POST(request: Request) {
               config: {
                 systemInstruction,
                 temperature: 0.7,
-                // Voice replies are 1–2 short sentences. Georgian is token-heavy,
-                // so 200 fits a normal reply without truncating mid-sentence (a
-                // cut-off sentence would clip TTS), while still bounding rambles.
-                // The real brevity lever is the system prompt; this is the guard.
-                maxOutputTokens: 200,
+                // Gemini's thinking tokens count against this cap, and with the
+                // profile in context thinking alone runs 200–300 tokens: at 200
+                // the reply after a tool call came back empty. Brevity is the
+                // system prompt's job; this only bounds a runaway.
+                maxOutputTokens: 1024,
                 thinkingConfig: LOW_THINKING,
                 ...(toolDefs.length > 0 && {
                   tools: [{ functionDeclarations: toolDefs }],
