@@ -1,6 +1,7 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { persist, type PersistStorage, type StorageValue } from 'zustand/middleware';
+
+import { storage as AsyncStorage } from '@/lib/storage';
 
 export type Message = {
   role: 'user' | 'assistant';

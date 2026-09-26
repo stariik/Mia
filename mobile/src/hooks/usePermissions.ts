@@ -1,4 +1,8 @@
 import { PermissionsAndroid, Platform } from 'react-native';
+import {
+  getRecordingPermissionsAsync,
+  requestRecordingPermissionsAsync,
+} from 'expo-audio';
 
 type AndroidPermission = (typeof PermissionsAndroid.PERMISSIONS)[keyof typeof PermissionsAndroid.PERMISSIONS];
 type Rationale = {
@@ -40,6 +44,10 @@ async function ensurePermission(
 export async function ensureMicrophonePermission(): Promise<boolean> {
   // Mic is only requested from a direct user action (tapping the orb), so a
   // repeat prompt is fine — it can't loop.
+  if (Platform.OS === 'ios') {
+    if ((await getRecordingPermissionsAsync()).granted) return true;
+    return (await requestRecordingPermissionsAsync()).granted;
+  }
   return ensurePermission(
     PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
     {

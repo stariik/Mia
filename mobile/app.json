@@ -1,4 +1,17 @@
 {
   "name": "mobile",
-  "displayName": "mobile"
+  "displayName": "mobile",
+  "expo": {
+    "name": "Mia",
+    "slug": "mobile",
+    "extra": {
+      "eas": {
+        "projectId": "33e0bf9f-cda3-4c09-9674-922f5f4117bd"
+      }
+    },
+    "owner": "exult777",
+    "plugins": [
+      "expo-font"
+    ]
+  }
 }

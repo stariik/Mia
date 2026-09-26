@@ -1,6 +1,5 @@
-import ReactNativeBlobUtil from 'react-native-blob-util';
-
 import { synthesizeWithElevenLabs } from '@/api/synthesize';
+import { fs } from '@/lib/fs';
 import type { TtsPlayback } from './assistantTurn';
 
 export function mimeForPath(path: string): string {
@@ -37,7 +36,7 @@ export function makeFilePlayback(
         try {
           await playFile(path, onStart);
         } finally {
-          ReactNativeBlobUtil.fs.unlink(path).catch(() => {});
+          fs.unlink(path);
         }
       });
       chain = p.catch(() => {});

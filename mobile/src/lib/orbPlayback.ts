@@ -1,7 +1,6 @@
-import ReactNativeBlobUtil from 'react-native-blob-util';
-
 import type { TtsPlayback } from './assistantTurn';
 import { makeFilePlayback, mimeForPath } from './filePlayback';
+import { fs } from './fs';
 import { dlog } from './log';
 import { orbAudio } from './orbAudio';
 
@@ -16,7 +15,7 @@ import { orbAudio } from './orbAudio';
 // up), synthesize to a file in RN and hand it over as base64 — the path this
 // used to take, kept because it is the difference between "slower" and "mute".
 const fileFallback = makeFilePlayback(async (path, onStart) => {
-  const base64 = await ReactNativeBlobUtil.fs.readFile(path, 'base64');
+  const base64 = await fs.readBase64(path);
   onStart?.();
   await orbAudio.play(base64, mimeForPath(path));
 }, () => orbAudio.stop());

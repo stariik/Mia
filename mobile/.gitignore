@@ -83,3 +83,8 @@ android/app/upload-keystore.jks
 
 # Sentry Config File
 sentry.properties
+
+# Expo
+.expo
+dist/
+web-build/

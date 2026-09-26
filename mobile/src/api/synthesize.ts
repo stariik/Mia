@@ -1,4 +1,4 @@
-import ReactNativeBlobUtil from 'react-native-blob-util';
+import { fs } from '@/lib/fs';
 
 import { apiUrl, authHeaders } from './client';
 
@@ -21,19 +21,18 @@ export async function synthesizeWithElevenLabs(
   // final syllable. Only the WebView's MediaSource path can take the streamed
   // shape safely, and that one doesn't come through here at all.
   const url = apiUrl('/api/synthesize-elevenlabs') + (opts?.complete ? '?complete=1' : '');
-  const task = ReactNativeBlobUtil.config({
-    fileCache: true,
-    appendExt: 'mp3',
-  }).fetch(
-    'POST',
-    url,
-    { 'Content-Type': 'application/json', ...authHeaders() },
-    JSON.stringify({ text }),
-  );
-  const res = await task;
-  const info = res.info();
-  if (info.status < 200 || info.status >= 300) {
-    throw new Error(`TTS failed (${info.status})`);
+  try {
+    return await fs.downloadToCache(
+      url,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ text }),
+      },
+      'mp3',
+    );
+  } catch (e) {
+    const status = /HTTP (\d+)/.exec(String(e))?.[1];
+    throw status ? new Error(`TTS failed (${status})`) : e;
   }
-  return res.path();
 }

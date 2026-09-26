@@ -1,4 +1,5 @@
 package com.mobile
+import expo.modules.ReactActivityDelegateWrapper
 
 import android.app.KeyguardManager
 import android.content.Context
@@ -20,7 +21,7 @@ class MainActivity : ReactActivity() {
   override fun getMainComponentName(): String = "mobile"
 
   override fun createReactActivityDelegate(): ReactActivityDelegate =
-      DefaultReactActivityDelegate(this, mainComponentName, fabricEnabled)
+      ReactActivityDelegateWrapper(this, BuildConfig.IS_NEW_ARCHITECTURE_ENABLED, DefaultReactActivityDelegate(this, mainComponentName, fabricEnabled))
 
   override fun onCreate(savedInstanceState: Bundle?) {
     // Splash screen — paints the brand-marked launch screen until JS calls
