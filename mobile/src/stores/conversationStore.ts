@@ -7,6 +7,9 @@ export type Message = {
   role: 'user' | 'assistant';
   content: string;
   timestamp: number;
+  // Tool calls made while answering, as compact log lines from the server —
+  // resent as context so follow-ups ("and tomorrow?") know what was done.
+  actions?: string[];
 };
 
 export type Conversation = {
@@ -20,9 +23,13 @@ type ConversationState = {
   conversations: Record<string, Conversation>;
   order: string[]; // most recent first
   activeId: string | null;
+  // When the user last picked a chat from history (not persisted), so a
+  // deliberately reopened old chat isn't treated as stale — see assistantTurn.
+  selectedAt: number;
 
   addMessage: (msg: Message) => void;
   updateLastAssistant: (content: string) => void;
+  addActions: (actions: string[]) => void;
   clear: () => void;
 
   newConversation: () => string;
@@ -103,6 +110,7 @@ export const useConversationStore = create<ConversationState>()(
       conversations: {},
       order: [],
       activeId: null,
+      selectedAt: 0,
 
       addMessage: (msg) =>
         set((s) => {
@@ -165,6 +173,26 @@ export const useConversationStore = create<ConversationState>()(
           };
         }),
 
+      // Attached to whatever message is last (the turn's user message, or the
+      // reply if text streamed first) — history only needs them in the window.
+      addActions: (actions) =>
+        set((s) => {
+          if (!s.activeId) return s;
+          const conv = s.conversations[s.activeId];
+          const last = conv?.messages[conv.messages.length - 1];
+          if (!last) return s;
+          const messages = [
+            ...conv.messages.slice(0, -1),
+            { ...last, actions: [...(last.actions ?? []), ...actions] },
+          ];
+          return {
+            conversations: {
+              ...s.conversations,
+              [s.activeId]: { ...conv, messages, updatedAt: Date.now() },
+            },
+          };
+        }),
+
       clear: () =>
         set((s) => {
           if (!s.activeId) return s;
@@ -192,7 +220,9 @@ export const useConversationStore = create<ConversationState>()(
       },
 
       selectConversation: (id) =>
-        set((s) => (s.conversations[id] ? { activeId: id } : s)),
+        set((s) =>
+          s.conversations[id] ? { activeId: id, selectedAt: Date.now() } : s,
+        ),
 
       deleteConversation: (id) =>
         set((s) => {

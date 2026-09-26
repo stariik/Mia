@@ -4,6 +4,11 @@ import { gemini, CHAT_MODEL, LOW_THINKING } from "@/lib/gemini";
 import { guard } from "@/lib/apiGuard";
 import { GEORGIAN_ASSISTANT_SYSTEM_PROMPT } from "@/lib/prompts";
 import {
+  actionLine,
+  formatProfile,
+  formatRecentActions,
+} from "@/lib/chatMemory";
+import {
   getToolDefinitions,
   findTool,
   isServerTool,
@@ -30,6 +35,10 @@ type ChatRequestBody = {
     // right one by id (see cancel_timer / cancel_alarm).
     timers?: ActiveTimer[];
     alarms?: ActiveAlarm[];
+    // Long-term facts about the user and this conversation's earlier tool
+    // calls — see lib/chatMemory.ts.
+    profile?: unknown;
+    recentActions?: unknown;
   };
 };
 
@@ -89,10 +98,14 @@ export async function POST(request: Request) {
         : undefined);
     const toolCtx: ToolContext = { userCoords };
 
-    const activeState = formatActiveState(userContext);
-    const systemInstruction = activeState
-      ? `${GEORGIAN_ASSISTANT_SYSTEM_PROMPT}\n\n${activeState}`
-      : GEORGIAN_ASSISTANT_SYSTEM_PROMPT;
+    const systemInstruction = [
+      GEORGIAN_ASSISTANT_SYSTEM_PROMPT,
+      formatActiveState(userContext),
+      formatProfile(userContext?.profile),
+      formatRecentActions(userContext?.recentActions),
+    ]
+      .filter(Boolean)
+      .join("\n\n");
     const contents: Content[] = [
       // Gemini rejects empty parts, so skip blank turns.
       ...history
@@ -158,6 +171,7 @@ export async function POST(request: Request) {
 
             const clientCalls: ClientToolCall[] = [];
             const responses: Part[] = [];
+            const actions: string[] = [];
 
             // Execute tools
             for (const call of calls) {
@@ -185,12 +199,15 @@ export async function POST(request: Request) {
               responses.push({
                 functionResponse: { id: call.id, name, response: result },
               });
+              actions.push(actionLine(name, args, result));
             }
             contents.push({ role: "user", parts: responses });
 
             if (clientCalls.length > 0) {
               send({ toolCalls: clientCalls });
             }
+            // The client stores these so later turns know what was done.
+            send({ actions });
             // loop continues: ask the model to produce a natural-language reply
           }
 

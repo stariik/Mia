@@ -143,8 +143,11 @@ export default function PrivacyPolicyPage() {
             solely to show local weather. We do not store your location.
           </li>
           <li style={li}>
-            <b>Conversation history.</b> Stored <b>only on your device</b>; it is
-            not sent to our servers.
+            <b>Conversation history and personal memory.</b> Stored <b>only on
+            your device</b>. Personal memory is short facts you tell Mia (e.g.
+            your name or city); you can review and delete them in Settings.
+            Recent messages and these facts are sent with each request so Mia
+            can reply in context, but our servers do not store them.
           </li>
         </ul>
 
