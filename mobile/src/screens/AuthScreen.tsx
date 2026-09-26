@@ -1,6 +1,9 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
+  BackHandler,
+  Keyboard,
+  type KeyboardEvent,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -8,367 +11,634 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import LinearGradient from 'react-native-linear-gradient';
+import { LinearGradient } from 'expo-linear-gradient';
 import Reanimated, {
-  interpolate,
+  Easing,
+  FadeIn,
+  FadeInDown,
+  FadeInUp,
+  FadeOut,
+  LinearTransition,
   useAnimatedStyle,
   useSharedValue,
   withSequence,
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import Svg, { Circle, Line, Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { authApi } from '@/api/auth';
-import { AuroraBackdrop } from '@/components/AuroraBackdrop';
+import { AuthBackdrop } from '@/components/auth/AuthBackdrop';
+import { AuthField } from '@/components/auth/AuthField';
+import { GradientButton } from '@/components/auth/GradientButton';
+import { ArrowIcon, SparkIcon } from '@/components/auth/icons';
+import { IslandOrb } from '@/components/auth/IslandOrb';
+import { PasswordStrength } from '@/components/auth/PasswordStrength';
+import { SuccessBurst } from '@/components/auth/SuccessBurst';
 import { MiaWordmark } from '@/components/MiaWordmark';
+import { userErrorMessage } from '@/lib/errorMessages';
 import { haptics } from '@/lib/haptics';
-import { useAuthStore } from '@/stores/authStore';
-import { brandGradient, colors, fonts, radius, spacing, typography } from '@/theme';
+import { type AuthUser, useAuthStore } from '@/stores/authStore';
+import { colors, fonts, radius, spacing, typography } from '@/theme';
 
-type Tab = 'login' | 'register';
-type FocusKey = 'email' | 'password' | 'confirm' | null;
+// Auth flow: Sign in ↔ Create account (email step → password step) → a short
+// success moment before RootNavigator swaps to Home. Every mode change slides
+// the card content in the direction of travel while the card itself springs
+// to its new height, so the flow reads as one continuous surface.
 
-function EyeIcon({ open, color }: { open: boolean; color: string }) {
-  return (
-    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
-      <Path
-        d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12Z"
-        stroke={color}
-        strokeWidth={1.8}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <Circle cx={12} cy={12} r={2.6} stroke={color} strokeWidth={1.8} />
-      {!open ? (
-        <Line
-          x1={4}
-          y1={20}
-          x2={20}
-          y2={4}
-          stroke={color}
-          strokeWidth={1.8}
-          strokeLinecap="round"
-        />
-      ) : null}
-    </Svg>
-  );
+type Mode = 'login' | 'email' | 'password' | 'done';
+type DoneKind = 'login' | 'register' | 'guest';
+
+const ORDER: Record<Mode, number> = { login: 0, email: 1, password: 2, done: 3 };
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const SUCCESS_HOLD_MS = 1300;
+// Tight, near-critically damped spring: settles in ~250ms with no wobble.
+const SNAPPY = { damping: 24, stiffness: 340, mass: 0.8 };
+// Launch entrance: a short, eased rise with no overshoot, as the splash
+// crossfades out.
+const EASE_OUT = Easing.bezier(0.22, 1, 0.36, 1);
+const ENTER_MS = 650;
+
+const COPY: Record<Exclude<Mode, 'done'>, { title: string; subtitle: string; cta: string }> = {
+  login: {
+    title: 'კეთილი იყოს შენი დაბრუნება',
+    subtitle: 'შედი ანგარიშზე და განაგრძე საუბარი Mia-სთან',
+    cta: 'შესვლა',
+  },
+  email: {
+    title: 'შევქმნათ შენი ანგარიში',
+    subtitle: 'დავიწყოთ ელ. ფოსტით — სულ რამდენიმე წამი',
+    cta: 'გაგრძელება',
+  },
+  password: {
+    title: 'მოიფიქრე პაროლი',
+    subtitle: '',
+    cta: 'ანგარიშის შექმნა',
+  },
+};
+
+const DONE_COPY: Record<DoneKind, { title: string; subtitle: string }> = {
+  login: { title: 'მოგესალმები!', subtitle: 'Mia უკვე გელოდება…' },
+  register: { title: 'ანგარიში შეიქმნა!', subtitle: 'კეთილი იყოს შენი მობრძანება Mia-ში' },
+  guest: { title: 'სტუმრის რეჟიმი', subtitle: 'დეველოპერის სესია ჩაირთო' },
+};
+
+function authErrorMessage(err: unknown): string {
+  const msg = err instanceof Error ? err.message : '';
+  if (/incorrect email or password/i.test(msg)) return 'ელ. ფოსტა ან პაროლი არასწორია';
+  if (/already in use/i.test(msg)) return 'ეს ელ. ფოსტა უკვე დარეგისტრირებულია';
+  if (/invalid email/i.test(msg)) return 'ელ. ფოსტის ფორმატი არასწორია';
+  if (/not found/i.test(msg)) return 'სტუმრის რეჟიმი მხოლოდ დეველოპმენტშია ხელმისაწვდომი';
+  return userErrorMessage(msg);
 }
 
 export function AuthScreen() {
   const insets = useSafeAreaInsets();
-  const [tab, setTab] = useState<Tab>('login');
+  const loginStore = useAuthStore((s) => s.login);
+
+  const [mode, setMode] = useState<Mode>('login');
+  const [doneKind, setDoneKind] = useState<DoneKind>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
-  const [showPw, setShowPw] = useState(false);
-  const [focused, setFocused] = useState<FocusKey>(null);
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState<'submit' | 'guest' | null>(null);
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  // Bottom padding that lifts the page above the keyboard (0 while hidden).
+  const [kbInset, setKbInset] = useState(0);
   const [trackW, setTrackW] = useState(0);
 
-  // 0 = login, 1 = register. Normalized progress on the UI thread: layout
-  // passes (confirm field mounting/unmounting) can't stomp the transform the
-  // way they could with RN Animated's native driver.
-  const slide = useSharedValue(0);
-  const fade = useSharedValue(1);
-  const shake = useSharedValue(0);
-  const loginStore = useAuthStore((s) => s.login);
-
+  const emailRef = useRef<TextInput>(null);
   const pwRef = useRef<TextInput>(null);
   const confirmRef = useRef<TextInput>(null);
+  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  // Timers call go() from older renders; read the live mode.
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
+  const dirRef = useRef(1);
+  const focusNext = useRef<React.RefObject<TextInput | null> | null>(null);
+  const mounted = useRef(false);
+  const rootRef = useRef<View>(null);
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollY = useRef(0);
+  const kbHeight = useRef(0);
+  const kbInsetRef = useRef(0);
+  // Root height with the keyboard down, and its latest height.
+  const restH = useRef(0);
+  const rootH = useRef(0);
 
-  const pillW = trackW > 0 ? (trackW - 8) / 2 : 0;
+  const contentX = useSharedValue(0);
+  const contentO = useSharedValue(1);
+  const tabPos = useSharedValue(0);
+  const step = useSharedValue(0);
+  const shake = useSharedValue(0);
+  const pulse = useSharedValue(1);
 
-  const pillStyle = useAnimatedStyle(
-    () => ({
-      transform: [{ translateX: slide.value * pillW }],
-    }),
-    [pillW],
-  );
-  const fadeStyle = useAnimatedStyle(() => ({ opacity: fade.value }));
-  const shakeStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: interpolate(shake.value, [-1, 1], [-8, 8]) }],
-  }));
-  const canSubmit =
-    email.trim().length > 0 &&
-    password.length > 0 &&
-    (tab === 'login' || confirm.length > 0);
+  const isRegister = mode === 'email' || mode === 'password';
+  const trimmedEmail = email.trim().toLowerCase();
+  const emailValid = EMAIL_RE.test(trimmedEmail);
+  const pwLongEnough = password.length >= 6;
+  const pwMatch = confirm.length > 0 && confirm === password;
 
-  function switchTab(next: Tab) {
-    if (next === tab || loading) return;
-    haptics.selection();
-    setError('');
-    setConfirm('');
-    setShowPw(false);
-    slide.value = withSpring(next === 'login' ? 0 : 1, {
-      damping: 18,
-      stiffness: 220,
+  const ready =
+    mode === 'login'
+      ? emailValid && password.length > 0
+      : mode === 'email'
+        ? emailValid
+        : pwLongEnough && pwMatch;
+
+  function later(fn: () => void, ms: number) {
+    timers.current.push(setTimeout(fn, ms));
+  }
+
+  // The keyboard draws over the window: iOS never resizes it, and Android
+  // (edge-to-edge is forced at targetSdk 36) ignores adjustResize. Pad the
+  // page by whatever part of the keyboard the window didn't shrink away, so
+  // this stays right even on a device where adjustResize still works.
+  function updateInset() {
+    const shrunk = Math.max(0, restH.current - rootH.current);
+    const next = Math.max(0, Math.round(kbHeight.current - shrunk));
+    kbInsetRef.current = next;
+    setKbInset(next);
+  }
+
+  // Scroll the focused field (plus a little room for the button below it)
+  // into the area above the keyboard.
+  function revealFocused() {
+    const input = TextInput.State.currentlyFocusedInput();
+    const root = rootRef.current;
+    if (!input || !root || kbHeight.current === 0) return;
+    root.measureInWindow((_rx, ry, _rw, rh) => {
+      input.measureInWindow((_ix, iy, _iw, ih) => {
+        const top = ry + insets.top + spacing.md;
+        const bottom = ry + rh - kbInsetRef.current - spacing.lg;
+        const below = iy + ih + spacing.xl - bottom;
+        const above = top - iy;
+        const delta = below > 0 ? below : above > 0 ? -above : 0;
+        if (delta !== 0) {
+          scrollRef.current?.scrollTo({ y: Math.max(0, scrollY.current + delta), animated: true });
+        }
+      });
     });
-    fade.value = withSequence(
-      withTiming(0.4, { duration: 100 }),
-      withTiming(1, { duration: 160 }),
+  }
+
+  useEffect(() => {
+    const t = timers.current;
+    // iOS fires will* events, so the page moves with the keyboard.
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const show = Keyboard.addListener(showEvt, (e: KeyboardEvent) => {
+      kbHeight.current = e.endCoordinates.height;
+      updateInset();
+      setKeyboardOpen(true);
+    });
+    const hide = Keyboard.addListener(hideEvt, () => {
+      kbHeight.current = 0;
+      updateInset();
+      setKeyboardOpen(false);
+    });
+    return () => {
+      t.forEach(clearTimeout);
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+
+  // Once the padding has landed (and the tagline has collapsed), bring the
+  // focused field into view.
+  useEffect(() => {
+    if (kbInset > 0) later(revealFocused, 80);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kbInset]);
+
+  // Hopping between fields with the keyboard already up.
+  function onFieldFocus() {
+    if (kbHeight.current > 0) later(revealFocused, 80);
+  }
+
+  useEffect(() => {
+    tabPos.value = withSpring(isRegister ? 1 : 0, SNAPPY);
+    step.value = withSpring(mode === 'password' ? 1 : 0, SNAPPY);
+  }, [isRegister, mode, tabPos, step]);
+
+  // Slide the new mode's content in right after it commits — no exit phase to
+  // wait on, so a tap switches instantly.
+  useLayoutEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
+    contentO.value = withSequence(withTiming(0, { duration: 0 }), withTiming(1, { duration: 180 }));
+    contentX.value = withSequence(
+      withTiming(dirRef.current * 32, { duration: 0 }),
+      withSpring(0, SNAPPY),
     );
-    setTab(next);
+    focusNext.current?.current?.focus();
+    focusNext.current = null;
+  }, [mode, contentO, contentX]);
+
+  // Android back walks the flow backwards before leaving the app.
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (mode === 'password') {
+        go('email');
+        return true;
+      }
+      if (mode === 'email') {
+        go('login');
+        return true;
+      }
+      return false;
+    });
+    return () => sub.remove();
+  });
+
+  function go(next: Mode) {
+    const from = modeRef.current;
+    if (next === from) return;
+    dirRef.current = ORDER[next] > ORDER[from] ? 1 : -1;
+    modeRef.current = next;
+    setMode(next);
+    setError('');
+    if (next !== 'password') setConfirm('');
+  }
+
+  function bumpOrb() {
+    pulse.value = withSequence(
+      withTiming(1.07, { duration: 70 }),
+      withSpring(1, { damping: 7, stiffness: 180 }),
+    );
   }
 
   function showError(msg: string) {
     setError(msg);
     haptics.warn();
-    shake.value = 0;
     shake.value = withSequence(
-      withTiming(1, { duration: 50 }),
-      withTiming(-1, { duration: 50 }),
-      withTiming(1, { duration: 50 }),
-      withTiming(0, { duration: 50 }),
+      withTiming(1, { duration: 45 }),
+      withTiming(-1, { duration: 45 }),
+      withTiming(0.6, { duration: 45 }),
+      withTiming(-0.6, { duration: 45 }),
+      withTiming(0, { duration: 45 }),
     );
+  }
+
+  function finish(kind: DoneKind, token: string, user: AuthUser) {
+    haptics.success();
+    Keyboard.dismiss();
+    setDoneKind(kind);
+    go('done');
+    // Let the success moment land before RootNavigator fades to Home.
+    later(() => {
+      loginStore(token, user).catch(() => {
+        go('login');
+        showError('შენახვა ვერ მოხერხდა, სცადე კიდევ');
+      });
+    }, SUCCESS_HOLD_MS);
   }
 
   async function submit() {
     if (loading) return;
     setError('');
-    const trimEmail = email.trim().toLowerCase();
-    if (!trimEmail || !password) {
-      showError('ყველა ველის შევსება სავალდებულოა');
+
+    if (mode === 'email') {
+      if (!emailValid) return showError('შეიყვანე სწორი ელ. ფოსტა');
+      focusNext.current = pwRef;
+      go('password');
       return;
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimEmail)) {
-      showError('ელ. ფოსტის ფორმატი არასწორია');
-      return;
+    if (!emailValid) return showError('შეიყვანე სწორი ელ. ფოსტა');
+    if (mode === 'login' && !password) return showError('შეიყვანე პაროლი');
+    if (mode === 'password') {
+      if (!pwLongEnough) return showError('პაროლი მინიმუმ 6 სიმბოლო უნდა იყოს');
+      if (!pwMatch) return showError('პაროლები არ ემთხვევა');
     }
-    if (password.length < 6) {
-      showError('პაროლი მინიმუმ 6 სიმბოლო');
-      return;
-    }
-    if (tab === 'register' && password !== confirm) {
-      showError('პაროლები არ ემთხვევა');
-      return;
-    }
-    setLoading(true);
+
+    setLoading('submit');
     try {
       const { token, user } =
-        tab === 'login'
-          ? await authApi.login(trimEmail, password)
-          : await authApi.register(trimEmail, password);
-      haptics.success();
-      await loginStore(token, user);
+        mode === 'login'
+          ? await authApi.login(trimmedEmail, password)
+          : await authApi.register(trimmedEmail, password);
+      finish(mode === 'login' ? 'login' : 'register', token, user);
     } catch (err) {
-      showError(err instanceof Error ? err.message : 'შეცდომა, სცადე კიდევ');
+      showError(authErrorMessage(err));
     } finally {
-      setLoading(false);
+      setLoading(null);
     }
   }
 
-  return (
-    <View style={styles.root}>
-      <AuroraBackdrop />
+  async function continueAsGuest() {
+    if (loading) return;
+    haptics.tap();
+    setError('');
+    setLoading('guest');
+    try {
+      const { token, user } = await authApi.guest();
+      finish('guest', token, user);
+    } catch (err) {
+      showError(authErrorMessage(err));
+    } finally {
+      setLoading(null);
+    }
+  }
 
-      {/* No KeyboardAvoidingView: the manifest's adjustResize already shrinks
-          the window for the keyboard; stacking KAV on top caused the
-          open→relayout→blur→close loop. ScrollView handles the rest. */}
+  const contentStyle = useAnimatedStyle(() => ({
+    opacity: contentO.value,
+    transform: [{ translateX: contentX.value }],
+  }));
+  const pillStyle = useAnimatedStyle(
+    () => ({ transform: [{ translateX: tabPos.value * ((trackW - 8) / 2) }] }),
+    [trackW],
+  );
+  const stepFillStyle = useAnimatedStyle(() => ({
+    transform: [{ scaleX: step.value }],
+  }));
+  const shakeStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: shake.value * 9 }],
+  }));
+
+  const copy = mode === 'done' ? null : COPY[mode];
+  const layoutSpring = LinearTransition.springify().damping(24).stiffness(340).mass(0.8);
+
+  return (
+    <View
+      ref={rootRef}
+      style={styles.root}
+      onLayout={(e) => {
+        const h = e.nativeEvent.layout.height;
+        rootH.current = h;
+        if (kbHeight.current === 0) restH.current = h;
+        else updateInset();
+      }}
+    >
+      <AuthBackdrop />
+
+      {/* The page is one screen tall and does not scroll at rest: content
+          centers vertically. While the keyboard is up the content gets
+          bottom padding for it (see updateInset) and scrolling unlocks, so
+          the focused field can always be reached. No KeyboardAvoidingView —
+          stacked on adjustResize it caused an open→relayout→blur→close loop. */}
       <ScrollView
-        style={styles.scrollRoot}
+        ref={scrollRef}
+        style={styles.flex}
         contentContainerStyle={[
-          styles.scroll,
+          styles.page,
           {
-            paddingTop: insets.top + spacing.xl,
-            paddingBottom: insets.bottom + spacing.xl,
+            paddingTop: insets.top + spacing.md,
+            paddingBottom: Math.max(insets.bottom, kbInset) + spacing.lg,
           },
         ]}
+        onScroll={(e) => {
+          scrollY.current = e.nativeEvent.contentOffset.y;
+        }}
+        scrollEventThrottle={16}
+        scrollEnabled={keyboardOpen}
+        bounces={false}
+        overScrollMode="never"
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Hero ─────────────────────────────────────────── */}
-        <View style={styles.hero}>
-          <MiaWordmark size={46} />
-          <Text style={styles.tagline}>შენი ხმოვანი ასისტენტი</Text>
-        </View>
-
-        {/* ── Auth card ─────────────────────────────────────── */}
-        <LinearGradient
-          colors={[
-            'rgba(109,59,245,0.55)',
-            'rgba(255,77,139,0.45)',
-            'rgba(255,107,61,0.25)',
-          ]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.cardBorder}
+        {/* ── Brand ────────────────────────────────────────── */}
+        <Reanimated.View
+          entering={FadeInDown.delay(60)
+            .duration(ENTER_MS)
+            .easing(EASE_OUT)
+            .withInitialValues({ transform: [{ translateY: -10 }] })}
+          layout={layoutSpring}
+          style={styles.brand}
         >
-          <View style={styles.card}>
-            {/* Tab switcher */}
-            <View
-              style={styles.track}
-              onLayout={(e) => setTrackW(e.nativeEvent.layout.width)}
-            >
-              {pillW > 0 ? (
-                <Reanimated.View
-                  style={[styles.pill, { width: pillW }, pillStyle]}
-                />
-              ) : null}
-              <Pressable style={styles.tabBtn} onPress={() => switchTab('login')}>
-                <Text style={[styles.tabText, tab === 'login' && styles.tabTextOn]}>
-                  შესვლა
-                </Text>
-              </Pressable>
-              <Pressable style={styles.tabBtn} onPress={() => switchTab('register')}>
-                <Text style={[styles.tabText, tab === 'register' && styles.tabTextOn]}>
-                  რეგისტრაცია
-                </Text>
-              </Pressable>
-            </View>
+          <MiaWordmark size={38} />
+          {!keyboardOpen ? <Text style={styles.tagline}>შენი ხმოვანი ასისტენტი</Text> : null}
+        </Reanimated.View>
 
-            {/* Fields */}
-            <Reanimated.View style={[styles.fields, fadeStyle]}>
-              {/* Email */}
-              <View style={styles.fieldWrap}>
-                <Text style={styles.fieldLabel}>ელ. ფოსტა</Text>
-                <View
-                  style={[
-                    styles.inputBox,
-                    focused === 'email' && styles.inputBoxFocused,
-                  ]}
+        {/* ── Card ─────────────────────────────────────────── */}
+        <Reanimated.View
+          entering={FadeInUp.delay(140)
+            .duration(ENTER_MS)
+            .easing(EASE_OUT)
+            .withInitialValues({ transform: [{ translateY: 16 }] })}
+          layout={layoutSpring}
+          style={styles.card}
+        >
+          {/* Brand wash across the top edge; fixed height so it never has to
+              follow the card's animated frame. */}
+          <LinearGradient
+            colors={['rgba(109,59,245,0.22)', 'rgba(255,77,139,0.06)', 'rgba(22,23,40,0)']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0.6, y: 1 }}
+            style={styles.cardWash}
+            pointerEvents="none"
+          />
+
+          {mode !== 'done' ? (
+            <Reanimated.View exiting={FadeOut.duration(120)}>
+              {/* Segmented switch */}
+              <View style={styles.track} onLayout={(e) => setTrackW(e.nativeEvent.layout.width)}>
+                {trackW > 0 ? (
+                  <Reanimated.View style={[styles.pill, { width: (trackW - 8) / 2 }, pillStyle]}>
+                    <LinearGradient
+                      colors={['rgba(109,59,245,0.35)', 'rgba(255,77,139,0.28)']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={StyleSheet.absoluteFill}
+                    />
+                  </Reanimated.View>
+                ) : null}
+                <Pressable
+                  style={styles.tabBtn}
+                  onPress={() => go('login')}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: !isRegister }}
                 >
-                  <TextInput
-                    style={styles.input}
-                    placeholder="you@example.com"
-                    placeholderTextColor={colors.outline}
-                    value={email}
-                    onChangeText={setEmail}
-                    onFocus={() => setFocused('email')}
-                    onBlur={() => setFocused(null)}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    autoComplete="email"
-                    keyboardType="email-address"
-                    returnKeyType="next"
-                    blurOnSubmit={false}
-                    onSubmitEditing={() => pwRef.current?.focus()}
-                  />
-                </View>
+                  <Text style={[styles.tabText, !isRegister && styles.tabTextOn]}>შესვლა</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.tabBtn}
+                  onPress={() => !isRegister && go('email')}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: isRegister }}
+                >
+                  <Text style={[styles.tabText, isRegister && styles.tabTextOn]}>რეგისტრაცია</Text>
+                </Pressable>
               </View>
 
-              {/* Password */}
-              <View style={styles.fieldWrap}>
-                <Text style={styles.fieldLabel}>პაროლი</Text>
-                <View
-                  style={[
-                    styles.inputBox,
-                    styles.inputBoxRow,
-                    focused === 'password' && styles.inputBoxFocused,
-                  ]}
-                >
-                  <TextInput
-                    ref={pwRef}
-                    style={[styles.input, styles.inputFlex]}
-                    placeholder="მინ. 6 სიმბოლო"
-                    placeholderTextColor={colors.outline}
-                    value={password}
-                    onChangeText={setPassword}
-                    onFocus={() => setFocused('password')}
-                    onBlur={() => setFocused(null)}
-                    secureTextEntry={!showPw}
-                    autoComplete={tab === 'login' ? 'password' : 'new-password'}
-                    returnKeyType={tab === 'login' ? 'go' : 'next'}
-                    blurOnSubmit={tab === 'login'}
-                    onSubmitEditing={
-                      tab === 'login' ? submit : () => confirmRef.current?.focus()
-                    }
-                  />
-                  <Pressable
-                    onPress={() => setShowPw((v) => !v)}
-                    hitSlop={10}
-                    style={styles.eyeBtn}
-                  >
-                    <EyeIcon
-                      open={showPw}
-                      color={showPw ? colors.primary : colors.outline}
-                    />
-                  </Pressable>
-                </View>
-              </View>
-
-              {/* Confirm password — register only */}
-              {tab === 'register' && (
-                <View style={styles.fieldWrap}>
-                  <Text style={styles.fieldLabel}>პაროლის დადასტურება</Text>
-                  <View
-                    style={[
-                      styles.inputBox,
-                      focused === 'confirm' && styles.inputBoxFocused,
-                      confirm.length > 0 &&
-                        password === confirm &&
-                        styles.inputBoxMatch,
-                    ]}
-                  >
-                    <TextInput
-                      ref={confirmRef}
-                      style={styles.input}
-                      placeholder="გაიმეორე პაროლი"
-                      placeholderTextColor={colors.outline}
-                      value={confirm}
-                      onChangeText={setConfirm}
-                      onFocus={() => setFocused('confirm')}
-                      onBlur={() => setFocused(null)}
-                      secureTextEntry={!showPw}
-                      autoComplete="new-password"
-                      returnKeyType="go"
-                      onSubmitEditing={submit}
-                    />
+              {/* Register progress */}
+              {isRegister ? (
+                <Reanimated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(100)} style={styles.progress}>
+                  <View style={styles.progressBars}>
+                    <View style={[styles.progressSeg, styles.progressSegOn]} />
+                    <View style={styles.progressSeg}>
+                      <Reanimated.View style={[styles.progressFill, stepFillStyle]} />
+                    </View>
                   </View>
-                </View>
-              )}
+                  <Text style={styles.progressText}>
+                    ნაბიჯი {mode === 'password' ? 2 : 1} / 2
+                  </Text>
+                </Reanimated.View>
+              ) : null}
             </Reanimated.View>
+          ) : null}
 
-            {/* Error */}
-            {error ? (
-              <Reanimated.View style={[styles.errorBox, shakeStyle]}>
-                <Text style={styles.errorText}>{error}</Text>
-              </Reanimated.View>
-            ) : null}
+          <Reanimated.View style={contentStyle}>
+            {mode === 'done' ? (
+              <SuccessBurst {...DONE_COPY[doneKind]} />
+            ) : (
+              <>
+                <Text style={styles.title}>{copy!.title}</Text>
+                {mode === 'password' ? (
+                  <Pressable onPress={() => go('email')} hitSlop={8} style={styles.emailChip}>
+                    <ArrowIcon color={colors.textMuted} direction="left" size={14} />
+                    <Text numberOfLines={1} style={styles.emailChipText}>{trimmedEmail}</Text>
+                    <Text style={styles.emailChipEdit}>შეცვლა</Text>
+                  </Pressable>
+                ) : (
+                  <Text style={styles.subtitle}>{copy!.subtitle}</Text>
+                )}
 
-            {/* CTA */}
+                <View style={styles.fields}>
+                  {mode !== 'password' ? (
+                    <AuthField
+                      ref={emailRef}
+                      onFocus={onFieldFocus}
+                      label="ელ. ფოსტა"
+                      icon="mail"
+                      value={email}
+                      valid={emailValid}
+                      invalid={!!error && !emailValid}
+                      onChangeText={(v) => {
+                        setEmail(v);
+                        bumpOrb();
+                      }}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      autoComplete="email"
+                      textContentType="emailAddress"
+                      keyboardType="email-address"
+                      returnKeyType={mode === 'login' ? 'next' : 'go'}
+                      submitBehavior={mode === 'login' ? 'submit' : 'blurAndSubmit'}
+                      onSubmitEditing={mode === 'login' ? () => pwRef.current?.focus() : submit}
+                    />
+                  ) : null}
+
+                  {mode !== 'email' ? (
+                    <AuthField
+                      ref={pwRef}
+                      onFocus={onFieldFocus}
+                      label={mode === 'login' ? 'პაროლი' : 'ახალი პაროლი'}
+                      icon="lock"
+                      secure
+                      value={password}
+                      invalid={!!error && mode === 'password' && !pwLongEnough}
+                      onChangeText={(v) => {
+                        setPassword(v);
+                        bumpOrb();
+                      }}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      autoComplete={mode === 'login' ? 'password' : 'new-password'}
+                      textContentType={mode === 'login' ? 'password' : 'newPassword'}
+                      returnKeyType={mode === 'login' ? 'go' : 'next'}
+                      submitBehavior={mode === 'login' ? 'blurAndSubmit' : 'submit'}
+                      onSubmitEditing={mode === 'login' ? submit : () => confirmRef.current?.focus()}
+                    />
+                  ) : null}
+
+                  {mode === 'password' ? (
+                    <>
+                      <PasswordStrength password={password} />
+                      {/* The green check inside this field doubles as the
+                          "passwords match" indicator. */}
+                      <AuthField
+                        ref={confirmRef}
+                        onFocus={onFieldFocus}
+                        label="გაიმეორე პაროლი"
+                        icon="shield"
+                        secure
+                        value={confirm}
+                        valid={pwMatch && pwLongEnough}
+                        invalid={!!error && !pwMatch}
+                        onChangeText={(v) => {
+                          setConfirm(v);
+                          bumpOrb();
+                        }}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        autoComplete="new-password"
+                        textContentType="newPassword"
+                        returnKeyType="go"
+                        submitBehavior="blurAndSubmit"
+                        onSubmitEditing={submit}
+                      />
+                    </>
+                  ) : null}
+                </View>
+
+                {/* Enter/exit on the wrapper, shake on the box: both drive
+                    transform, so they can't share a view. */}
+                {error ? (
+                  <Reanimated.View
+                    entering={FadeInDown.springify().damping(16)}
+                    exiting={FadeOut.duration(120)}
+                  >
+                    <Reanimated.View style={[styles.errorBox, shakeStyle]}>
+                      <Text style={styles.errorText}>{error}</Text>
+                    </Reanimated.View>
+                  </Reanimated.View>
+                ) : null}
+
+                <GradientButton
+                  label={copy!.cta}
+                  onPress={submit}
+                  loading={loading === 'submit'}
+                  ready={ready}
+                />
+
+                <Pressable
+                  onPress={() => go(mode === 'login' ? 'email' : 'login')}
+                  hitSlop={8}
+                  style={styles.switchHint}
+                >
+                  <Text style={styles.switchHintText}>
+                    {mode === 'login' ? 'ჯერ არ გაქვს ანგარიში? ' : 'უკვე გაქვს ანგარიში? '}
+                    <Text style={styles.switchHintAccent}>
+                      {mode === 'login' ? 'შექმენი' : 'შედი'}
+                    </Text>
+                  </Text>
+                </Pressable>
+              </>
+            )}
+          </Reanimated.View>
+        </Reanimated.View>
+
+        {/* ── Dev-only guest session ───────────────────────── */}
+        {__DEV__ && (mode === 'login' || mode === 'email') ? (
+          <Reanimated.View
+            entering={FadeIn.delay(320).duration(ENTER_MS).easing(EASE_OUT)}
+            exiting={FadeOut.duration(120)}
+            layout={layoutSpring}
+          >
             <Pressable
-              onPress={submit}
-              disabled={loading}
-              style={({ pressed }) => [
-                styles.cta,
-                !canSubmit && styles.ctaDim,
-                pressed && { opacity: 0.88, transform: [{ scale: 0.985 }] },
-              ]}
+              onPress={continueAsGuest}
+              disabled={!!loading}
+              style={({ pressed }) => [styles.guestBtn, pressed && styles.guestBtnPressed]}
+              accessibilityRole="button"
+              accessibilityLabel="სტუმრად შესვლა"
             >
-              <LinearGradient
-                colors={[...brandGradient]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={StyleSheet.absoluteFill}
-              />
-              {loading ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <Text style={styles.ctaText}>
-                  {tab === 'login' ? 'შესვლა' : 'ანგარიშის შექმნა'}
-                </Text>
-              )}
-            </Pressable>
-
-            {/* Switch hint */}
-            <Pressable
-              onPress={() => switchTab(tab === 'login' ? 'register' : 'login')}
-              hitSlop={8}
-              style={styles.switchHint}
-            >
-              <Text style={styles.switchHintText}>
-                {tab === 'login' ? 'არ გაქვს ანგარიში? ' : 'უკვე გაქვს ანგარიში? '}
-                <Text style={styles.switchHintAccent}>
-                  {tab === 'login' ? 'შექმენი' : 'შესვლა'}
-                </Text>
+              <SparkIcon color={colors.primary} />
+              <Text style={styles.guestText}>
+                {loading === 'guest' ? 'იტვირთება…' : 'სტუმრად შესვლა'}
               </Text>
+              <View style={styles.devChip}>
+                <Text style={styles.devChipText}>DEV</Text>
+              </View>
             </Pressable>
-          </View>
-        </LinearGradient>
+          </Reanimated.View>
+        ) : null}
       </ScrollView>
+
+      {/* Status-bar orb beside the Dynamic Island; above the scroll view so it
+          draws over the status bar. */}
+      <IslandOrb pulse={pulse} />
     </View>
   );
 }
@@ -378,20 +648,19 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bgDeep,
   },
-  scrollRoot: {
+  flex: {
     flex: 1,
   },
-  scroll: {
+  page: {
     flexGrow: 1,
     justifyContent: 'center',
     paddingHorizontal: spacing.xl,
   },
 
-  // ── Hero ──────────────────────────────────────────────────
-  hero: {
+  // ── Brand ─────────────────────────────────────────────────
+  brand: {
     alignItems: 'center',
-    marginBottom: spacing.xxl,
-    gap: spacing.xs,
+    marginBottom: spacing.lg,
   },
   tagline: {
     ...typography.bodySmall,
@@ -399,29 +668,44 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
   },
 
-  // ── Card border (gradient wrapper) ────────────────────────
-  cardBorder: {
-    borderRadius: radius.xxl + 1,
-    padding: 1,
-  },
+  // ── Card ──────────────────────────────────────────────────
+  // Per-side border colors fake a violet → coral gradient rim that belongs to
+  // the view itself, so it follows the layout transition exactly.
   card: {
     borderRadius: radius.xxl,
-    backgroundColor: colors.surfaceSolid,
+    borderWidth: 1,
+    borderTopColor: 'rgba(109,59,245,0.55)',
+    borderLeftColor: 'rgba(140,70,240,0.4)',
+    borderRightColor: 'rgba(255,77,139,0.3)',
+    borderBottomColor: 'rgba(255,107,61,0.18)',
+    backgroundColor: 'rgba(22,23,40,0.95)',
     paddingHorizontal: spacing.xl,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xs,
     overflow: 'hidden',
+    shadowColor: colors.secondary,
+    shadowOpacity: 0.35,
+    shadowRadius: 30,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 14,
+  },
+  cardWash: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 160,
   },
 
-  // ── Tab switcher ──────────────────────────────────────────
+  // ── Segmented switch ──────────────────────────────────────
   track: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    borderRadius: radius.full,
-    height: 46,
-    marginBottom: spacing.xl,
+    height: 44,
     padding: 4,
-    position: 'relative',
+    borderRadius: radius.full,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    borderWidth: 1,
+    borderColor: colors.stroke,
   },
   pill: {
     position: 'absolute',
@@ -429,71 +713,100 @@ const styles = StyleSheet.create({
     bottom: 4,
     left: 4,
     borderRadius: radius.full,
-    backgroundColor: colors.surfaceElev,
+    overflow: 'hidden',
     borderWidth: 1,
     borderColor: colors.strokeBrand,
+    backgroundColor: colors.surfaceElev,
   },
   tabBtn: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 1,
   },
   tabText: {
-    ...typography.labelSm,
+    fontFamily: fonts.bodyBold,
+    fontSize: 14,
     color: colors.outline,
-    fontSize: 13,
-    letterSpacing: 0.3,
   },
   tabTextOn: {
     color: colors.text,
   },
 
-  // ── Fields ────────────────────────────────────────────────
-  fields: {
-    gap: spacing.md,
-    marginBottom: spacing.md,
-  },
-  fieldWrap: {
-    gap: spacing.xs,
-  },
-  fieldLabel: {
-    ...typography.labelSm,
-    color: colors.textMuted,
-    fontSize: 11,
-    letterSpacing: 0.5,
-    marginLeft: spacing.xs,
-  },
-  inputBox: {
-    borderWidth: 1,
-    borderColor: colors.stroke,
-    borderRadius: radius.lg,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    height: 50,
-    paddingHorizontal: spacing.lg,
-    justifyContent: 'center',
-  },
-  inputBoxRow: {
+  // ── Register progress ─────────────────────────────────────
+  progress: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: spacing.md,
+    marginTop: spacing.md,
   },
-  inputBoxFocused: {
-    borderColor: colors.strokeBrand,
-    backgroundColor: 'rgba(255,77,139,0.04)',
-  },
-  inputBoxMatch: {
-    borderColor: 'rgba(116,224,160,0.45)',
-  },
-  input: {
-    ...typography.body,
-    color: colors.text,
-    padding: 0,
-  },
-  inputFlex: {
+  progressBars: {
     flex: 1,
+    flexDirection: 'row',
+    gap: 6,
   },
-  eyeBtn: {
-    marginLeft: spacing.sm,
+  progressSeg: {
+    flex: 1,
+    height: 4,
+    borderRadius: 2,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  progressSegOn: {
+    backgroundColor: colors.primary,
+  },
+  progressFill: {
+    flex: 1,
+    backgroundColor: colors.primary,
+    transformOrigin: 'left center',
+  },
+  progressText: {
+    fontFamily: fonts.bodyBold,
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+
+  // ── Content ───────────────────────────────────────────────
+  title: {
+    ...typography.title,
+    fontSize: 21,
+    lineHeight: 28,
+    color: colors.text,
+    marginTop: spacing.lg,
+  },
+  subtitle: {
+    ...typography.bodySmall,
+    color: colors.textMuted,
+    marginTop: 4,
+  },
+  emailChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: spacing.sm,
+    maxWidth: '100%',
+    marginTop: spacing.sm,
+    paddingVertical: 5,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.full,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: colors.stroke,
+  },
+  emailChipText: {
+    flexShrink: 1,
+    fontFamily: fonts.body,
+    fontSize: 13,
+    color: colors.text,
+  },
+  emailChipEdit: {
+    fontFamily: fonts.bodyBold,
+    fontSize: 12,
+    color: colors.primary,
+  },
+  fields: {
+    gap: spacing.md,
+    marginTop: spacing.lg,
+    marginBottom: spacing.lg,
   },
 
   // ── Error ─────────────────────────────────────────────────
@@ -501,46 +814,21 @@ const styles = StyleSheet.create({
     backgroundColor: colors.dangerBg,
     borderWidth: 1,
     borderColor: colors.dangerStroke,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    marginBottom: spacing.md,
+    paddingVertical: spacing.sm + 2,
+    marginBottom: spacing.lg,
   },
   errorText: {
     ...typography.bodySmall,
-    color: colors.danger,
+    color: colors.dangerSoft,
     textAlign: 'center',
-  },
-
-  // ── CTA ───────────────────────────────────────────────────
-  cta: {
-    height: 54,
-    borderRadius: radius.xl,
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: spacing.sm,
-    shadowColor: colors.primary,
-    shadowOpacity: 0.5,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 18,
-    elevation: 10,
-  },
-  ctaDim: {
-    opacity: 0.6,
-  },
-  ctaText: {
-    fontFamily: fonts.bodyBold,
-    fontSize: 16,
-    color: '#ffffff',
-    letterSpacing: 0.3,
   },
 
   // ── Switch hint ───────────────────────────────────────────
   switchHint: {
     alignItems: 'center',
     paddingVertical: spacing.md,
-    marginTop: spacing.xs,
   },
   switchHintText: {
     ...typography.bodySmall,
@@ -549,5 +837,43 @@ const styles = StyleSheet.create({
   switchHintAccent: {
     color: colors.primary,
     fontFamily: fonts.bodyBold,
+  },
+
+  // ── Guest ─────────────────────────────────────────────────
+  guestBtn: {
+    height: 46,
+    marginTop: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: colors.strokeStrong,
+    borderStyle: 'dashed',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+  },
+  guestBtnPressed: {
+    backgroundColor: 'rgba(255,77,139,0.08)',
+    borderColor: colors.strokeBrand,
+  },
+  guestText: {
+    fontFamily: fonts.bodyBold,
+    fontSize: 14,
+    color: colors.text,
+  },
+  devChip: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: radius.sm,
+    backgroundColor: 'rgba(255,210,138,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,210,138,0.4)',
+  },
+  devChipText: {
+    fontFamily: fonts.bodyBold,
+    fontSize: 10,
+    letterSpacing: 0.8,
+    color: colors.warning,
   },
 });
