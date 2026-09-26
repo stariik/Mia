@@ -12,3 +12,4 @@ jest.mock('expo-constants', () => ({
   },
 }));
 jest.mock('expo-file-system', () => ({ File: jest.fn(), Paths: {} }));
+jest.mock('expo-audio', () => ({ AudioModule: {}, setAudioModeAsync: jest.fn().mockResolvedValue(undefined) }));

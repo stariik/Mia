@@ -79,44 +79,63 @@ function mergeChunks(chunks: Int16Array[]): Int16Array {
  * Mirrors the server's trimSilence (web .../transcribe-google-v2): the recorder
  * buffers from start-tap to stop-tap, so a capture is often mostly silence.
  * Trimming here shrinks the base64 upload from up to ~20 s down to a few seconds
- * of actual speech — the bulk of STT round-trip time on a mobile network. The
- * server still re-trims defensively (file/headless paths), so this is purely an
- * upload-size optimization; the generous 150 ms padding guards against clipping.
+ * of actual speech — the bulk of STT round-trip time on a mobile network.
+ *
+ * The threshold comes from the clip's own ambient level, not a fixed number: a
+ * fixed one clipped the first word of any utterance that started softly and got
+ * louder, because the leading edge landed on the loud part and the padding
+ * couldn't reach back to the onset. That word is usually the intent word.
+ *
+ * Biased toward keeping audio — trimming exists for upload size, so it can only
+ * ever hurt accuracy. Generous leading pad, conservative threshold floor, whole
+ * clip returned when nothing clearly reads as speech.
  */
-function trimSilence(samples: Int16Array, sampleRate: number): Int16Array {
+export function trimSilence(
+  samples: Int16Array,
+  sampleRate: number,
+): Int16Array {
   if (samples.length < 4) return samples;
   const windowSize = Math.max(1, Math.floor(sampleRate * 0.03)); // 30 ms
-  const padWindows = 5; // 150 ms padding either side
-  const threshold = 600; // mean |amplitude| above this == speech
+  const leadPadWindows = 10; // 300 ms before speech — soft onsets live here
+  const tailPadWindows = 8; // 240 ms after
 
-  const isLoud = (start: number) => {
-    let sum = 0;
-    const end = Math.min(samples.length, start + windowSize);
-    for (let i = start; i < end; i++) sum += Math.abs(samples[i]);
-    return sum / (end - start) > threshold;
-  };
-
-  let firstSpeech = -1;
+  // Per-window mean |amplitude|.
+  const energies: number[] = [];
   for (let i = 0; i + windowSize <= samples.length; i += windowSize) {
-    if (isLoud(i)) {
-      firstSpeech = i;
+    let sum = 0;
+    for (let j = i; j < i + windowSize; j++) sum += Math.abs(samples[j]);
+    energies.push(sum / windowSize);
+  }
+  if (energies.length === 0) return samples;
+
+  // 20th percentile ≈ this room's noise floor. Speech clears 3x that, bounded
+  // so a noisy clip can't push the bar above real speech and a silent one can't
+  // drop it onto hiss.
+  const sorted = [...energies].sort((a, b) => a - b);
+  const noiseFloor = sorted[Math.floor(sorted.length * 0.2)] ?? 0;
+  const threshold = Math.min(1200, Math.max(250, noiseFloor * 3));
+
+  let firstIdx = -1;
+  for (let w = 0; w < energies.length; w++) {
+    if (energies[w] > threshold) {
+      firstIdx = w;
       break;
     }
   }
-  if (firstSpeech === -1) return samples; // no speech found — let the server decide
+  if (firstIdx === -1) return samples; // nothing clearly speech — let the server decide
 
-  let lastSpeech = firstSpeech;
-  for (let i = samples.length - windowSize; i >= 0; i -= windowSize) {
-    if (isLoud(i)) {
-      lastSpeech = i;
+  let lastIdx = firstIdx;
+  for (let w = energies.length - 1; w >= firstIdx; w--) {
+    if (energies[w] > threshold) {
+      lastIdx = w;
       break;
     }
   }
 
-  const startIdx = Math.max(0, firstSpeech - windowSize * padWindows);
+  const startIdx = Math.max(0, (firstIdx - leadPadWindows) * windowSize);
   const endIdx = Math.min(
     samples.length,
-    lastSpeech + windowSize * (padWindows + 1),
+    (lastIdx + 1 + tailPadWindows) * windowSize,
   );
   return samples.slice(startIdx, endIdx);
 }

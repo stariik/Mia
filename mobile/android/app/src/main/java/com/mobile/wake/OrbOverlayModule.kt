@@ -25,6 +25,7 @@ import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.UiThreadUtil
 import com.facebook.react.modules.core.DeviceEventManagerModule
+import java.util.concurrent.ConcurrentHashMap
 import org.json.JSONObject
 import kotlin.math.hypot
 
@@ -55,6 +56,12 @@ class OrbOverlayModule(private val reactCtx: ReactApplicationContext) :
 
   /** Resolves on the WebView's `tts-ended`; rejects on `tts-error`. */
   @Volatile private var ttsPromise: Promise? = null
+
+  /** Streamed sentences still in flight, keyed by the id we handed the WebView.
+   *  Several overlap on purpose — the fetches run in parallel while the
+   *  WebView's own speakQueue serializes playback — so a bare `tts-ended`
+   *  can't say which sentence finished. Same reason orbAudio.ts keys by id. */
+  private val streamPromises = ConcurrentHashMap<String, Promise>()
 
   // ---- permission -----------------------------------------------------------
 
@@ -142,6 +149,10 @@ class OrbOverlayModule(private val reactCtx: ReactApplicationContext) :
         "window.stopTTSAudio && window.stopTTSAudio();" +
           "window.setOrbVisible && window.setOrbVisible(false)",
       )
+      // Settle now, not in HIDE_ANIM_MS — the audio is already cut, so making
+      // the JS turn wait out the exit animation just delays the teardown.
+      resolveTts()
+      settleAllStreams()
       mainHandler.postDelayed({ if (webView === wv) removeOverlay() }, HIDE_ANIM_MS)
     }
   }
@@ -173,10 +184,44 @@ class OrbOverlayModule(private val reactCtx: ReactApplicationContext) :
     inject("window.playTTSAudio && window.playTTSAudio($payload)")
   }
 
+  /**
+   * Stream one sentence: the WebView fetches the audio itself and plays it
+   * through MediaSource as it arrives, so sound starts on the first bytes
+   * instead of after the complete file lands and crosses the bridge as base64.
+   *
+   * This is the SAME `window.speakTTSStream` the in-app orb uses — the overlay
+   * hosts the identical buildOrbHtml output, it just never called it. Resolves
+   * when THIS sentence has finished playing.
+   */
+  @ReactMethod
+  fun speakTtsStream(
+    id: String,
+    text: String,
+    token: String,
+    url: String,
+    promise: Promise,
+  ) {
+    if (webView == null) {
+      // Overlay already dismissed (tap / app opened) — resolve so the JS
+      // playback chain doesn't hang awaiting a tts-ended that can't come.
+      promise.resolve(false)
+      return
+    }
+    streamPromises[id] = promise
+    val payload = JSONObject()
+      .put("id", id)
+      .put("text", text)
+      .put("token", token)
+      .put("url", url)
+      .toString()
+    inject("window.speakTTSStream && window.speakTTSStream($payload)")
+  }
+
   @ReactMethod
   fun stopTts() {
     inject("window.stopTTSAudio && window.stopTTSAudio()")
     resolveTts()
+    settleAllStreams()
   }
 
   // ---- internals ------------------------------------------------------------
@@ -268,6 +313,7 @@ class OrbOverlayModule(private val reactCtx: ReactApplicationContext) :
     }
     windowManager = null
     resolveTts()
+    settleAllStreams()
   }
 
   private fun inject(js: String) {
@@ -300,6 +346,22 @@ class OrbOverlayModule(private val reactCtx: ReactApplicationContext) :
     } catch (_: Exception) {}
   }
 
+  /** `error != null` rejects, so the JS side can fall back to the file path.
+   *  A deliberate stop resolves instead — see settleAllStreams. */
+  private fun settleStream(id: String, error: String? = null) {
+    val p = streamPromises.remove(id) ?: return
+    try {
+      if (error != null) p.reject(ERR_TTS_STREAM, error) else p.resolve(true)
+    } catch (_: Exception) {}
+  }
+
+  /** Settle EVERY streamed sentence still in flight. `stopTTSAudio` drops the
+   *  WebView's queue without reporting each item, and a torn-down overlay never
+   *  reports at all — either way the JS awaiters would hang forever. */
+  private fun settleAllStreams() {
+    for (id in streamPromises.keys.toList()) settleStream(id)
+  }
+
   private fun canDrawOverlays(): Boolean =
     Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(reactCtx)
 
@@ -318,8 +380,28 @@ class OrbOverlayModule(private val reactCtx: ReactApplicationContext) :
     fun postMessage(message: String) {
       try {
         val obj = JSONObject(message)
-        when (obj.optString("kind")) {
-          "tts-ended", "tts-error" -> resolveTts()
+        val kind = obj.optString("kind")
+        when (kind) {
+          "tts-ended", "tts-error" -> {
+            // Streamed sentences carry the id we assigned them; the base64
+            // fallback path carries none and settles the single legacy promise.
+            val payload = obj.optJSONObject("payload")
+            val id = payload?.optString("id").orEmpty()
+            if (id.isEmpty()) {
+              resolveTts()
+            } else {
+              val err =
+                if (kind == "tts-error") {
+                  payload?.optString("error").orEmpty().ifEmpty { "TTS stream failed" }
+                } else {
+                  null
+                }
+              settleStream(id, err)
+            }
+          }
+          // Per-sentence "audio is audible now". The overlay drives its own orb
+          // state from the session, so there is nothing to do with it.
+          "tts-started" -> {}
           "error" -> Log.w(TAG, "orb overlay JS error: ${obj.optString("payload")}")
         }
       } catch (e: Exception) {
@@ -336,6 +418,8 @@ class OrbOverlayModule(private val reactCtx: ReactApplicationContext) :
   companion object {
     const val NAME = "OrbOverlayModule"
     private const val TAG = "OrbOverlay"
+    /** Promise rejection code for a failed streamed sentence. */
+    private const val ERR_TTS_STREAM = "tts_stream"
     private const val OVERLAY_DP = 150f
     private const val OVERLAY_BOTTOM_MARGIN_DP = 160f
 

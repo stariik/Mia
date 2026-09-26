@@ -33,3 +33,6 @@ mia-obs/
 
 # Scratch TTS samples for listening tests — never commit audio
 tts-samples/
+
+# Opt-in STT evaluation audio, transcripts, billing exports, and device reports.
+stt-evaluation-private/

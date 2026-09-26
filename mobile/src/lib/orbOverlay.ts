@@ -1,5 +1,8 @@
 import { DeviceEventEmitter, NativeModules, Platform } from 'react-native';
 
+import { authHeaders } from '@/api/client';
+import { env } from '@/config/env';
+
 import { buildOrbHtml } from './orbHtml';
 
 // Thin JS wrapper over the native Android OrbOverlayModule — the floating "Hey
@@ -18,6 +21,12 @@ type OrbOverlayNative = {
   setState(name: string): void;
   setLevel(level: number): void;
   playTts(base64: string, mime: string): Promise<boolean>;
+  speakTtsStream(
+    id: string,
+    text: string,
+    token: string,
+    url: string,
+  ): Promise<boolean>;
   stopTts(): void;
 };
 
@@ -33,6 +42,15 @@ export type OrbState = 'idle' | 'listening' | 'thinking' | 'speaking';
 export type OrbOverlayEvent = { type: 'tap' };
 
 let shown = false;
+let nextStreamId = 0;
+
+/** Raw JWT for the WebView's own fetch — it can't reuse RN's headers. Same
+ *  extraction orbAudio.ts does for the in-app orb. */
+function bearer(): string | null {
+  const h = authHeaders() as Record<string, string>;
+  const v = h.Authorization;
+  return v ? v.replace(/^Bearer\s+/i, '') : null;
+}
 
 export const orbOverlay = {
   /** True when the native overlay module is linked (Android only, for now). */
@@ -102,6 +120,34 @@ export const orbOverlay = {
   async playTts(base64: string, mime: string): Promise<void> {
     if (!Native || !shown) return;
     await Native.playTts(base64, mime);
+  },
+
+  /** True when streamed playback is possible — needs the orb up and a token. */
+  canStream(): boolean {
+    return Native != null && shown && bearer() != null;
+  },
+
+  /**
+   * Stream one sentence through the overlay orb: its WebView fetches the audio
+   * and plays it via MediaSource as it arrives, so sound starts on the first
+   * bytes rather than after the whole MP3 downloads and crosses the bridge.
+   *
+   * Resolves when THIS sentence has finished playing; rejects if the stream
+   * genuinely failed (a deliberate stop resolves, so callers can safely treat a
+   * rejection as "fall back to the file path"). Call it as soon as the sentence
+   * is known — the WebView overlaps the fetches and serializes playback itself.
+   */
+  async speakStream(text: string): Promise<void> {
+    const token = bearer();
+    if (!Native || !shown || !token) {
+      throw new Error('orb overlay or token unavailable');
+    }
+    await Native.speakTtsStream(
+      `o${nextStreamId++}`,
+      text,
+      token,
+      `${env.apiBaseUrl}/api/synthesize-elevenlabs`,
+    );
   },
 
   stopTts(): void {

@@ -32,6 +32,9 @@ jest.mock('@/lib/wakeWord', () => ({
 }));
 
 jest.mock('@/api/client', () => ({ expireSessionIf401: jest.fn() }));
+jest.mock('@/stt/client', () => ({ streamingEnabled: jest.fn().mockResolvedValue(false), streamUrl: () => 'ws://test/api/stt/stream' }));
+jest.mock('@/stt/expoCapture', () => ({ expoCapture: jest.fn() }));
+jest.mock('@/hooks/usePermissions', () => ({ ensureMicrophonePermission: jest.fn().mockResolvedValue(true) }));
 
 import React from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
@@ -41,6 +44,69 @@ import { transcribeGooglePcm } from '@/api/transcribeGoogle';
 import { useVoicePipeline } from '@/hooks/useVoicePipeline';
 import { runAssistantTurn } from '@/lib/assistantTurn';
 import { useVoiceStore } from '@/stores/voiceStore';
+import { streamingEnabled } from '@/stt/client';
+import { expoCapture } from '@/stt/expoCapture';
+import { ensureMicrophonePermission } from '@/hooks/usePermissions';
+import type { Socket } from '@/stt/controller';
+
+describe('streaming foreground integration', () => {
+  let originalSocket: typeof WebSocket;
+  let sockets: Socket[];
+  const capture = { start: jest.fn().mockResolvedValue(undefined), stop: jest.fn() };
+  beforeEach(() => {
+    originalSocket = globalThis.WebSocket; sockets = [];
+    globalThis.WebSocket = jest.fn(() => {
+      const socket: Socket = { readyState: 1, bufferedAmount: 0, onopen: null, onmessage: null, onclose: null, onerror: null, send: jest.fn(), close: jest.fn() };
+      sockets.push(socket); return socket;
+    }) as unknown as typeof WebSocket;
+    (streamingEnabled as jest.Mock).mockResolvedValue(true);
+    (expoCapture as jest.Mock).mockReturnValue(capture);
+  });
+  afterEach(() => { globalThis.WebSocket = originalSocket; });
+  async function ready() {
+    const ws = sockets.at(-1)!;
+    await act(async () => {
+      ws.onopen?.();
+      const start = JSON.parse((ws.send as jest.Mock).mock.calls[0][0]);
+      ws.onmessage?.({ data: JSON.stringify({ ...start, type: 'ready' }) });
+    });
+    const start = JSON.parse((ws.send as jest.Mock).mock.calls[0][0]);
+    return { ws, message: (event: object) => ws.onmessage?.({ data: JSON.stringify({ ...start, ...event }) }) };
+  }
+  test('only final text enters assistant once and successful answer re-arms', async () => {
+    const p = await mountPipeline(); await act(async () => { await p.startListening(); });
+    const c = await ready();
+    await act(async () => { c.message({ type: 'partial', text: 'partial' }); c.message({ type: 'segment', text: 'segment' }); });
+    expect(mockTurn).not.toHaveBeenCalled();
+    await act(async () => { await p.stopListeningAndSend(); });
+    await act(async () => { c.message({ type: 'final', text: 'complete' }); c.message({ type: 'final', text: 'duplicate' }); });
+    expect(mockTurn).toHaveBeenCalledTimes(1); expect(mockTurn.mock.calls[0][0].text).toBe('complete');
+    expect(sockets).toHaveLength(2); expect(mockTranscribe).not.toHaveBeenCalled();
+    await act(async () => { await p.stopConversation(); });
+  });
+  test('cancel while finalizing suppresses late results and background releases capture', async () => {
+    const p = await mountPipeline(); await act(async () => { await p.startListening(); });
+    const c = await ready();
+    await act(async () => { await p.stopListeningAndSend(); });
+    const late = c.ws.onmessage!;
+    await act(async () => { appStateHandler?.('background'); });
+    await act(async () => { late({ data: JSON.stringify({ type: 'final', text: 'late' }) }); });
+    expect(mockTurn).not.toHaveBeenCalled(); expect(capture.stop).toHaveBeenCalled(); expect(p.isConversationActive()).toBe(false);
+  });
+  test('permission denial never opens a paid socket', async () => {
+    (ensureMicrophonePermission as jest.Mock).mockResolvedValue(false);
+    const p = await mountPipeline(); await act(async () => { await p.startListening(); });
+    expect(sockets).toHaveLength(0); expect(mockTurn).not.toHaveBeenCalled(); expect(p.isConversationActive()).toBe(false);
+  });
+  test('late configuration response after stop cannot start capture', async () => {
+    let release!: (enabled: boolean) => void;
+    (streamingEnabled as jest.Mock).mockImplementation(() => new Promise<boolean>(r => { release = r; }));
+    const p = await mountPipeline(); let pending!: Promise<void>;
+    await act(async () => { pending = p.startListening(); });
+    await act(async () => { await p.stopConversation(); release(true); await pending; });
+    expect(sockets).toHaveLength(0); expect(p.isConversationActive()).toBe(false);
+  });
+});
 
 type Pipeline = ReturnType<typeof useVoicePipeline>;
 
@@ -79,6 +145,8 @@ beforeEach(() => {
   mockRecorder.stop.mockResolvedValue({ audioBase64: 'AAAA', sampleRate: 16000 });
   mockTranscribe.mockResolvedValue('რა ამინდია');
   mockTurn.mockResolvedValue(undefined);
+  (streamingEnabled as jest.Mock).mockResolvedValue(false);
+  (ensureMicrophonePermission as jest.Mock).mockResolvedValue(true);
   useVoiceStore.setState({
     isListening: false,
     isThinking: false,

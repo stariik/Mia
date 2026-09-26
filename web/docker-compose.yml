@@ -1,4 +1,34 @@
 services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "always", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - stt-redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  stt:
+    build:
+      context: .
+      dockerfile: Dockerfile.stt
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379
+      STT_TRUST_PROXY: "true"
+      GOOGLE_APPLICATION_CREDENTIALS: /app/google-service-account.json
+    volumes:
+      - ./google-service-account.json:/app/google-service-account.json:ro
+    expose:
+      - "3001"
+    depends_on:
+      redis:
+        condition: service_healthy
+
   app:
     build: .
     restart: unless-stopped
@@ -27,8 +57,10 @@ services:
       - caddy-config:/config
     depends_on:
       - app
+      - stt
 
 volumes:
+  stt-redis:
   mia-data:
   caddy-data:
   caddy-config:

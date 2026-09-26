@@ -8,7 +8,10 @@
     "start": "next start",
     "lint": "eslint",
     "ws-dev": "tsx watch ws-server.ts",
-    "dev:all": "concurrently -n next,ws -c blue,magenta \"npm run dev\" \"npm run ws-dev\""
+    "dev:all": "concurrently -n next,ws -c blue,magenta \"npm run dev\" \"npm run ws-dev\"",
+    "test:stt": "node --import tsx --test src/stt/*.test.ts",
+    "stt:probe": "node --import tsx scripts/stt-probe.ts",
+    "stt:evaluate": "node --import tsx scripts/stt-evaluate.ts"
   },
   "dependencies": {
     "@google-cloud/speech": "^7.3.1",
@@ -17,6 +20,7 @@
     "openai": "^6.34.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "redis": "^6.2.1",
     "ws": "^8.21.0",
     "zustand": "^5.0.12"
   },

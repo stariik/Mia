@@ -1,6 +1,10 @@
 import { create } from 'zustand';
+import type { ListeningState } from '@/stt/controller';
 
-type VoiceState = {
+type SttState = { streaming: boolean; sttState: ListeningState; listeningSeconds: number; keepListening: boolean };
+
+type VoiceState = SttState & {
+  setStt: (state: Partial<SttState>) => void;
   isListening: boolean;
   isThinking: boolean;
   isSpeaking: boolean;
@@ -20,6 +24,8 @@ type VoiceState = {
 // Camb polls for seconds and OpenAI mispronounces Georgian — so there is no
 // choice left to remember.
 export const useVoiceStore = create<VoiceState>((set) => ({
+  streaming: false, sttState: 'idle', listeningSeconds: 0, keepListening: false,
+  setStt: (state) => set(state),
   isListening: false,
   isThinking: false,
   isSpeaking: false,

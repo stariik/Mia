@@ -10,6 +10,22 @@ const GEORGIAN_RE = /[Ⴀ-ჿ]/; // already-localized messages pass through
 type Rule = { test: RegExp; message: string };
 
 const RULES: Rule[] = [
+  { test: /connection (stalled|lost|timed out)|audio stopped arriving|phone stopped responding/i,
+    message: 'კავშირი შეწყდა — შეამოწმეთ ინტერნეტი და სცადეთ თავიდან' },
+  { test: /no speech|no complete speech|incomplete speech|transcription took too long/i,
+    message: 'საუბარი ვერ ამოვიცანი — სცადეთ თავიდან' },
+  { test: /microphone (interrupted|stopped)|audio route changed|unsupported microphone/i,
+    message: 'მიკროფონი გაითიშა — შეამოწმეთ ყურსასმენი და სცადეთ თავიდან' },
+  { test: /listening limit reached/i,
+    message: 'მოსმენის ლიმიტი ამოიწურა — სცადეთ მოგვიანებით' },
+  { test: /too many attempts/i,
+    message: 'ძალიან ბევრი მცდელობა — მოიცადეთ ერთი წუთი' },
+  { test: /update expo go/i,
+    message: 'განაახლეთ Expo Go და სცადეთ თავიდან' },
+  { test: /streaming disabled/i,
+    message: 'მოსმენა განახლდა — დასაწყებად კვლავ შეეხეთ ორბს' },
+  { test: /speech service unavailable|unable to connect to speech/i,
+    message: 'ხმის ამოცნობა მიუწვდომელია — სცადეთ მოგვიანებით' },
   // Couldn't hear / understand the user.
   {
     test: /empty (recording|transcription)|transcription timed out|chirp 2/i,

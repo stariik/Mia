@@ -406,6 +406,12 @@ class WakeWordService : Service() {
     var lastSpeechMs = startMs
     var lastLevelEmit = 0L
     var speechStarted = false
+    // VAD state — mirrors useSilenceAutoStop.ts phase for phase.
+    var noiseFloor = 0f
+    var startLevel = TURN_MIN_START_LEVEL
+    var calibrated = false
+    var peak = 0f
+    var voiceRunStart = 0L // start of the current above-threshold run; 0 = none
     try {
       record.startRecording()
       Log.i(TAG, "recorder started (turn)")
@@ -430,21 +436,61 @@ class WakeWordService : Service() {
           emitLevel(level)
           lastLevelEmit = now
         }
-        if (level >= TURN_SPEECH_LEVEL) {
-          speechStarted = true
-          lastSpeechMs = now
-        }
         val elapsed = now - startMs
-        when {
-          !speechStarted && elapsed > TURN_PRE_SPEECH_GRACE_MS -> {
-            Log.i(TAG, "[vad] no speech — stopping turn"); break
+
+        // Checked first so a user who never pauses is still capped (the buffer
+        // is held in RAM); everything below can skip the rest of the tick.
+        if (elapsed > TURN_MAX_RECORD_MS) {
+          Log.i(TAG, "[vad] max duration — stopping turn"); break
+        }
+
+        // Phase 1: learn this room's noise floor before judging anything.
+        if (elapsed < TURN_CAL_MS) {
+          if (level > noiseFloor) noiseFloor = level
+          continue
+        }
+        // Phase 2: lock the speech-start bar once, from that floor.
+        if (!calibrated) {
+          calibrated = true
+          startLevel = (noiseFloor * TURN_NOISE_FLOOR_MULTIPLIER)
+            .coerceIn(TURN_MIN_START_LEVEL, TURN_MAX_START_LEVEL)
+          Log.i(TAG, "[vad] calibrated floor=$noiseFloor start=$startLevel")
+        }
+
+        if (level > peak) peak = level
+
+        // Phase 3: hysteresis. Once speech has latched, "still talking" uses a
+        // LOWER bar than "started talking", and that bar scales to how loud this
+        // user actually is — the old fixed bar cut people off as they trailed off.
+        val continueLevel =
+          max(startLevel * TURN_CONTINUE_RATIO, peak * TURN_CONTINUE_PEAK_RATIO)
+        val threshold = if (speechStarted) continueLevel else startLevel
+
+        if (level >= threshold) {
+          if (voiceRunStart == 0L) voiceRunStart = now
+          val runMs = now - voiceRunStart
+          // Latch: a lone spike (cough, door) must not arm the turn.
+          if (!speechStarted && runMs >= TURN_VOICE_LATCH_MS) speechStarted = true
+          // Only a sustained run resets the silence timer.
+          if (!speechStarted || runMs >= TURN_CONTINUE_DEBOUNCE_MS) lastSpeechMs = now
+          continue
+        }
+
+        // Phase 4: below threshold — the run is broken.
+        voiceRunStart = 0L
+        if (!speechStarted) {
+          if (elapsed > TURN_PRE_SPEECH_GRACE_MS) {
+            Log.i(TAG, "[vad] no speech — stopping turn (start=$startLevel)"); break
           }
-          speechStarted && now - lastSpeechMs > TURN_SILENCE_MS -> {
-            Log.i(TAG, "[vad] trailing silence — stopping turn"); break
-          }
-          elapsed > TURN_MAX_RECORD_MS -> {
-            Log.i(TAG, "[vad] max duration — stopping turn"); break
-          }
+          continue
+        }
+        if (now - lastSpeechMs > TURN_SILENCE_MS) {
+          Log.i(
+            TAG,
+            "[vad] trailing silence — stopping turn " +
+              "(start=$startLevel peak=$peak last=$level)",
+          )
+          break
         }
       }
     } catch (e: Exception) {
@@ -738,13 +784,31 @@ class WakeWordService : Service() {
     private const val CHUNK_SHORTS = 1280 // 80 ms @ 16 kHz
 
     // ---- turn-capture VAD (energy-based endpointing) ----
-    // ponytail: simple absolute-energy thresholds. Real mics/rooms vary, so
-    // these are the calibration knobs — bump TURN_SPEECH_LEVEL up in noisy
-    // rooms, down if quiet speech gets missed.
-    /** Frame level (0..1, dBFS curve) at/above which counts as speech. */
-    private const val TURN_SPEECH_LEVEL = 0.40f
+    // These MIRROR mobile/src/hooks/useSilenceAutoStop.ts, which is the in-app
+    // orb's VAD. Both consume the same 0..1 dBFS curve (chunkLevel here,
+    // rmsLevel in pcmCapture.ts) at the same ~80ms cadence, so the constants
+    // port across 1:1 — keep the two files in step when tuning either.
+    //
+    // This used to be one fixed absolute level used for BOTH "did they start"
+    // and "are they still talking". Speech swings ~20 dB inside a sentence, so
+    // trailing off at the end of a phrase read as silence and the turn ended
+    // mid-sentence. Hence calibration + hysteresis below.
+    /** Calibrate the room's noise floor for this long before deciding anything. */
+    private const val TURN_CAL_MS = 400L
+    private const val TURN_NOISE_FLOOR_MULTIPLIER = 2.2f
+    /** Speech-start level = (noise floor × multiplier), clamped to this band. */
+    private const val TURN_MIN_START_LEVEL = 0.32f
+    private const val TURN_MAX_START_LEVEL = 0.55f
+    /** Hysteresis: "still talking" bar = start × this... */
+    private const val TURN_CONTINUE_RATIO = 0.75f
+    /** ...or peak × this, whichever is higher. Scales to how loud this user is. */
+    private const val TURN_CONTINUE_PEAK_RATIO = 0.4f
+    /** An above-threshold run must last this long to count as ongoing speech. */
+    private const val TURN_CONTINUE_DEBOUNCE_MS = 160L
+    /** ...and this long before the turn arms at all (blocks lone noise spikes). */
+    private const val TURN_VOICE_LATCH_MS = 200L
     /** Trailing silence after speech that ends the turn. */
-    private const val TURN_SILENCE_MS = 700L
+    private const val TURN_SILENCE_MS = 900L
     /** If the user says nothing, give up after this. */
     private const val TURN_PRE_SPEECH_GRACE_MS = 7000L
     /** Hard cap on a single turn's length. */

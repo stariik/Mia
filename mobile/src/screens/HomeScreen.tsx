@@ -119,6 +119,7 @@ export function HomeScreen() {
     currentTranscript,
     error,
     setError,
+    streaming, sttState, listeningSeconds, keepListening,
   } = useVoiceStore();
 
   const pipeline = useVoicePipeline();
@@ -179,7 +180,7 @@ export function HomeScreen() {
     },
     [stopListeningAndSend, stopConversation],
   );
-  useSilenceAutoStop(isListening, onSilenceStop);
+  useSilenceAutoStop(isListening && !streaming, onSilenceStop);
 
   // Re-arm the background "Hey Mia" service on launch if the user left it on.
   useEffect(() => {
@@ -281,6 +282,22 @@ export function HomeScreen() {
               </Animated.View>
             </Pressable>
             <OrbStatus state={state} transcript={currentTranscript} />
+            {streaming && (sttState === 'connecting' || sttState === 'finalizing') ? (
+              <Text style={styles.historyLabel} accessibilityLiveRegion="polite">
+                {sttState === 'connecting' ? 'დაკავშირება…' : 'მუშავდება…'}
+              </Text>
+            ) : null}
+            {streaming && isListening ? (
+              <View style={styles.sttControls}>
+                <Text style={styles.historyLabel}>{listeningSeconds} / 60 წმ</Text>
+                <Pressable accessibilityRole="button" onPress={stopListeningAndSend} style={styles.historyBtn}>
+                  <Text style={styles.historyLabel}>დასრულება</Text>
+                </Pressable>
+                <Pressable accessibilityRole="button" disabled={keepListening} onPress={pipeline.keepListening} style={styles.historyBtn}>
+                  <Text style={styles.historyLabel}>{keepListening ? 'გისმენ…' : 'განაგრძე მოსმენა'}</Text>
+                </Pressable>
+              </View>
+            ) : null}
           </View>
 
           <View style={styles.bottomSection}>
@@ -387,6 +404,7 @@ export function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
+  sttControls: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: 8, paddingHorizontal: 12 },
   root: {
     flex: 1,
     backgroundColor: colors.bgDeep,
