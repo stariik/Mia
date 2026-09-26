@@ -12,6 +12,7 @@ import { wakeWord, type WakeEvent } from '@/lib/wakeWord';
 import { useAuthStore } from '@/stores/authStore';
 import { useConversationStore } from '@/stores/conversationStore';
 import { useLocationStore } from '@/stores/locationStore';
+import { useProfileStore } from '@/stores/profileStore';
 import { useToolsStore } from '@/stores/toolsStore';
 
 // The app-closed "Hey Jarvis / Hey Mia" session. Triggered by the native wake
@@ -154,7 +155,7 @@ export async function runWakeSession(): Promise<void> {
     await useAuthStore.getState().hydrate();
   }
 
-  // The other three stores use zustand `persist`, which rehydrates from
+  // The other stores use zustand `persist`, which rehydrates from
   // AsyncStorage ASYNCHRONOUSLY on first import and has no hydration gate. In
   // the app that always finishes long before the user speaks (RootNavigator
   // mounts first). On a COLD headless turn the race is live: runAssistantTurn
@@ -165,6 +166,7 @@ export async function runWakeSession(): Promise<void> {
     useConversationStore.persist.rehydrate(),
     useLocationStore.persist.rehydrate(),
     useToolsStore.persist.rehydrate(),
+    useProfileStore.persist.rehydrate(),
   ]);
 
   let cancelled = false;

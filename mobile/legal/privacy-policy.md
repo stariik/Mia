@@ -11,7 +11,8 @@ This privacy policy explains how the Mia app ("the app", "we") handles your info
 | **Microphone audio** | Only while you're actively talking to Mia (tap the orb to start, stops automatically when you stop speaking) | To transcribe your speech into text so Mia can understand and reply |
 | **Approximate location** | Only when you ask a location-dependent question (e.g. weather) and have granted permission | To return weather/time relevant to your area |
 | **Account info (name, email)** | When you register | To personalise your experience and let you sign in across devices |
-| **Conversation history** | Stored on your device | So you can revisit past conversations |
+| **Conversation history** | Stored on your device | So you can revisit past conversations, and so Mia can follow the current one |
+| **Personal memory** (facts you tell Mia, e.g. name, city) | Stored on your device; reviewable and deletable in Settings | So Mia remembers you across conversations |
 
 We do **not** collect: contacts, photos, calendar, files, precise location, advertising IDs, sensor data, or any data you didn't explicitly provide.
 

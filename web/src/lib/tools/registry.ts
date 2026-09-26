@@ -14,6 +14,7 @@ import {
   skipPrevious,
   restartTrack,
 } from "./handlers/music";
+import { rememberFact, forgetFact } from "./handlers/memory";
 
 export const TOOLS: Tool[] = [
   getTime,
@@ -29,6 +30,8 @@ export const TOOLS: Tool[] = [
   skipNext,
   skipPrevious,
   restartTrack,
+  rememberFact,
+  forgetFact,
 ];
 
 export function getToolDefinitions(): FunctionDeclaration[] {

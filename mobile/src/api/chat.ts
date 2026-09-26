@@ -14,6 +14,10 @@ export type UserContext = {
   // Active timers/alarms so the server can let the model cancel one by id.
   timers?: { id: string; label?: string; remainingSeconds: number }[];
   alarms?: { id: string; label?: string; hour: number; minute: number }[];
+  // Long-term facts about the user (profileStore).
+  profile?: { id: string; text: string }[];
+  // Earlier tool calls in this conversation, so "and tomorrow?" keeps the city.
+  recentActions?: string[];
 };
 
 export type StreamChatParams = {
@@ -22,6 +26,7 @@ export type StreamChatParams = {
   userContext?: UserContext;
   onContent: (chunk: string) => void;
   onToolCalls?: (calls: ClientToolCall[]) => void;
+  onActions?: (actions: string[]) => void;
   onError?: (message: string) => void;
   /** Milliseconds of silence between events before we abort. Default 15 s. */
   watchdogMs?: number;
@@ -30,6 +35,7 @@ export type StreamChatParams = {
 type StreamedEvent =
   | { content: string }
   | { toolCalls: ClientToolCall[] }
+  | { actions: string[] }
   | { error: string };
 
 /**
@@ -43,6 +49,7 @@ export function streamChat({
   userContext,
   onContent,
   onToolCalls,
+  onActions,
   onError,
   watchdogMs = 15_000,
 }: StreamChatParams): { promise: Promise<void>; abort: () => void } {
@@ -96,6 +103,8 @@ export function streamChat({
         if ('content' in parsed && parsed.content) onContent(parsed.content);
         else if ('toolCalls' in parsed && parsed.toolCalls?.length) {
           onToolCalls?.(parsed.toolCalls);
+        } else if ('actions' in parsed && parsed.actions?.length) {
+          onActions?.(parsed.actions);
         } else if ('error' in parsed && parsed.error) {
           onError?.(parsed.error);
         }

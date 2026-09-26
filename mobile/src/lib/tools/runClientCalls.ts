@@ -1,3 +1,4 @@
+import { useProfileStore } from '@/stores/profileStore';
 import { useToolsStore } from '@/stores/toolsStore';
 
 import { music } from './music';
@@ -77,6 +78,21 @@ export async function runClientToolCalls(calls: ClientToolCall[]) {
         await music.skipPrevious();
       } else if (call.name === 'restart_track') {
         await music.restart();
+      } else if (call.name === 'remember_fact') {
+        if (typeof call.args.fact === 'string') {
+          useProfileStore
+            .getState()
+            .addFact(
+              call.args.fact,
+              typeof call.args.replaces_id === 'string'
+                ? call.args.replaces_id
+                : undefined,
+            );
+        }
+      } else if (call.name === 'forget_fact') {
+        const profile = useProfileStore.getState();
+        if (call.args.all === true) profile.clear();
+        else if (typeof call.args.id === 'string') profile.removeFact(call.args.id);
       }
     } catch (err) {
       // The user asked for something and nothing happened — release-worthy.

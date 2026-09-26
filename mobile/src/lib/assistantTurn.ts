@@ -7,8 +7,14 @@ import {
   useConversationStore,
 } from '@/stores/conversationStore';
 import { getEffectiveCity, useLocationStore } from '@/stores/locationStore';
+import { useProfileStore } from '@/stores/profileStore';
 import { useToolsStore } from '@/stores/toolsStore';
 import { useVoiceStore } from '@/stores/voiceStore';
+
+// Messages of the current conversation sent as context each turn.
+const HISTORY_MESSAGES = 20;
+// Silence after which the next turn starts a new conversation.
+const STALE_CONVERSATION_MS = 30 * 60_000;
 
 // A pluggable TTS playback backend. Two implementations exist:
 //   - orbPlayback    — plays through the WebView orb (foreground, drives the
@@ -64,7 +70,21 @@ export async function runAssistantTurn({
   voice.setTranscript('');
   voice.setError(null);
 
-  const { updateLastAssistant } = useConversationStore.getState();
+  const { updateLastAssistant, addActions } = useConversationStore.getState();
+
+  // After a long silence start a fresh conversation, so old context (and a
+  // wake-word turn landing in yesterday's chat) doesn't leak into this one.
+  const convState = useConversationStore.getState();
+  const active = convState.activeId
+    ? convState.conversations[convState.activeId]
+    : undefined;
+  if (
+    active?.messages.length &&
+    Date.now() - Math.max(active.updatedAt, convState.selectedAt) >
+      STALE_CONVERSATION_MS
+  ) {
+    convState.newConversation();
+  }
 
   useConversationStore.getState().addMessage({
     role: 'user',
@@ -72,9 +92,13 @@ export async function runAssistantTurn({
     timestamp: Date.now(),
   });
 
-  const history = selectActiveMessages(useConversationStore.getState())
-    .slice(-11, -1)
-    .map(({ role, content }) => ({ role, content }));
+  // ponytail: fixed 20-message window; summarise older turns if cost matters.
+  const recent = selectActiveMessages(useConversationStore.getState()).slice(
+    -HISTORY_MESSAGES - 1,
+    -1,
+  );
+  const history = recent.map(({ role, content }) => ({ role, content }));
+  const recentActions = recent.flatMap((m) => m.actions ?? []).slice(-8);
 
   voice.setThinking(true);
 
@@ -104,6 +128,10 @@ export async function runAssistantTurn({
     lat: locState.lat,
     lon: locState.lon,
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || undefined,
+    profile: useProfileStore
+      .getState()
+      .facts.map((f) => ({ id: f.id, text: f.text })),
+    recentActions,
     // Let the model cancel the right timer/alarm by id (see cancel_* tools).
     timers: toolsState.timers.map((t) => ({
       id: t.id,
@@ -177,6 +205,9 @@ export async function runAssistantTurn({
       onToolCalls: (calls) => {
         if (!isCurrent()) return;
         runClientToolCalls(calls);
+      },
+      onActions: (actions) => {
+        if (isCurrent()) addActions(actions);
       },
       onError: (msg) => {
         expireSessionIf401(msg);

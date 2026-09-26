@@ -16,6 +16,7 @@ import { useWakeWordToggle } from '@/hooks/useWakeWord';
 import { refreshLocation } from '@/lib/location';
 import { useAuthStore } from '@/stores/authStore';
 import { useLocationStore } from '@/stores/locationStore';
+import { useProfileStore } from '@/stores/profileStore';
 import { brandGradient, colors, fonts, radius, spacing, typography } from '@/theme';
 
 type Props = {
@@ -30,6 +31,10 @@ export function SettingsSheet({ visible, onClose }: Props) {
   const manualCity = useLocationStore((s) => s.manualCity);
   const setManualCity = useLocationStore((s) => s.setManualCity);
   const [cityDraft, setCityDraft] = useState(manualCity ?? '');
+
+  const facts = useProfileStore((s) => s.facts);
+  const removeFact = useProfileStore((s) => s.removeFact);
+  const clearFacts = useProfileStore((s) => s.clear);
 
   const wake = useWakeWordToggle();
   const [wakeNote, setWakeNote] = useState<string | null>(null);
@@ -159,6 +164,41 @@ export function SettingsSheet({ visible, onClose }: Props) {
               </Text>
             </Pressable>
           </View>
+
+          {/* Long-term memory — facts Mia saved via remember_fact */}
+          <Text style={[typography.labelSm, styles.section, styles.sectionTop]}>
+            რა იცის Mia-მ შენზე
+          </Text>
+          {facts.length === 0 ? (
+            <Text style={[typography.bodySmall, styles.rowHint]}>
+              თქვი, მაგ. „დავითი მქვია“ და Mia დაიმახსოვრებს
+            </Text>
+          ) : (
+            <>
+              {facts.map((f) => (
+                <View key={f.id} style={[styles.row, { marginBottom: spacing.sm }]}>
+                  <Text style={[typography.body, styles.rowLabel, styles.flex]}>
+                    {f.text}
+                  </Text>
+                  <Pressable
+                    onPress={() => removeFact(f.id)}
+                    style={styles.linkBtn}
+                    hitSlop={6}
+                  >
+                    <Text style={[typography.labelSm, styles.linkBtnText]}>
+                      წაშლა
+                    </Text>
+                  </Pressable>
+                </View>
+              ))}
+              <Pressable onPress={clearFacts} hitSlop={6}>
+                <Text style={[typography.bodySmall, styles.deleteLinkText]}>
+                  ყველაფრის დავიწყება
+                </Text>
+              </Pressable>
+            </>
+          )}
+
           {/* Account */}
           <Text style={[typography.labelSm, styles.section, styles.sectionTop]}>
             ანგარიში
