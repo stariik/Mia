@@ -258,6 +258,9 @@ export function createGateway(
           phase = 'listening';
           readyAt = lastAudio = Date.now();
           clearTimeout(timer);
+          // 0.5 s silence lead-in: Chirp 3 only signals speech on a silence→speech
+          // edge, so a user talking from the first frame was dropped as no_speech.
+          upstream!.write(Buffer.alloc(16000));
           send({ type: 'ready', provider, maxDurationMs: 60000 });
           initial = setTimeout(() => {
             if (!spoke)
