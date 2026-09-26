@@ -28,7 +28,7 @@ const theme = {
   },
 };
 
-export function RootNavigator() {
+export function RootNavigator({ onReady }: { onReady?: () => void }) {
   const { token, hydrated, hydrate } = useAuthStore();
 
   useEffect(() => {
@@ -38,7 +38,7 @@ export function RootNavigator() {
   if (!hydrated) return null;
 
   return (
-    <NavigationContainer theme={theme} ref={navigationRef}>
+    <NavigationContainer theme={theme} ref={navigationRef} onReady={onReady}>
       <Stack.Navigator
         screenOptions={{ headerShown: false, animation: 'fade' }}
       >

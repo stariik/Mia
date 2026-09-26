@@ -1,7 +1,16 @@
-import Geolocation from '@react-native-community/geolocation';
+import * as ExpoLocation from 'expo-location';
 
 import { ensureLocationPermission } from '@/hooks/usePermissions';
+import { isExpoGo } from '@/lib/runtime';
 import { useLocationStore } from '@/stores/locationStore';
+
+// Community geolocation isn't in Expo Go (importing it throws there), so it is
+// required only in native builds; Expo Go uses expo-location instead.
+type CommunityGeolocation =
+  typeof import('@react-native-community/geolocation').default;
+const Geolocation: CommunityGeolocation | null = isExpoGo
+  ? null
+  : require('@react-native-community/geolocation').default;
 
 // Without this, the native module requests [COARSE, FINE] itself on every
 // getCurrentPosition(). FINE isn't in our manifest, so Android auto-denies it
@@ -11,7 +20,7 @@ import { useLocationStore } from '@/stores/locationStore';
 // but through the module's back door, bypassing our guards). We gate every
 // call through ensureLocationPermission ourselves, so the module must never
 // touch the permission system.
-Geolocation.setRNConfiguration({ skipPermissionRequests: true });
+Geolocation?.setRNConfiguration({ skipPermissionRequests: true });
 
 const STALE_AFTER_MS = 6 * 60 * 60 * 1000;
 // A failed fix (location services off, no signal) must not retry on every
@@ -22,7 +31,13 @@ let lastAttemptAt = 0;
 
 type Coords = { lat: number; lon: number };
 
-function getCurrentPosition(): Promise<Coords> {
+async function getCurrentPosition(): Promise<Coords> {
+  if (!Geolocation) {
+    const pos = await ExpoLocation.getCurrentPositionAsync({
+      accuracy: ExpoLocation.Accuracy.Low,
+    });
+    return { lat: pos.coords.latitude, lon: pos.coords.longitude };
+  }
   return new Promise((resolve, reject) => {
     Geolocation.getCurrentPosition(
       (pos) =>
@@ -73,7 +88,9 @@ export async function refreshLocation(opts: { force?: boolean } = {}): Promise<v
   if (!opts.force && Date.now() - lastAttemptAt < RETRY_AFTER_MS) return;
   lastAttemptAt = Date.now();
 
-  const granted = await ensureLocationPermission({ userInitiated: opts.force });
+  const granted = Geolocation
+    ? await ensureLocationPermission({ userInitiated: opts.force })
+    : (await ExpoLocation.requestForegroundPermissionsAsync()).granted;
   if (!granted) {
     useLocationStore.getState().setPermissionDenied(true);
     return;

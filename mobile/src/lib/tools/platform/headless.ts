@@ -1,10 +1,11 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import notifee, {
+import {
   AndroidCategory,
   AndroidImportance,
   AndroidVisibility,
   TriggerType,
-} from '@notifee/react-native';
+  notifee,
+} from '@/lib/notifee';
+import { storage as AsyncStorage } from '@/lib/storage';
 
 import {
   ALARM_CHANNEL_ID,

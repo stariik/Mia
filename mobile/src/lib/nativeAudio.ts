@@ -1,4 +1,13 @@
-import Sound from 'react-native-nitro-sound';
+import { createAudioPlayer } from 'expo-audio';
+
+import { isExpoGo } from './runtime';
+
+// nitro-sound isn't in Expo Go (importing it throws there), so it is required
+// only in native builds; Expo Go plays through expo-audio instead.
+type NitroSound = typeof import('react-native-nitro-sound').default;
+const Sound: NitroSound | null = isExpoGo
+  ? null
+  : require('react-native-nitro-sound').default;
 
 // The app's one nitro-sound file player. Unlike the orb's WebView player it
 // needs no Activity/UI, so it serves both the screen-off headless turn (via
@@ -16,6 +25,7 @@ export const nativeAudio = {
   async play(filePath: string): Promise<void> {
     resolveActive?.();
     const path = filePath.replace(/^file:\/\//, '');
+    if (!Sound) return playWithExpoAudio(path);
     // Snappier completion detection than the ~0.5 s default.
     Sound.setSubscriptionDuration(0.1);
     Sound.removePlayBackListener();
@@ -57,3 +67,34 @@ export const nativeAudio = {
     resolveActive?.();
   },
 };
+
+/** Expo Go path: same contract as nativeAudio.play, on an expo-audio player. */
+function playWithExpoAudio(path: string): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const player = createAudioPlayer({ uri: `file://${path}` });
+    let settled = false;
+    let watchdog: ReturnType<typeof setTimeout> | null = null;
+
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      resolveActive = null;
+      if (watchdog) clearTimeout(watchdog);
+      sub.remove();
+      try {
+        player.remove();
+      } catch {}
+      resolve();
+    };
+    resolveActive = finish;
+
+    const sub = player.addListener('playbackStatusUpdate', (status) => {
+      if (status.duration > 0 && !watchdog) {
+        // Fallback in case didJustFinish never arrives.
+        watchdog = setTimeout(finish, status.duration * 1000 + 1500);
+      }
+      if (status.didJustFinish) finish();
+    });
+    player.play();
+  });
+}

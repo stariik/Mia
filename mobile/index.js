@@ -3,12 +3,13 @@
  */
 
 import { AppRegistry } from 'react-native';
-import notifee, { EventType } from '@notifee/react-native';
 import * as Sentry from '@sentry/react-native';
 
 import App from './App';
 import { name as appName } from './app.json';
 import { env } from './src/config/env';
+import { EventType, notifee } from './src/lib/notifee';
+import { isExpoGo } from './src/lib/runtime';
 import {
   rescheduleAllFromStorage,
   snoozeAlarmHeadless,
@@ -43,26 +44,32 @@ AppRegistry.registerHeadlessTask('MiaWakeTurn', () => async () => {
 // away and the user taps a notification action (Snooze/Dismiss). Also fires
 // the first time a recurring trigger fires while killed, so we use it to
 // roll the schedule forward.
-notifee.onBackgroundEvent(async ({ type, detail }) => {
-  const data = detail.notification?.data;
-  const rawId = data?.alarmId ? String(data.alarmId) : undefined;
-  const alarmId = rawId ? rawId.replace(/__snooze$/, '') : undefined;
+// Notifee isn't in Expo Go; alarms and timers only work in native builds.
+if (!isExpoGo) {
+  notifee.onBackgroundEvent(async ({ type, detail }) => {
+    const data = detail.notification?.data;
+    const rawId = data?.alarmId ? String(data.alarmId) : undefined;
+    const alarmId = rawId ? rawId.replace(/__snooze$/, '') : undefined;
 
-  if (type === EventType.ACTION_PRESS) {
-    const action = detail.pressAction?.id;
-    if (!alarmId) return;
-    if (action === 'snooze') {
-      await snoozeAlarmHeadless(alarmId);
-    } else if (action === 'dismiss') {
-      await dismissAlarmHeadless(alarmId);
+    if (type === EventType.ACTION_PRESS) {
+      const action = detail.pressAction?.id;
+      if (!alarmId) return;
+      if (action === 'snooze') {
+        await snoozeAlarmHeadless(alarmId);
+      } else if (action === 'dismiss') {
+        await dismissAlarmHeadless(alarmId);
+      }
+      return;
     }
-    return;
-  }
 
-  if (type === EventType.DELIVERED && data?.kind === 'alarm' && alarmId) {
-    // Recurring alarm fired while app was killed — roll forward.
-    await rollRecurringAlarm(alarmId);
-  }
-});
+    if (type === EventType.DELIVERED && data?.kind === 'alarm' && alarmId) {
+      // Recurring alarm fired while app was killed — roll forward.
+      await rollRecurringAlarm(alarmId);
+    }
+  });
+}
 
-AppRegistry.registerComponent(appName, () => Sentry.wrap(App));
+const Root = Sentry.wrap(App);
+AppRegistry.registerComponent(appName, () => Root);
+// Expo Go launches the component registered as "main".
+if (isExpoGo) AppRegistry.registerComponent('main', () => Root);

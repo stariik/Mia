@@ -1,3 +1,7 @@
+import Constants from 'expo-constants';
+
+import { isExpoGo } from '@/lib/runtime';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // PRODUCTION CONFIG — set these before building the Play Store release.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -12,8 +16,15 @@ const PROD_API_BASE_URL = 'https://api.miavoice.online';
 const PROD_SENTRY_DSN = 'https://f168a97cf5948e7a15ff20291611f813@o4511756148736000.ingest.de.sentry.io/4511756151816272';
 
 // Dev talks to the local Next.js server through `adb reverse tcp:3002`
-// (npm run tunnels / npm run device).
-const DEV_API_BASE_URL = 'http://localhost:3002';
+// (npm run tunnels / npm run device). In Expo Go on a phone, localhost is the
+// phone itself, so use the computer the dev server runs on: the host part of
+// the address the QR code pointed at (this computer's LAN IP).
+const expoDevHost = isExpoGo
+  ? Constants.expoConfig?.hostUri?.split(':')[0]
+  : undefined;
+const DEV_API_BASE_URL = expoDevHost
+  ? `http://${expoDevHost}:3002`
+  : 'http://localhost:3002';
 
 export const env = {
   apiBaseUrl: __DEV__ ? DEV_API_BASE_URL : PROD_API_BASE_URL,

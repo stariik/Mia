@@ -9,7 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import LinearGradient from 'react-native-linear-gradient';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import { authApi } from '@/api/auth';
 import { useWakeWordToggle } from '@/hooks/useWakeWord';

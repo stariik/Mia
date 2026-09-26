@@ -1,13 +1,14 @@
 import { NativeModules, Platform } from 'react-native';
-import notifee, {
+
+import {
   AndroidCategory,
   AndroidImportance,
   AndroidVisibility,
   EventType,
   TimestampTrigger,
   TriggerType,
-} from '@notifee/react-native';
-
+  notifee,
+} from '@/lib/notifee';
 import { useToolsStore } from '@/stores/toolsStore';
 
 import type { AlarmRequest, TimerRequest, ToolPlatform } from './index';
