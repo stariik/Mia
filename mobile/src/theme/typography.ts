@@ -1,8 +1,10 @@
 // On Android, `fontFamily` matches the TTF filename stem (not the PostScript name).
-// Filenames under assets/fonts/ (the ONLY families that exist in the APK):
+// iOS and Expo Go get the same names from fontFiles.ts, loaded at startup in
+// App.tsx — a new font must be added there too.
+// Filenames under assets/fonts/ (the ONLY families that exist in the app):
 //   MarkGEO-Regular.ttf / MarkGEO-Bold.ttf / MarkGEO-CAPS.ttf
 //   SpaceGrotesk-Bold.ttf   (numeric/clock displays — Latin+digits only)
-//   Coiny-Regular.ttf       (the "Mia" wordmark)
+//   MarckScript-Regular.ttf (the "Mia" wordmark — connected script)
 //
 // MarkGEO is the primary font — proper Georgian glyphs; Latin renders fine in
 // it too. Every fontFamily in the app MUST come from `fonts` below: a literal
@@ -19,7 +21,7 @@ export const fonts = {
   /** Big clock/countdown numerals (Latin digits only — no Georgian glyphs). */
   numeric: 'SpaceGrotesk-Bold',
   /** The "Mia" brand wordmark only. */
-  brand: 'Coiny-Regular',
+  brand: 'MarckScript-Regular',
 };
 
 export const typography: Record<string, TextStyle> = {
