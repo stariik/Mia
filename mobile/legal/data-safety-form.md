@@ -37,14 +37,14 @@ For each, declare: Collected? Shared? Optional? Purpose? Why required?
 
 ### Location — Approximate location
 - **Collected**: Yes
-- **Shared**: Yes — sent to OpenAI (in chat context) and OpenStreetMap (for reverse geocoding)
+- **Shared**: Yes — sent to Google Gemini (in chat context) and OpenStreetMap (for reverse geocoding)
 - **Optional**: Yes
 - **Purpose**: App functionality (weather, time-of-day responses)
 - **Required**: No — user can decline; only city name is shared, not coordinates after geocoding
 
 ### Audio — Voice or sound recordings
 - **Collected**: Yes — only while user is actively recording
-- **Shared**: Yes — sent to OpenAI for transcription
+- **Shared**: Yes — sent to Google Cloud for transcription
 - **Optional**: Yes (text input is an alternative)
 - **Purpose**: App functionality (speech-to-text)
 - **Required**: No — typed input alternative exists
@@ -52,7 +52,7 @@ For each, declare: Collected? Shared? Optional? Purpose? Why required?
 
 ### Messages — Other in-app messages
 - **Collected**: Yes — conversation history stored locally
-- **Shared**: Yes — recent turns sent to OpenAI as conversation context
+- **Shared**: Yes — recent turns sent to Google Gemini as conversation context
 - **Optional**: No
 - **Purpose**: App functionality (multi-turn conversation)
 - **Required**: Yes

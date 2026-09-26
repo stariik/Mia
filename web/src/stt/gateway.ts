@@ -1,5 +1,5 @@
 import http from 'node:http';
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
 import { verifyToken } from '../lib/auth/jwt';
@@ -144,10 +144,17 @@ export function createGateway(
         header.writeUInt16LE(16, 34);
         header.write('data', 36);
         header.writeUInt32LE(pcm.length, 40);
-        writeFileSync(
-          `${process.env.STT_DEBUG_DUMP_DIR}/${Date.now()}_${provider}.wav`,
-          Buffer.concat([header, pcm]),
-        );
+        const dir = process.env.STT_DEBUG_DUMP_DIR!;
+        // A diagnostics failure must never take down the gateway.
+        try {
+          mkdirSync(dir, { recursive: true });
+          writeFileSync(
+            `${dir}/${Date.now()}_${provider}.wav`,
+            Buffer.concat([header, pcm]),
+          );
+        } catch (error) {
+          console.warn('STT debug dump failed:', error);
+        }
         dump.length = 0;
       }
       segments = [];

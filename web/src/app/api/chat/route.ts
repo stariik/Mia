@@ -1,4 +1,6 @@
-import openai from "@/lib/openai";
+import { randomUUID } from "node:crypto";
+import type { Content, Part } from "@google/genai";
+import { gemini, CHAT_MODEL, LOW_THINKING } from "@/lib/gemini";
 import { guard } from "@/lib/apiGuard";
 import { GEORGIAN_ASSISTANT_SYSTEM_PROMPT } from "@/lib/prompts";
 import {
@@ -7,10 +9,6 @@ import {
   isServerTool,
 } from "@/lib/tools/registry";
 import type { ToolContext, ClientToolCall } from "@/lib/tools/types";
-import type {
-  ChatCompletionMessageParam,
-  ChatCompletionMessageToolCall,
-} from "openai/resources/chat/completions";
 
 type ChatRequestMessage = { role: "user" | "assistant"; content: string };
 
@@ -92,11 +90,18 @@ export async function POST(request: Request) {
     const toolCtx: ToolContext = { userCoords };
 
     const activeState = formatActiveState(userContext);
-    const messages: ChatCompletionMessageParam[] = [
-      { role: "system", content: GEORGIAN_ASSISTANT_SYSTEM_PROMPT },
-      ...(activeState ? [{ role: "system" as const, content: activeState }] : []),
-      ...history.map((m) => ({ role: m.role, content: m.content })),
-      { role: "user", content: message },
+    const systemInstruction = activeState
+      ? `${GEORGIAN_ASSISTANT_SYSTEM_PROMPT}\n\n${activeState}`
+      : GEORGIAN_ASSISTANT_SYSTEM_PROMPT;
+    const contents: Content[] = [
+      // Gemini rejects empty parts, so skip blank turns.
+      ...history
+        .filter((m) => m.content)
+        .map((m) => ({
+          role: m.role === "assistant" ? "model" : "user",
+          parts: [{ text: m.content }],
+        })),
+      { role: "user", parts: [{ text: message }] },
     ];
 
     const encoder = new TextEncoder();
@@ -111,126 +116,77 @@ export async function POST(request: Request) {
 
         try {
           for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-            const stream = await openai.chat.completions.create({
-              // gpt-4o has noticeably better Georgian than gpt-4.1-mini (same
-              // model the translator uses). Costs ~0.5s more time-to-first-token;
-              // revert to "gpt-4.1-mini" (or try "gpt-4.1") if latency bites.
-              model: "gpt-4o",
-              messages,
-              temperature: 0.7,
-              // Voice replies are 1–2 short sentences. Georgian is token-heavy,
-              // so 200 fits a normal reply without truncating mid-sentence (a
-              // cut-off sentence would clip TTS), while still bounding rambles.
-              // The real brevity lever is the system prompt; this is the guard.
-              max_tokens: 200,
-              stream: true,
-              ...(toolDefs.length > 0 && {
-                tools: toolDefs,
-                tool_choice: "auto",
-              }),
+            const stream = await gemini().models.generateContentStream({
+              // Strongest flash model: Georgian quality beats the last few
+              // hundred ms of time-to-first-token. Override with GEMINI_MODEL.
+              model: CHAT_MODEL,
+              contents,
+              config: {
+                systemInstruction,
+                temperature: 0.7,
+                // Voice replies are 1–2 short sentences. Georgian is token-heavy,
+                // so 200 fits a normal reply without truncating mid-sentence (a
+                // cut-off sentence would clip TTS), while still bounding rambles.
+                // The real brevity lever is the system prompt; this is the guard.
+                maxOutputTokens: 200,
+                thinkingConfig: LOW_THINKING,
+                ...(toolDefs.length > 0 && {
+                  tools: [{ functionDeclarations: toolDefs }],
+                }),
+              },
             });
 
-            // Accumulators for this round
-            let assistantText = "";
-            const toolCallBuf: Record<
-              number,
-              {
-                id: string;
-                name: string;
-                argsText: string;
-              }
-            > = {};
-            let finishReason: string | null = null;
-
+            // Every part of this round, kept verbatim for the history.
+            const parts: Part[] = [];
             for await (const chunk of stream) {
-              const choice = chunk.choices[0];
-              if (!choice) continue;
-
-              const delta = choice.delta;
-              if (delta?.content) {
-                assistantText += delta.content;
-                send({ content: delta.content });
+              const chunkParts = chunk.candidates?.[0]?.content?.parts ?? [];
+              for (const part of chunkParts) {
+                if (part.text && !part.thought) send({ content: part.text });
               }
-
-              if (delta?.tool_calls) {
-                for (const tc of delta.tool_calls) {
-                  const idx = tc.index;
-                  if (!toolCallBuf[idx]) {
-                    toolCallBuf[idx] = { id: "", name: "", argsText: "" };
-                  }
-                  if (tc.id) toolCallBuf[idx].id = tc.id;
-                  if (tc.function?.name) {
-                    toolCallBuf[idx].name = tc.function.name;
-                  }
-                  if (tc.function?.arguments) {
-                    toolCallBuf[idx].argsText += tc.function.arguments;
-                  }
-                }
-              }
-
-              if (choice.finish_reason) {
-                finishReason = choice.finish_reason;
-              }
+              parts.push(...chunkParts);
             }
 
-            // No tool calls → we're done
-            if (finishReason !== "tool_calls") break;
-
-            const pending = Object.values(toolCallBuf);
-            if (pending.length === 0) break;
-
-            // Push the assistant's tool-call turn into message history
-            const toolCalls: ChatCompletionMessageToolCall[] = pending.map(
-              (p) => ({
-                id: p.id,
-                type: "function",
-                function: { name: p.name, arguments: p.argsText || "{}" },
-              })
+            const calls = parts.flatMap((p) =>
+              p.functionCall ? [p.functionCall] : []
             );
-            messages.push({
-              role: "assistant",
-              content: assistantText || null,
-              tool_calls: toolCalls,
-            });
+            // No tool calls → we're done
+            if (calls.length === 0) break;
+
+            // Echo the model turn untouched: its parts carry thought
+            // signatures, and Gemini rejects the next round without them.
+            contents.push({ role: "model", parts });
 
             const clientCalls: ClientToolCall[] = [];
+            const responses: Part[] = [];
 
             // Execute tools
-            for (const p of pending) {
-              const tool = findTool(p.name);
-              let result: unknown;
+            for (const call of calls) {
+              const name = call.name ?? "";
+              const args = call.args ?? {};
+              const tool = findTool(name);
+              let result: Record<string, unknown>;
 
               if (!tool) {
-                result = { error: `unknown tool: ${p.name}` };
-              } else {
-                let args: Record<string, unknown> = {};
+                result = { error: `unknown tool: ${name}` };
+              } else if (isServerTool(tool)) {
                 try {
-                  args = p.argsText ? JSON.parse(p.argsText) : {};
-                } catch {
-                  args = {};
+                  result = await tool.handler(args, toolCtx);
+                } catch (err) {
+                  result = {
+                    error: err instanceof Error ? err.message : "tool failed",
+                  };
                 }
-
-                if (isServerTool(tool)) {
-                  try {
-                    result = await tool.handler(args, toolCtx);
-                  } catch (err) {
-                    result = {
-                      error: err instanceof Error ? err.message : "tool failed",
-                    };
-                  }
-                } else {
-                  // Client tool: frontend executes. Tell the model it was scheduled.
-                  clientCalls.push({ id: p.id, name: p.name, args });
-                  result = { scheduled: true };
-                }
+              } else {
+                // Client tool: frontend executes. Tell the model it was scheduled.
+                clientCalls.push({ id: call.id ?? randomUUID(), name, args });
+                result = { scheduled: true };
               }
 
-              messages.push({
-                role: "tool",
-                tool_call_id: p.id,
-                content: JSON.stringify(result),
+              responses.push({
+                functionResponse: { id: call.id, name, response: result },
               });
             }
+            contents.push({ role: "user", parts: responses });
 
             if (clientCalls.length > 0) {
               send({ toolCalls: clientCalls });

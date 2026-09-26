@@ -11,7 +11,7 @@ and point this app at it via `.env`.
 - **Design:** DESIGN.md tokens → `src/theme/`. Glassmorphism via
   `@react-native-community/blur`, gradients via `react-native-linear-gradient`,
   VoiceOrb animated with Reanimated 3.
-- **Pipeline:** mic → Whisper (`/api/transcribe`) → GPT-4o streaming via SSE
+- **Pipeline:** mic → Whisper (`/api/transcribe`) → Gemini streaming via SSE
   (`/api/chat`) → TTS (Camb.ai or OpenAI) → `react-native-sound` playback.
 - **Tools:** the same registry contract as web; native side-effects live in
   `src/lib/tools/platform/native.ts` (notifee + setTimeout).

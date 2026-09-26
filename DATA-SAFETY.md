@@ -58,7 +58,7 @@ Required or optional? / Purpose(s)?**
 | Field | Answer |
 |---|---|
 | Collected | **Yes** |
-| Shared | **Yes** — forwarded to speech-recognition providers (Google Cloud; OpenAI as fallback) to transcribe |
+| Shared | **Yes** — forwarded to speech-recognition providers (Google Cloud) to transcribe |
 | Processed ephemerally only | **Yes** — not stored on our servers |
 | Required or optional | **Required** (core voice feature) |
 | Purpose | **App functionality** |

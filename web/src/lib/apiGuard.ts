@@ -2,7 +2,7 @@ import { verifyToken } from "@/lib/auth/jwt";
 
 // Gate the paid API routes (chat / STT / TTS): require a valid token, rate-limit
 // per user, and cap total daily requests so a leaked URL or a runaway client
-// can't drain the OpenAI / ElevenLabs / Google bill.
+// can't drain the Gemini / ElevenLabs / Google bill.
 //
 // ponytail: in-memory counters — they reset on restart and are per-instance.
 // CEILING: move to Upstash/Redis once you run more than one server instance.

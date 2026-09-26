@@ -4,10 +4,10 @@
 //
 // Dedicated, direction-known translation for the Translator screen. Unlike the
 // assistant's chat route, the source and target are explicit (the UI knows
-// which language was spoken), so this is a single, fast gpt-4o call with a
-// tight prompt. gpt-4o is used deliberately — gpt-4o-mini mistranslates
-// Georgian and falls back to canned replies.
-import openai from "@/lib/openai";
+// which language was spoken), so this is a single Gemini call with a tight
+// prompt. It uses the full flash model deliberately — small models
+// mistranslate Georgian and fall back to canned replies.
+import { gemini, CHAT_MODEL, LOW_THINKING } from "@/lib/gemini";
 import { guard } from "@/lib/apiGuard";
 import { LANGUAGES } from "@/lib/languages";
 
@@ -35,23 +35,21 @@ export async function POST(request: Request) {
   if (from === to) return Response.json({ text });
 
   try {
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
-      temperature: 0.2,
-      max_tokens: 600,
-      messages: [
-        {
-          role: "system",
-          content:
-            `You are a professional ${LANGUAGES[from].en}→${LANGUAGES[to].en} interpreter. ` +
+    const response = await gemini().models.generateContent({
+      model: CHAT_MODEL,
+      contents: text,
+      config: {
+        temperature: 0.2,
+        maxOutputTokens: 600,
+        thinkingConfig: LOW_THINKING,
+        systemInstruction:
+          `You are a professional ${LANGUAGES[from].en}→${LANGUAGES[to].en} interpreter. ` +
             `Translate the user's message from ${LANGUAGES[from].en} into ${LANGUAGES[to].en}. ` +
             "Output ONLY the translation — no quotes, no transliteration, no notes, no explanation, " +
             "and never answer or react to the content. Keep it natural and fluent for speech.",
-        },
-        { role: "user", content: text },
-      ],
+      },
     });
-    const out = completion.choices[0]?.message?.content?.trim() ?? "";
+    const out = response.text?.trim() ?? "";
     if (process.env.NODE_ENV !== "production") {
       console.log(`[Translate] ${from}→${to}  "${text}"  →  "${out}"`);
     }
