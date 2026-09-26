@@ -15,6 +15,7 @@
 import { v2 } from "@google-cloud/speech";
 import path from "node:path";
 import fs from "node:fs";
+import { FinishReason } from "@google/genai";
 import { gemini, FAST_MODEL, LOW_THINKING } from "@/lib/gemini";
 import { guard } from "@/lib/apiGuard";
 
@@ -252,7 +253,8 @@ async function correctTranscript(text: string): Promise<string> {
       contents: text,
       config: {
         temperature: 0.1,
-        maxOutputTokens: 250,
+        // Georgian is token-heavy: a 47-word utterance already costs ~150.
+        maxOutputTokens: 500,
         thinkingConfig: LOW_THINKING,
         systemInstruction:
           "შენ ხარ ქართული ხმოვანი ტრანსკრიფციის გამსწორებელი. " +
@@ -265,6 +267,8 @@ async function correctTranscript(text: string): Promise<string> {
             "5) მხოლოდ ცალკეული სიტყვების გასწორება, თუ ფონეტიკურად ცხადია რა ითქვა.",
       },
     });
+    // A cut-off correction would silently replace a whole transcript.
+    if (response.candidates?.[0]?.finishReason !== FinishReason.STOP) return text;
     const corrected = response.text?.trim();
     return corrected && corrected.length > 0 ? corrected : text;
   } catch (err) {
