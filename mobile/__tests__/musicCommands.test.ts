@@ -9,6 +9,10 @@ describe('matchMusicCommand', () => {
     expect(matchMusicCommand('გააჩერე')).toBe('pause');
     expect(matchMusicCommand('დააპაუზე გთხოვ')).toBe('pause');
     expect(matchMusicCommand('მია პოუზ')).toBe('pause');
+    expect(matchMusicCommand('გამიჩერე')).toBe('pause');
+    expect(matchMusicCommand('დამიპაუზე')).toBe('pause');
+    expect(matchMusicCommand('შეწყვიტე მუსიკა')).toBe('pause');
+    expect(matchMusicCommand('მუსიკა გააჩერე')).toBe('pause');
   });
 
   test('continue, with or without the wake word', () => {
@@ -19,6 +23,9 @@ describe('matchMusicCommand', () => {
     expect(matchMusicCommand('კონტინიუ')).toBe('resume');
     expect(matchMusicCommand('ისევ ჩართე')).toBe('resume');
     expect(matchMusicCommand('ჩართე მუსიკა')).toBe('resume');
+    expect(matchMusicCommand('გამიგრძელე')).toBe('resume');
+    expect(matchMusicCommand('ისევ ჩამირთე')).toBe('resume');
+    expect(matchMusicCommand('განაგრძე')).toBe('resume');
   });
 
   test('drops words heard before the wake word', () => {

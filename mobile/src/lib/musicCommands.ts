@@ -24,17 +24,18 @@ export function afterWakeWord(text: string): string {
 
 const PAUSE = new Set([
   'გააჩერე', 'შეაჩერე', 'დააპაუზე', 'პაუზა', 'პაუზაზე',
+  'გამიჩერე', 'შემიჩერე', 'დამიპაუზე', 'შეწყვიტე',
   'pause', 'пауза', 'паузу', 'останови',
   // English "pause" as Georgian speech recognition spells it.
   'პოუზ', 'პოზ', 'პოუზი',
 ]);
 const RESUME = new Set([
-  'გააგრძელე', 'განაგრძე', 'continue', 'resume', 'продолжи', 'продолжай',
+  'გააგრძელე', 'განაგრძე', 'გამიგრძელე', 'continue', 'resume', 'продолжи', 'продолжай',
   'კონტინიუ', 'კანტინიუ', 'რეზიუმ',
 ]);
 // "Turn on" is only a resume when it's clearly about music: "ისევ ჩართე",
 // "ჩართე მუსიკა". Bare "ჩართე" is too vague.
-const TURN_ON = new Set(['ჩართე', 'play', 'включи']);
+const TURN_ON = new Set(['ჩართე', 'ჩამირთე', 'play', 'включи']);
 const MUSIC = new Set([
   'მუსიკა', 'მუსიკას', 'სიმღერა', 'სიმღერას', 'მიუზიკ',
   'music', 'song', 'музыку', 'музыка', 'песню',
