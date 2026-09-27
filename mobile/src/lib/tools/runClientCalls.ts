@@ -2,13 +2,21 @@ import { useProfileStore } from '@/stores/profileStore';
 import { useToolsStore } from '@/stores/toolsStore';
 
 import { music } from './music';
+import { cancelSms, confirmSms, prepareSms } from './sms';
 import { nativePlatform } from './platform/native';
 import type { ClientToolCall } from './types';
 
 // Maps the LLM's client-side tool calls onto the native platform adapter.
 // The set of names here must match the client tools in
 // web/src/lib/tools/registry.ts — the server only ever emits those.
-export async function runClientToolCalls(calls: ClientToolCall[]) {
+//
+// Returns what Mia should say, for tools whose outcome only the phone knows
+// (SMS: contact lookup, send result). The server skips the model's reply for
+// those — see `speaksResult` in web/src/lib/tools/types.ts.
+export async function runClientToolCalls(
+  calls: ClientToolCall[],
+): Promise<string | undefined> {
+  let say: string | undefined;
   for (const call of calls) {
     try {
       if (call.name === 'set_timer') {
@@ -93,10 +101,17 @@ export async function runClientToolCalls(calls: ClientToolCall[]) {
         const profile = useProfileStore.getState();
         if (call.args.all === true) profile.clear();
         else if (typeof call.args.id === 'string') profile.removeFact(call.args.id);
+      } else if (call.name === 'prepare_sms') {
+        say = await prepareSms(String(call.args.to ?? ''), String(call.args.text ?? ''));
+      } else if (call.name === 'confirm_sms') {
+        say = await confirmSms();
+      } else if (call.name === 'cancel_sms') {
+        say = cancelSms();
       }
     } catch (err) {
       // The user asked for something and nothing happened — release-worthy.
       console.error('Client tool failed', call.name, err);
     }
   }
+  return say;
 }

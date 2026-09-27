@@ -22,6 +22,9 @@ export type ClientTool = {
   name: string;
   execution: "client";
   definition: ToolDefinition;
+  // The phone speaks the outcome itself (only it knows it — e.g. SMS contact
+  // lookup), so the chat route skips the model's follow-up reply.
+  speaksResult?: true;
 };
 
 export type Tool = ServerTool | ClientTool;
