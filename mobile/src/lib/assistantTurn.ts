@@ -1,6 +1,7 @@
 import { streamChat } from '@/api/chat';
 import { expireSessionIf401 } from '@/api/client';
 import { dlog } from '@/lib/log';
+import { matchMusicCommand } from '@/lib/musicCommands';
 import { runClientToolCalls } from '@/lib/tools/runClientCalls';
 import {
   selectActiveMessages,
@@ -48,6 +49,15 @@ export interface RunTurnOptions {
   onChatAbort?: (abort: (() => void) | null) => void;
 }
 
+export interface TurnResult {
+  /** The turn paused or resumed music, silently. The hands-free loop must stop
+   *  here rather than listen again: after "continue" it would record the music. */
+  endSession: boolean;
+}
+
+// Silent server tools; must match SILENT_TOOLS in web/src/app/api/chat/route.ts.
+const MUSIC_TOOLS = new Set(['pause_music', 'resume_music']);
+
 /**
  * Orchestrates one assistant turn: chat SSE → per-sentence TTS → playback.
  * UI-agnostic — it drives the shared Zustand stores via getState() and plays
@@ -62,9 +72,9 @@ export async function runAssistantTurn({
   playback,
   isCurrent = () => true,
   onChatAbort,
-}: RunTurnOptions): Promise<void> {
+}: RunTurnOptions): Promise<TurnResult> {
   const trimmed = text.trim();
-  if (!trimmed) return;
+  if (!trimmed) return { endSession: false };
 
   const voice = useVoiceStore.getState();
   voice.setTranscript('');
@@ -92,6 +102,16 @@ export async function runAssistantTurn({
     timestamp: Date.now(),
   });
 
+  // "Mia, pause" / "continue": act on the phone right away, no chat round trip.
+  // The action is logged so a later turn knows the music was paused.
+  const local = matchMusicCommand(trimmed);
+  if (local) {
+    const name = local === 'pause' ? 'pause_music' : 'resume_music';
+    await runClientToolCalls([{ id: `local_${Date.now()}`, name, args: {} }]);
+    addActions([`${name} {} → {"scheduled":true}`]);
+    return { endSession: true };
+  }
+
   // ponytail: fixed 20-message window; summarise older turns if cost matters.
   const recent = selectActiveMessages(useConversationStore.getState()).slice(
     -HISTORY_MESSAGES - 1,
@@ -103,6 +123,7 @@ export async function runAssistantTurn({
   voice.setThinking(true);
 
   let fullReply = '';
+  let ranMusicTool = false;
   let assistantAdded = false;
   const ensureAssistant = () => {
     if (assistantAdded) return;
@@ -206,6 +227,7 @@ export async function runAssistantTurn({
       },
       onToolCalls: (calls) => {
         if (!isCurrent()) return;
+        if (calls.some((c) => MUSIC_TOOLS.has(c.name))) ranMusicTool = true;
         runClientToolCalls(calls);
       },
       onActions: (actions) => {
@@ -225,7 +247,7 @@ export async function runAssistantTurn({
       useVoiceStore.getState().setError(msg);
       useVoiceStore.getState().setThinking(false);
     }
-    return;
+    return { endSession: false };
   }
 
   // Final sentence (no trailing whitespace, so the regex didn't catch it).
@@ -236,7 +258,7 @@ export async function runAssistantTurn({
 
   if (!fullReply) {
     if (isCurrent()) useVoiceStore.getState().setThinking(false);
-    return;
+    return { endSession: ranMusicTool };
   }
 
   // Every sentence is already in flight; wait for the last one to finish
@@ -253,4 +275,5 @@ export async function runAssistantTurn({
       useVoiceStore.getState().setSpeaking(false);
     }
   }
+  return { endSession: ranMusicTool };
 }

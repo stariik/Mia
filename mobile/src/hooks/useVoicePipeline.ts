@@ -62,13 +62,13 @@ export function useVoicePipeline() {
   const handleText = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
-      if (!trimmed) return;
+      if (!trimmed) return { endSession: false };
 
       // Supersede any in-flight turn (interrupt, or a rapid second send).
       cancelActiveTurn();
       const myTurn = ++turnIdRef.current;
 
-      await runAssistantTurn({
+      return runAssistantTurn({
         text: trimmed,
         playback: orbPlayback,
         isCurrent: () => turnIdRef.current === myTurn,
@@ -142,7 +142,8 @@ export function useVoicePipeline() {
           wakeWord.resumeDetection();
           useVoiceStore.getState().setTranscript('');
           if (!text) { conversationRef.current = false; return; }
-          await handleText(text);
+          // Music paused/resumed: end hands-free rather than record the music.
+          if ((await handleText(text)).endSession) conversationRef.current = false;
           if (mySession === sessionRef.current && conversationRef.current && !useVoiceStore.getState().error) await startListening();
           else if (mySession === sessionRef.current) conversationRef.current = false;
         }).catch(error => {
@@ -222,7 +223,8 @@ export function useVoicePipeline() {
         useVoiceStore.getState().setError('Empty transcription.');
         return;
       }
-      await handleText(text);
+      // Music paused/resumed: end hands-free rather than record the music.
+      if ((await handleText(text)).endSession) conversationRef.current = false;
       answered = true;
     } finally {
       // Hands-free re-arm: Mia has finished speaking, so listen for the reply

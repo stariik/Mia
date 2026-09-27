@@ -20,7 +20,7 @@ jest.mock('@/api/transcribeGoogle', () => ({
 }));
 
 jest.mock('@/lib/assistantTurn', () => ({
-  runAssistantTurn: jest.fn().mockResolvedValue(undefined),
+  runAssistantTurn: jest.fn().mockResolvedValue({ endSession: false }),
 }));
 
 jest.mock('@/lib/orbPlayback', () => ({
@@ -144,7 +144,7 @@ beforeEach(() => {
   mockRecorder.start.mockResolvedValue(undefined);
   mockRecorder.stop.mockResolvedValue({ audioBase64: 'AAAA', sampleRate: 16000 });
   mockTranscribe.mockResolvedValue('რა ამინდია');
-  mockTurn.mockResolvedValue(undefined);
+  mockTurn.mockResolvedValue({ endSession: false });
   (streamingEnabled as jest.Mock).mockResolvedValue(false);
   (ensureMicrophonePermission as jest.Mock).mockResolvedValue(true);
   useVoiceStore.setState({
@@ -176,14 +176,30 @@ describe('hands-free conversation loop', () => {
     expect(useVoiceStore.getState().isListening).toBe(true);
   });
 
+  test('a music command ends the session instead of recording the music', async () => {
+    const p = await mountPipeline();
+    mockTurn.mockResolvedValue({ endSession: true });
+
+    await act(async () => {
+      await p.startListening();
+    });
+    await act(async () => {
+      await p.stopListeningAndSend();
+    });
+
+    expect(mockTurn).toHaveBeenCalledTimes(1);
+    expect(mockRecorder.start).toHaveBeenCalledTimes(1);
+    expect(p.isConversationActive()).toBe(false);
+  });
+
   test('a tap mid-answer ends the session and blocks the re-arm', async () => {
     const p = await mountPipeline();
 
     // Hold the turn open so we can "tap stop" while Mia is still answering.
     let finishTurn!: () => void;
     mockTurn.mockReturnValue(
-      new Promise<void>((resolve) => {
-        finishTurn = resolve;
+      new Promise((resolve) => {
+        finishTurn = () => resolve({ endSession: false });
       }),
     );
 
