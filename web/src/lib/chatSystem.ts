@@ -1,5 +1,6 @@
 import { GEORGIAN_ASSISTANT_SYSTEM_PROMPT } from "@/lib/prompts";
 import { formatProfile, formatRecentActions } from "@/lib/chatMemory";
+import { formatPendingSms } from "@/lib/tools/handlers/sms";
 
 // Everything appended to the static prompt each turn. Lives here, not in the
 // route, so scripts/tool-probe.ts tests exactly what the route sends.
@@ -32,6 +33,8 @@ export type ChatUserContext = {
   // calls — see lib/chatMemory.ts.
   profile?: unknown;
   recentActions?: unknown;
+  // SMS awaiting the user's yes/no — see lib/tools/handlers/sms.ts.
+  pendingSms?: unknown;
 };
 
 const WEEKDAYS_KA = ["კვირა", "ორშაბათი", "სამშაბათი", "ოთხშაბათი", "ხუთშაბათი", "პარასკევი", "შაბათი"];
@@ -117,6 +120,7 @@ export function buildSystemInstruction(ctx: ChatUserContext | undefined, now = n
     formatActiveState(ctx),
     formatProfile(ctx?.profile),
     formatRecentActions(ctx?.recentActions),
+    formatPendingSms(ctx?.pendingSms),
   ]
     .filter(Boolean)
     .join("\n\n");

@@ -92,3 +92,36 @@ export async function ensureLocationPermission(
     { requestPolicy: opts.userInitiated ? 'always' : 'once-per-session' },
   );
 }
+
+// Voice SMS. `canPrompt` is false when no Activity is in front (wake-word
+// session with the app closed) — a system dialog can't show there, so only
+// check. Once per session: a denied voice request must not re-prompt in a loop.
+export async function ensureContactsPermission(canPrompt: boolean) {
+  const p = PermissionsAndroid.PERMISSIONS.READ_CONTACTS;
+  if (!canPrompt) return PermissionsAndroid.check(p);
+  return ensurePermission(
+    p,
+    {
+      title: 'კონტაქტების წვდომა',
+      message: 'SMS-ის ადრესატის საპოვნელად Mia-ს სჭირდება კონტაქტები.',
+      buttonPositive: 'დათანხმება',
+      buttonNegative: 'უარი',
+    },
+    { requestPolicy: 'once-per-session' },
+  );
+}
+
+export async function ensureSendSmsPermission(canPrompt: boolean) {
+  const p = PermissionsAndroid.PERMISSIONS.SEND_SMS;
+  if (!canPrompt) return PermissionsAndroid.check(p);
+  return ensurePermission(
+    p,
+    {
+      title: 'SMS-ის გაგზავნა',
+      message: 'რომ Mia-მ შენი სახელით SMS გაგზავნოს, საჭიროა ნებართვა.',
+      buttonPositive: 'დათანხმება',
+      buttonNegative: 'უარი',
+    },
+    { requestPolicy: 'once-per-session' },
+  );
+}

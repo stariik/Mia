@@ -18,6 +18,8 @@ export type UserContext = {
   profile?: { id: string; text: string }[];
   // Earlier tool calls in this conversation, so "and tomorrow?" keeps the city.
   recentActions?: string[];
+  // SMS awaiting confirmation (lib/tools/sms.ts) — names + text, no numbers.
+  pendingSms?: { text: string; to?: string; options?: string[] };
 };
 
 export type StreamChatParams = {

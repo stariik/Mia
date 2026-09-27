@@ -13,6 +13,7 @@ import {
   getToolDefinitions,
   findTool,
   isServerTool,
+  isClientTool,
 } from "@/lib/tools/registry";
 import type { ToolContext, ClientToolCall } from "@/lib/tools/types";
 
@@ -164,6 +165,16 @@ export async function POST(request: Request) {
             // The client stores these so later turns know what was done.
             send({ actions });
             if (calls.every((c) => SILENT_TOOLS.has(c.name ?? ""))) break;
+            // The phone speaks these outcomes itself (e.g. SMS) — a model
+            // reply here would be a second, guessed answer.
+            if (
+              clientCalls.some((c) => {
+                const t = findTool(c.name);
+                return t && isClientTool(t) && t.speaksResult;
+              })
+            ) {
+              break;
+            }
             // loop continues: ask the model to produce a natural-language reply
           }
 

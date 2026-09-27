@@ -57,6 +57,13 @@ For each, declare: Collected? Shared? Optional? Purpose? Why required?
 - **Purpose**: App functionality (multi-turn conversation)
 - **Required**: Yes
 
+### Contacts
+- **Collected**: No — READ_CONTACTS is used on-device only to find an SMS recipient; the contact list and numbers are never transmitted (only the chosen name + message text, as part of the chat request)
+- **Shared**: No
+
+### Messages — SMS or MMS
+- **Collected**: No — SMS is sent from the device after user confirmation; the message text is processed like other chat text (see above)
+
 ### App activity — App interactions
 - **Collected**: No (no analytics yet)
 - **Shared**: No

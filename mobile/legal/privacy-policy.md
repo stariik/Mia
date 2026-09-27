@@ -14,7 +14,10 @@ This privacy policy explains how the Mia app ("the app", "we") handles your info
 | **Conversation history** | Stored on your device | So you can revisit past conversations, and so Mia can follow the current one |
 | **Personal memory** (facts you tell Mia, e.g. name, city) | Stored on your device; reviewable and deletable in Settings | So Mia remembers you across conversations |
 
-We do **not** collect: contacts, photos, calendar, files, precise location, advertising IDs, sensor data, or any data you didn't explicitly provide.
+| **Contacts** (read on your device only) | Only when you ask Mia to send an SMS and have granted permission | To find the recipient. Your contact list and phone numbers never leave your device; only the recipient's name and the message text are processed like any other request |
+| **SMS** (sent from your SIM) | Only after Mia reads the message back and you confirm | To send the message you asked for. Normal carrier charges apply |
+
+We do **not** collect or upload: your contact list, photos, calendar, files, precise location, advertising IDs, sensor data, or any data you didn't explicitly provide.
 
 ## 2. Third-party processors
 
