@@ -17,7 +17,7 @@ export const pauseMusic: ClientTool = {
     function: {
       name: "pause_music",
       description:
-        "Pause whatever is currently playing on the phone. Trigger phrases (Georgian): 'გააჩერე', 'შეაჩერე', 'პაუზა', 'დააპაუზე', 'შეწყვიტე მუსიკა'.",
+        "Pause whatever is currently playing on the phone. Trigger phrases: 'გააჩერე', 'შეაჩერე', 'პაუზა', 'დააპაუზე', 'შეწყვიტე მუსიკა', 'pause', 'pause the music' — often prefixed with the assistant's name ('მია', 'Mia'). Runs silently: say nothing.",
       parameters: { type: "object", properties: {}, additionalProperties: false },
     },
   },
@@ -31,7 +31,7 @@ export const resumeMusic: ClientTool = {
     function: {
       name: "resume_music",
       description:
-        "Resume paused music. Trigger phrases (Georgian): 'გააგრძელე', 'ჩართე', 'გადააქცე', 'მუსიკა ისევ ჩართე'.",
+        "Resume paused music. Trigger phrases: 'გააგრძელე', 'გააგრძელე მუსიკა', 'ჩართე', 'მუსიკა ისევ ჩართე', 'continue', 'continue the music', 'resume' — often prefixed with the assistant's name ('მია', 'Mia'). Runs silently: say nothing.",
       parameters: { type: "object", properties: {}, additionalProperties: false },
     },
   },

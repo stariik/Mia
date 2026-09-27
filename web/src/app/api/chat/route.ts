@@ -44,6 +44,9 @@ type ChatRequestBody = {
 };
 
 const MAX_TOOL_ROUNDS = 3;
+// Music commands run silently: Mia must not talk over the music she just paused
+// or resumed, so a round made only of these ends the turn with no reply.
+const SILENT_TOOLS = new Set(["pause_music", "resume_music"]);
 
 /**
  * A Georgian system message describing the user's active timers/alarms so the
@@ -216,6 +219,7 @@ export async function POST(request: Request) {
             }
             // The client stores these so later turns know what was done.
             send({ actions });
+            if (calls.every((c) => SILENT_TOOLS.has(c.name ?? ""))) break;
             // loop continues: ask the model to produce a natural-language reply
           }
 
