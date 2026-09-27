@@ -1,4 +1,5 @@
 import { apiUrl, authHeaders } from '@/api/client';
+import { isLocalBackend } from '@/config/env';
 
 export async function streamingEnabled(signal: AbortSignal): Promise<boolean> {
   const response = await fetch(apiUrl('/api/stt/config'), {
@@ -17,5 +18,5 @@ export async function streamingEnabled(signal: AbortSignal): Promise<boolean> {
 export function streamUrl() {
   const url = apiUrl('/api/stt/stream').replace(/^http/, 'ws');
   // ponytail: dev has no Caddy in front — dial the gateway's own port (WS_PORT).
-  return __DEV__ ? url.replace(':3002/', ':3001/') : url;
+  return __DEV__ || isLocalBackend ? url.replace(':3002/', ':3001/') : url;
 }

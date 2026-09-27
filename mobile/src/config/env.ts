@@ -26,8 +26,18 @@ const DEV_API_BASE_URL = expoDevHost
   ? `http://${expoDevHost}:3002`
   : 'http://localhost:3002';
 
+// Test APKs built against the laptop's backend (eas.json "local" profile) set
+// this at bundle time. Must stay a literal process.env.EXPO_PUBLIC_* access so
+// babel-preset-expo inlines it into the release bundle.
+const LOCAL_API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL;
+
+/** True when a non-dev build talks to the local dev backend (no Caddy). */
+export const isLocalBackend = !__DEV__ && !!LOCAL_API_BASE_URL;
+
 export const env = {
-  apiBaseUrl: __DEV__ ? DEV_API_BASE_URL : PROD_API_BASE_URL,
+  apiBaseUrl: __DEV__
+    ? DEV_API_BASE_URL
+    : LOCAL_API_BASE_URL || PROD_API_BASE_URL,
   sentryDsn: PROD_SENTRY_DSN,
 };
 
