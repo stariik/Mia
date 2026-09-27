@@ -37,6 +37,7 @@ import { haptics } from '@/lib/haptics';
 import { useSilenceAutoStop } from '@/hooks/useSilenceAutoStop';
 import { useVoicePipeline } from '@/hooks/useVoicePipeline';
 import { ensureWakeWordOnLaunch, useWakeTrigger } from '@/hooks/useWakeWord';
+import { refreshLocation } from '@/lib/location';
 import type { RootNav } from '@/navigation/navigationRef';
 import {
   selectActiveMessages,
@@ -182,9 +183,15 @@ export function HomeScreen() {
   );
   useSilenceAutoStop(isListening && !streaming, onSilenceStop);
 
-  // Re-arm the background "Hey Mia" service on launch if the user left it on.
+  // Re-arm the background "Hey Mia" service on launch if the user left it on,
+  // then fetch the city for weather. Sequential so two permission prompts never
+  // overlap. Launch only — never on AppState 'active' (the permission-dialog
+  // focus loop); refreshLocation itself asks once per session and backs off.
   useEffect(() => {
-    ensureWakeWordOnLaunch();
+    ensureWakeWordOnLaunch()
+      .catch(() => {})
+      .then(() => refreshLocation())
+      .catch(() => {});
   }, []);
 
   // Saying "Mia" starts a turn, exactly like tapping the orb (interrupting

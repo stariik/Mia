@@ -1,0 +1,15 @@
+diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioStream.kt b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioStream.kt
+index 8ecdcc1..28b2e19 100644
+--- a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioStream.kt
++++ b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioStream.kt
+@@ -139,7 +139,9 @@ class AudioStream(
+   @RequiresPermission(Manifest.permission.RECORD_AUDIO)
+   private fun createAudioRecord(config: ResolvedAudioConfig): AudioRecord {
+     val recorder = AudioRecord(
+-      MediaRecorder.AudioSource.MIC,
++      // Patched (voice-ai): VOICE_RECOGNITION is the source Android tunes for
++      // speech recognition; raw MIC made Georgian STT far worse than on iOS.
++      MediaRecorder.AudioSource.VOICE_RECOGNITION,
+       config.sampleRate,
+       config.channelConfig,
+       config.audioEncoding,
