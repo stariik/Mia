@@ -10,7 +10,10 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Build
@@ -76,6 +79,13 @@ class WakeWordService : Service() {
   // Ends a smart-start capture early (orb tapped). See [earlyCapture].
   @Volatile private var earlyAbort = false
 
+  // Transient "may duck" audio focus held while Mia listens, so music drops in
+  // volume and the user is heard over it. See [duckMusic].
+  private val audioManager by lazy { getSystemService(Context.AUDIO_SERVICE) as AudioManager }
+  private val focusListener = AudioManager.OnAudioFocusChangeListener { }
+  private var focusRequest: AudioFocusRequest? = null
+  @Volatile private var ducking = false
+
   // Held during a background (screen-off) turn so STT/chat/TTS run with the CPU
   // awake; released when the turn re-arms detection.
   private var turnWakeLock: PowerManager.WakeLock? = null
@@ -86,6 +96,7 @@ class WakeWordService : Service() {
     if (isRunning && !capturing) {
       Log.w(TAG, "Background-turn watchdog fired — re-arming detection.")
       releaseTurnWakeLock()
+      restoreMusic()
       engine?.reset()
       startCapture()
     }
@@ -169,6 +180,7 @@ class WakeWordService : Service() {
   private fun pause() {
     // Release the mic but keep the engine + foreground notification so RESUME
     // is cheap. Used while the in-app recorder owns the mic for a turn.
+    duckMusic()
     stopTurnCapture()
     stopCapture()
     listening = false
@@ -179,6 +191,7 @@ class WakeWordService : Service() {
     // cancel the re-arm watchdog.
     mainHandler.removeCallbacks(resumeWatchdog)
     releaseTurnWakeLock()
+    restoreMusic()
     startForegroundCompat()
     val eng = engine
     if (eng == null) {
@@ -222,6 +235,7 @@ class WakeWordService : Service() {
   private fun teardownManager() {
     mainHandler.removeCallbacks(resumeWatchdog)
     releaseTurnWakeLock()
+    restoreMusic()
     stopTurnCapture()
     stopCapture()
     try {
@@ -296,6 +310,8 @@ class WakeWordService : Service() {
           break
         }
         if (fired && capturing) {
+          // Lower the music the moment "Mia" is heard, as Google Assistant does.
+          duckMusic()
           if (isAppInForeground()) {
             // App visible: the live JS UI runs the turn through the orb (the
             // event starts listening with no tap, same path as tapping the orb).
@@ -406,6 +422,60 @@ class WakeWordService : Service() {
         "peak=$peak ms=${SystemClock.elapsedRealtime() - detectMs}",
     )
     return if (speechStarted) Base64.encodeToString(pcm.toByteArray(), Base64.NO_WRAP) else null
+  }
+
+  /**
+   * Lower whatever is playing while Mia listens and answers: transient
+   * "may duck" focus makes music apps (or the system, on their behalf) drop to a
+   * low volume rather than stop. Media keys still reach the music app, since
+   * this creates no media session. Idempotent; undone by [restoreMusic].
+   */
+  // Called from the capture thread (detection) and the main thread (pause).
+  @Synchronized
+  private fun duckMusic() {
+    if (ducking) return
+    ducking = true
+    try {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+          .setAudioAttributes(
+            // No CONTENT_TYPE_SPEECH: that can make the system pause other apps
+            // instead of ducking them.
+            AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANT).build(),
+          )
+          .setOnAudioFocusChangeListener(focusListener, mainHandler)
+          .build()
+        focusRequest = request
+        audioManager.requestAudioFocus(request)
+      } else {
+        @Suppress("DEPRECATION")
+        audioManager.requestAudioFocus(
+          focusListener,
+          AudioManager.STREAM_MUSIC,
+          AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK,
+        )
+      }
+    } catch (e: Exception) {
+      Log.w(TAG, "duck request failed", e)
+    }
+  }
+
+  /** Give focus back so ducked music returns to full volume. Idempotent. */
+  @Synchronized
+  private fun restoreMusic() {
+    if (!ducking) return
+    ducking = false
+    try {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        focusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
+        focusRequest = null
+      } else {
+        @Suppress("DEPRECATION")
+        audioManager.abandonAudioFocus(focusListener)
+      }
+    } catch (e: Exception) {
+      Log.w(TAG, "duck release failed", e)
+    }
   }
 
   private fun writePcm(out: ByteArrayOutputStream, samples: ShortArray, n: Int) {
