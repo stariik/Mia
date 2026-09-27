@@ -153,6 +153,29 @@ class WakeWordModule(private val reactCtx: ReactApplicationContext) :
     promise.resolve(pending)
   }
 
+  /**
+   * Smart-start result for the background turn in flight: "none" (greet and
+   * record as usual), "pending" (still listening; an `earlyTurn` event
+   * follows), or "done" with `audioBase64` (null = the user stopped after
+   * "Mia"). Reading "done" clears it.
+   */
+  @ReactMethod
+  fun consumeEarlyTurn(promise: Promise) {
+    val map = Arguments.createMap()
+    when (WakeWordService.earlyTurnState) {
+      WakeWordService.EARLY_PENDING -> map.putString("state", "pending")
+      WakeWordService.EARLY_DONE -> {
+        map.putString("state", "done")
+        val audio = WakeWordService.earlyTurnAudio
+        if (audio != null) map.putString("audioBase64", audio) else map.putNull("audioBase64")
+        WakeWordService.earlyTurnAudio = null
+        WakeWordService.earlyTurnState = WakeWordService.EARLY_NONE
+      }
+      else -> map.putString("state", "none")
+    }
+    promise.resolve(map)
+  }
+
   // NativeEventEmitter bookkeeping — no-ops, but required or RN logs warnings.
   @ReactMethod fun addListener(eventName: String) {}
 

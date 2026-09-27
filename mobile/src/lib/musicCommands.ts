@@ -10,6 +10,17 @@ export type MusicCommand = 'pause' | 'resume';
 // begins just before "Mia", so words before it (song lyrics) are dropped too.
 const WAKE = new Set(['მია', 'მიას', 'mia', 'мия', 'миа']);
 const HEY = new Set(['ჰეი', 'hey', 'эй']);
+const SEP = `[\\s,.!?;:"'„“”«»…—–-]`;
+const WAKE_RE = new RegExp(`(?:^|${SEP})(?:${[...WAKE].join('|')})(?=$|${SEP})`, 'i');
+
+/** What was said after the wake word: "la la მია, პაუზა" → "პაუზა". Smart-start
+ *  audio starts just before "Mia", so this drops the wake word and any song
+ *  lyrics before it. Unchanged when there is no wake word. */
+export function afterWakeWord(text: string): string {
+  const m = WAKE_RE.exec(text);
+  const rest = m ? text.slice(m.index + m[0].length) : text;
+  return rest.replace(new RegExp(`^${SEP}+`), '').trim();
+}
 
 const PAUSE = new Set([
   'გააჩერე', 'შეაჩერე', 'დააპაუზე', 'პაუზა', 'პაუზაზე',

@@ -1,4 +1,4 @@
-import { matchMusicCommand } from '@/lib/musicCommands';
+import { afterWakeWord, matchMusicCommand } from '@/lib/musicCommands';
 
 describe('matchMusicCommand', () => {
   test('pause, with or without the wake word', () => {
@@ -35,5 +35,23 @@ describe('matchMusicCommand', () => {
     expect(matchMusicCommand('მია')).toBeNull();
     expect(matchMusicCommand('რა ამინდია?')).toBeNull();
     expect(matchMusicCommand('')).toBeNull();
+  });
+});
+
+describe('afterWakeWord', () => {
+  test('keeps only what follows the wake word', () => {
+    expect(afterWakeWord('მია, პაუზა')).toBe('პაუზა');
+    expect(afterWakeWord('la la love Mia what time is it?')).toBe('what time is it?');
+    expect(afterWakeWord('ჰეი მია რა ამინდია')).toBe('რა ამინდია');
+  });
+
+  test('is empty when only the wake word was heard', () => {
+    expect(afterWakeWord('მია')).toBe('');
+    expect(afterWakeWord('Mia.')).toBe('');
+  });
+
+  test('leaves text without a wake word alone, including words that contain it', () => {
+    expect(afterWakeWord('რა ამინდია?')).toBe('რა ამინდია?');
+    expect(afterWakeWord('მიამიში რა ამინდია')).toBe('მიამიში რა ამინდია');
   });
 });
