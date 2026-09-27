@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  LOCAL-TEST-BUILD network security policy (resource overlay for the "local"
+  build type only). Allows cleartext HTTP to any host so the APK can reach the
+  laptop's Next.js backend on the LAN, whatever IP the router hands out.
+  Release builds never see this file.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
