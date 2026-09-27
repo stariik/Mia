@@ -22,6 +22,23 @@ type Rationale = {
 // callers get ONE request per session, ever.
 const requestedThisSession = new Set<string>();
 
+// Android runs one permission request at a time: a second request while a
+// dialog is up is rejected instantly with empty results, which RN reports as
+// a denial. On first launch the notification and location prompts both fire
+// from App's mount effect, so location was "denied" without the user ever
+// seeing it. Queue the requests instead.
+let requestQueue: Promise<unknown> = Promise.resolve();
+function requestSerially(
+  permission: AndroidPermission,
+  rationale: Rationale,
+): Promise<string> {
+  const next = requestQueue.then(() =>
+    PermissionsAndroid.request(permission, rationale),
+  );
+  requestQueue = next.catch(() => {});
+  return next;
+}
+
 async function ensurePermission(
   permission: AndroidPermission,
   rationale: Rationale,
@@ -37,7 +54,7 @@ async function ensurePermission(
     return false;
   }
   requestedThisSession.add(permission);
-  const granted = await PermissionsAndroid.request(permission, rationale);
+  const granted = await requestSerially(permission, rationale);
   return granted === PermissionsAndroid.RESULTS.GRANTED;
 }
 
