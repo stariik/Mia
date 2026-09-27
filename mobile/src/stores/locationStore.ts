@@ -46,6 +46,13 @@ export const useLocationStore = create<LocationState>()(
     {
       name: 'location-store-v1',
       storage: createJSONStorage(() => AsyncStorage),
+      // v1: forget denials saved before permission requests were queued —
+      // most were Android rejecting a concurrent request, not the user.
+      version: 1,
+      migrate: (persisted) => ({
+        ...(persisted as Partial<LocationState>),
+        permissionDenied: false,
+      }),
       partialize: (s) => ({
         city: s.city,
         lat: s.lat,
