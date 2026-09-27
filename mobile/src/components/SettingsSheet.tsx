@@ -13,6 +13,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 import { authApi } from '@/api/auth';
 import { useWakeWordToggle } from '@/hooks/useWakeWord';
+import { isLocalBackend } from '@/config/env';
 import { refreshLocation } from '@/lib/location';
 import { useAuthStore } from '@/stores/authStore';
 import { useLocationStore } from '@/stores/locationStore';
@@ -29,6 +30,10 @@ export function SettingsSheet({ visible, onClose }: Props) {
 
   const detectedCity = useLocationStore((s) => s.city);
   const manualCity = useLocationStore((s) => s.manualCity);
+  // Test/dev builds only: why the automatic lookup failed (no adb on device).
+  const locationError = useLocationStore((s) =>
+    __DEV__ || isLocalBackend ? s.lastError : undefined,
+  );
   const setManualCity = useLocationStore((s) => s.setManualCity);
   const [cityDraft, setCityDraft] = useState(manualCity ?? '');
 
@@ -149,6 +154,8 @@ export function SettingsSheet({ visible, onClose }: Props) {
                   ? 'ხელით მითითებული'
                   : detectedCity
                   ? `ავტომატური: ${detectedCity}`
+                  : locationError
+                  ? `მდებარეობა: ${locationError}`
                   : 'მდებარეობა ამინდისთვის'}
               </Text>
             </View>

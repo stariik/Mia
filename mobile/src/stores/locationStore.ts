@@ -10,6 +10,9 @@ export type LocationState = {
   lastUpdatedAt?: number;
   manualCity?: string;
   permissionDenied?: boolean;
+  /** Why the last automatic lookup failed (not persisted; shown in test
+   *  builds' Settings so a failure on a device without adb is visible). */
+  lastError?: string;
 
   setLocation: (loc: {
     city?: string;
@@ -18,6 +21,7 @@ export type LocationState = {
   }) => void;
   setManualCity: (city: string | undefined) => void;
   setPermissionDenied: (denied: boolean) => void;
+  setLastError: (lastError: string | undefined) => void;
   clear: () => void;
 };
 
@@ -31,10 +35,12 @@ export const useLocationStore = create<LocationState>()(
           lon,
           lastUpdatedAt: Date.now(),
           permissionDenied: false,
+          lastError: undefined,
         })),
       setManualCity: (manualCity) => set(() => ({ manualCity })),
       setPermissionDenied: (permissionDenied) =>
         set(() => ({ permissionDenied })),
+      setLastError: (lastError) => set(() => ({ lastError })),
       clear: () =>
         set(() => ({
           city: undefined,
