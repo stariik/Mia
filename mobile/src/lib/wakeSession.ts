@@ -287,7 +287,8 @@ export async function runWakeSession(): Promise<void> {
       });
       abortChat = null;
       turns += 1;
-      // Music paused/resumed: done, silently. Listening on would record the music.
+      // Music paused/resumed, or Maps took over: done. Listening on would
+      // record the music / talk over navigation.
       if (endSession) break;
       // Voice-only (screen off): single turn by design. Orb: loop.
     } while (orbShown && turns < MAX_TURNS && !cancelled);

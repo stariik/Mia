@@ -2,6 +2,7 @@ import { streamChat } from '@/api/chat';
 import { expireSessionIf401 } from '@/api/client';
 import { dlog } from '@/lib/log';
 import { matchMusicCommand } from '@/lib/musicCommands';
+import { clearQueuedApp, openQueuedApp } from '@/lib/tools/maps';
 import { runClientToolCalls } from '@/lib/tools/runClientCalls';
 import { getPendingSmsContext } from '@/lib/tools/sms';
 import {
@@ -51,8 +52,9 @@ export interface RunTurnOptions {
 }
 
 export interface TurnResult {
-  /** The turn paused or resumed music, silently. The hands-free loop must stop
-   *  here rather than listen again: after "continue" it would record the music. */
+  /** The hands-free loop must stop here rather than listen again: the turn
+   *  paused/resumed music silently (listening on would record the music), or
+   *  handed the user off to Maps (no mic over navigation). */
   endSession: boolean;
 }
 
@@ -76,8 +78,22 @@ export function calendarDaysFrom(from: number, to: number): number {
  * playback).
  *
  * STT happens upstream; this takes the final transcript.
+ *
+ * Apps a tool asked for (Maps) open only after Mia finished speaking; that
+ * hand-off ends the session like a music command does.
  */
-export async function runAssistantTurn({
+export async function runAssistantTurn(
+  opts: RunTurnOptions,
+): Promise<TurnResult> {
+  const result = await runTurn(opts);
+  if (opts.isCurrent && !opts.isCurrent()) {
+    clearQueuedApp();
+    return result;
+  }
+  return (await openQueuedApp()) ? { endSession: true } : result;
+}
+
+async function runTurn({
   text,
   playback,
   isCurrent = () => true,

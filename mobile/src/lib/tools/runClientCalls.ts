@@ -1,6 +1,7 @@
 import { useProfileStore } from '@/stores/profileStore';
 import { useToolsStore } from '@/stores/toolsStore';
 
+import { queueDirections } from './maps';
 import { music } from './music';
 import { cancelSms, confirmSms, prepareSms } from './sms';
 import { nativePlatform } from './platform/native';
@@ -120,6 +121,11 @@ export async function runClientToolCalls(
         say = await confirmSms();
       } else if (call.name === 'cancel_sms') {
         say = cancelSms();
+      } else if (call.name === 'open_directions') {
+        queueDirections(
+          String(call.args.destination ?? ''),
+          typeof call.args.mode === 'string' ? call.args.mode : undefined,
+        );
       }
     } catch (err) {
       // The user asked for something and nothing happened — release-worthy.

@@ -176,6 +176,7 @@ describe('hands-free conversation loop', () => {
     expect(useVoiceStore.getState().isListening).toBe(true);
   });
 
+  // endSession covers both a silent music command and a hand-off to Maps.
   test('a music command ends the session instead of recording the music', async () => {
     const p = await mountPipeline();
     mockTurn.mockResolvedValue({ endSession: true });
