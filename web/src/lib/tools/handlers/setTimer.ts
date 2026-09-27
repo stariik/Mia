@@ -8,7 +8,7 @@ export const setTimer: ClientTool = {
     function: {
       name: "set_timer",
       description:
-        "Start a countdown timer. Use when the user asks to set a timer (e.g. 'დამიყენე ტაიმერი ხუთ წუთზე'). Convert any spoken Georgian duration into total seconds.",
+        "Start a countdown timer. Use when the user asks to set a timer (e.g. 'დამიყენე ტაიმერი ხუთ წუთზე'). Convert any spoken Georgian duration into total seconds. If no duration was given ('ტაიმერი დამიყენე', 'set a timer'), do NOT call this — ask how long first.",
       parameters: {
         type: "object",
         properties: {

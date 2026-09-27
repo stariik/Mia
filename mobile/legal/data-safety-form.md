@@ -37,10 +37,10 @@ For each, declare: Collected? Shared? Optional? Purpose? Why required?
 
 ### Location — Approximate location
 - **Collected**: Yes
-- **Shared**: Yes — sent to Google Gemini (in chat context) and OpenStreetMap (for reverse geocoding)
+- **Shared**: Yes — sent to Google Gemini (in chat context), OpenStreetMap (for reverse geocoding), and, when the phone shares no location, the IP address to ipwho.is to estimate the city
 - **Optional**: Yes
 - **Purpose**: App functionality (weather, time-of-day responses)
-- **Required**: No — user can decline; only city name is shared, not coordinates after geocoding
+- **Required**: No — user can decline the permission; weather then falls back to an IP-based city estimate
 
 ### Audio — Voice or sound recordings
 - **Collected**: Yes — only while user is actively recording

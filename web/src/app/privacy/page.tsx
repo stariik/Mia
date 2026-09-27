@@ -41,7 +41,8 @@ export default function PrivacyPolicyPage() {
           </li>
           <li style={li}>
             <b>მიახლოებითი მდებარეობა (არასავალდებულო).</b> თუ ნებართვას მისცემთ,
-            ვიყენებთ მხოლოდ ამინდის საჩვენებლად. მდებარეობას არ ვინახავთ.
+            ვიყენებთ მხოლოდ ამინდის საჩვენებლად. ნებართვის გარეშე ამინდისთვის
+            ქალაქს მიახლოებით ვადგენთ თქვენი IP მისამართით. მდებარეობას არ ვინახავთ.
           </li>
           <li style={li}>
             <b>საუბრების ისტორია.</b> ინახება <b>მხოლოდ თქვენს მოწყობილობაზე</b>.
@@ -74,6 +75,14 @@ export default function PrivacyPolicyPage() {
           <li style={li}>
             <b>Open-Meteo</b> — ამინდის მონაცემები; გადაეცემა თქვენი ქალაქი ან
             მიახლოებითი კოორდინატები.
+          </li>
+          <li style={li}>
+            <b>OpenStreetMap Nominatim</b> — მიახლოებითი კოორდინატებიდან ქალაქის
+            სახელის დადგენა.
+          </li>
+          <li style={li}>
+            <b>ipwho.is</b> — ქალაქის დადგენა IP მისამართით, მხოლოდ მაშინ, როცა
+            ტელეფონი მდებარეობას არ გვაწვდის.
           </li>
           <li style={li}>
             <b>Sentry</b> (თუ ჩართულია) — მხოლოდ პროგრამის ხარვეზების დიაგნოსტიკა.
@@ -140,7 +149,9 @@ export default function PrivacyPolicyPage() {
           </li>
           <li style={li}>
             <b>Approximate location (optional).</b> If you grant permission, used
-            solely to show local weather. We do not store your location.
+            solely to show local weather. Without that permission, we estimate
+            your city from your IP address for weather only. We do not store
+            your location.
           </li>
           <li style={li}>
             <b>Conversation history and personal memory.</b> Stored <b>only on
@@ -177,6 +188,8 @@ export default function PrivacyPolicyPage() {
           <li style={li}><b>Google Gemini</b> — assistant replies, translation, transcript correction.</li>
           <li style={li}><b>ElevenLabs</b> — text-to-speech (reading replies aloud).</li>
           <li style={li}><b>Open-Meteo</b> — weather data; receives your city or approximate coordinates.</li>
+          <li style={li}><b>OpenStreetMap Nominatim</b> — turns approximate coordinates into a city name.</li>
+          <li style={li}><b>ipwho.is</b> — estimates your city from your IP address, only when your phone shares no location.</li>
           <li style={li}><b>Sentry</b> (if enabled) — crash diagnostics only.</li>
         </ul>
 

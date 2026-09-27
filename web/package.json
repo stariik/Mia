@@ -11,7 +11,8 @@
     "dev:all": "concurrently -n next,ws -c blue,magenta \"npm run dev\" \"npm run ws-dev\"",
     "test:stt": "node --import tsx --test src/stt/*.test.ts",
     "stt:probe": "node --import tsx scripts/stt-probe.ts",
-    "stt:evaluate": "node --import tsx scripts/stt-evaluate.ts"
+    "stt:evaluate": "node --import tsx scripts/stt-evaluate.ts",
+    "tools:probe": "node --import tsx scripts/tool-probe.ts"
   },
   "dependencies": {
     "@google-cloud/speech": "^7.3.1",

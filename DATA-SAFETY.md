@@ -40,9 +40,9 @@ Required or optional? / Purpose(s)?**
 | Field | Answer |
 |---|---|
 | Collected | **Yes** |
-| Shared | **Yes** — sent to the weather provider (Open-Meteo) to fetch local weather |
+| Shared | **Yes** — sent to the weather provider (Open-Meteo) to fetch local weather, and to OpenStreetMap Nominatim to name the city. Without the permission, the city is estimated from the IP address via ipwho.is |
 | Processed ephemerally only | **Yes** (not stored) |
-| Required or optional | **Optional** (works without the location permission) |
+| Required or optional | **Optional** (works without the location permission; weather then uses an IP-based city estimate) |
 | Purpose | **App functionality** |
 
 ### Email address

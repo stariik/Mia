@@ -10,7 +10,10 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Build
@@ -73,6 +76,15 @@ class WakeWordService : Service() {
   // loop above — only one runs at a time; never two AudioRecords on one mic.
   private var turnThread: Thread? = null
   @Volatile private var turnRecording = false
+  // Ends a smart-start capture early (orb tapped). See [earlyCapture].
+  @Volatile private var earlyAbort = false
+
+  // Transient "may duck" audio focus held while Mia listens, so music drops in
+  // volume and the user is heard over it. See [duckMusic].
+  private val audioManager by lazy { getSystemService(Context.AUDIO_SERVICE) as AudioManager }
+  private val focusListener = AudioManager.OnAudioFocusChangeListener { }
+  private var focusRequest: AudioFocusRequest? = null
+  @Volatile private var ducking = false
 
   // Held during a background (screen-off) turn so STT/chat/TTS run with the CPU
   // awake; released when the turn re-arms detection.
@@ -84,6 +96,7 @@ class WakeWordService : Service() {
     if (isRunning && !capturing) {
       Log.w(TAG, "Background-turn watchdog fired — re-arming detection.")
       releaseTurnWakeLock()
+      restoreMusic()
       engine?.reset()
       startCapture()
     }
@@ -167,6 +180,7 @@ class WakeWordService : Service() {
   private fun pause() {
     // Release the mic but keep the engine + foreground notification so RESUME
     // is cheap. Used while the in-app recorder owns the mic for a turn.
+    duckMusic()
     stopTurnCapture()
     stopCapture()
     listening = false
@@ -177,12 +191,16 @@ class WakeWordService : Service() {
     // cancel the re-arm watchdog.
     mainHandler.removeCallbacks(resumeWatchdog)
     releaseTurnWakeLock()
+    restoreMusic()
     startForegroundCompat()
     val eng = engine
     if (eng == null) {
       buildAndStart()
       return
     }
+    // A turn cancelled mid smart-start may still be on the detection thread;
+    // startCapture() would see `capturing` and leave the mic dead.
+    if (earlyTurnState == EARLY_PENDING) stopCapture()
     // Drop any stale buffered audio so it can't self-fire right after resume.
     eng.reset()
     startCapture()
@@ -217,6 +235,7 @@ class WakeWordService : Service() {
   private fun teardownManager() {
     mainHandler.removeCallbacks(resumeWatchdog)
     releaseTurnWakeLock()
+    restoreMusic()
     stopTurnCapture()
     stopCapture()
     try {
@@ -263,10 +282,14 @@ class WakeWordService : Service() {
     }
 
     val buf = ShortArray(CHUNK_SHORTS)
-    // Set when a background detection fires: we exit the loop so the mic is
-    // released in `finally`, THEN start the headless turn (below) — never while
-    // this thread still holds the AudioRecord, and never via a self-join.
-    var startTurnAfterRelease = false
+    // Smart start: the last ~1.1 s of audio (so a command said in the same
+    // breath as "Mia" keeps its start despite detection lag) and ~3 s of levels
+    // (this room's noise floor). See [earlyCapture].
+    val preRoll = ArrayDeque<ShortArray>()
+    val levels = ArrayDeque<Float>()
+    // Set when a background detection ran a smart start; its result is published
+    // only after `finally` has released the mic.
+    var earlyTurn = false
     try {
       record.startRecording()
       while (capturing) {
@@ -275,6 +298,10 @@ class WakeWordService : Service() {
           if (n == AudioRecord.ERROR_INVALID_OPERATION || n == AudioRecord.ERROR_BAD_VALUE) break
           continue
         }
+        preRoll.addLast(buf.copyOf(n))
+        if (preRoll.size > PREROLL_CHUNKS) preRoll.removeFirst()
+        levels.addLast(chunkLevel(buf, n))
+        if (levels.size > FLOOR_CHUNKS) levels.removeFirst()
         val fired = try {
           eng.process(buf, n)
         } catch (e: Exception) {
@@ -283,6 +310,8 @@ class WakeWordService : Service() {
           break
         }
         if (fired && capturing) {
+          // Lower the music the moment "Mia" is heard, as Google Assistant does.
+          duckMusic()
           if (isAppInForeground()) {
             // App visible: the live JS UI runs the turn through the orb (the
             // event starts listening with no tap, same path as tapping the orb).
@@ -291,12 +320,21 @@ class WakeWordService : Service() {
             Log.i(TAG, "Wake word detected (foreground).")
             emit("detected", null)
           } else {
-            // App backgrounded/closed: exit the loop, release the mic, then run
-            // the turn headless (screen stays off). No emit (so a backgrounded
-            // JS UI doesn't also start a turn); no launch notification.
+            // App backgrounded/closed: run the turn headless (screen stays off).
+            // No emit (so a backgrounded JS UI doesn't also start a turn); no
+            // launch notification. JS boots while we keep listening on this
+            // same mic, then collects the smart-start result.
             Log.i(TAG, "Wake word detected (background).")
-            startTurnAfterRelease = true
-            capturing = false
+            earlyTurnAudio = null
+            earlyTurnState = EARLY_PENDING
+            if (startBackgroundTurn()) {
+              earlyTurn = true
+              earlyTurnAudio = earlyCapture(record, buf, preRoll, levels)
+              capturing = false
+            } else {
+              earlyTurnState = EARLY_NONE
+              eng.reset() // no turn: keep listening for the next "Mia"
+            }
           }
         }
       }
@@ -308,8 +346,146 @@ class WakeWordService : Service() {
       } catch (_: Exception) {}
       record.release()
     }
-    // Mic is fully released now — safe to hand it to the headless recorder.
-    if (startTurnAfterRelease) startBackgroundTurn()
+    // Mic is fully released now — safe for JS to open the turn recorder.
+    if (earlyTurn) {
+      earlyTurnState = EARLY_DONE
+      emit("earlyTurn", null)
+    }
+  }
+
+  /**
+   * Smart start. Keep recording on the detection mic and decide whether the
+   * user kept talking after "Mia" ("Mia, pause" in one breath). Returns base64
+   * PCM16 including the pre-roll, or null when they stopped after "Mia" — JS
+   * then greets and records as usual. Speech counts if it is already under way
+   * at the detection frame (detection lags the end of "Mia" by a few frames)
+   * or starts within [EARLY_GRACE_MS]. Ends early when [capturing] clears
+   * (pause/stop) or [earlyAbort] is set (orb tapped).
+   */
+  private fun earlyCapture(
+    record: AudioRecord,
+    buf: ShortArray,
+    preRoll: ArrayDeque<ShortArray>,
+    levels: ArrayDeque<Float>,
+  ): String? {
+    earlyAbort = false
+    val pcm = ByteArrayOutputStream()
+    for (chunk in preRoll) writePcm(pcm, chunk, chunk.size)
+    val sorted = levels.sorted()
+    val floor = if (sorted.isEmpty()) 0f else sorted[sorted.size / 5]
+    val startLevel = (floor * TURN_NOISE_FLOOR_MULTIPLIER)
+      .coerceIn(TURN_MIN_START_LEVEL, TURN_MAX_START_LEVEL)
+    val detectMs = SystemClock.elapsedRealtime()
+    val ongoing = (levels.lastOrNull() ?: 0f) >= startLevel
+    var voiceRunStart = if (ongoing) detectMs - CHUNK_MS else 0L
+    var speechStarted = false
+    var lastSpeechMs = detectMs
+    var peak = 0f
+    var lastLevelEmit = 0L
+    while (capturing && !earlyAbort) {
+      val n = record.read(buf, 0, buf.size)
+      if (n <= 0) {
+        if (n == AudioRecord.ERROR_INVALID_OPERATION || n == AudioRecord.ERROR_BAD_VALUE) break
+        continue
+      }
+      writePcm(pcm, buf, n)
+      val level = chunkLevel(buf, n)
+      val now = SystemClock.elapsedRealtime()
+      if (now - lastLevelEmit >= LEVEL_EMIT_INTERVAL_MS) {
+        emitLevel(level)
+        lastLevelEmit = now
+      }
+      val elapsed = now - detectMs
+      // Short cap: over loud music the level may never drop to "silence".
+      if (elapsed > EARLY_MAX_RECORD_MS) break
+      if (level > peak) peak = level
+      val continueLevel =
+        max(startLevel * TURN_CONTINUE_RATIO, peak * TURN_CONTINUE_PEAK_RATIO)
+      val threshold = if (speechStarted) continueLevel else startLevel
+      if (level >= threshold) {
+        if (voiceRunStart == 0L) voiceRunStart = now
+        val runMs = now - voiceRunStart
+        if (!speechStarted && runMs >= TURN_VOICE_LATCH_MS) speechStarted = true
+        if (!speechStarted || runMs >= TURN_CONTINUE_DEBOUNCE_MS) lastSpeechMs = now
+        continue
+      }
+      voiceRunStart = 0L
+      if (!speechStarted) {
+        if (elapsed > EARLY_GRACE_MS) break
+        continue
+      }
+      if (now - lastSpeechMs > TURN_SILENCE_MS) break
+    }
+    Log.i(
+      TAG,
+      "[early] floor=$floor start=$startLevel ongoing=$ongoing speech=$speechStarted " +
+        "peak=$peak ms=${SystemClock.elapsedRealtime() - detectMs}",
+    )
+    return if (speechStarted) Base64.encodeToString(pcm.toByteArray(), Base64.NO_WRAP) else null
+  }
+
+  /**
+   * Lower whatever is playing while Mia listens and answers: transient
+   * "may duck" focus makes music apps (or the system, on their behalf) drop to a
+   * low volume rather than stop. Media keys still reach the music app, since
+   * this creates no media session. Idempotent; undone by [restoreMusic].
+   */
+  // Called from the capture thread (detection) and the main thread (pause).
+  @Synchronized
+  private fun duckMusic() {
+    if (ducking) return
+    ducking = true
+    try {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+          .setAudioAttributes(
+            // No CONTENT_TYPE_SPEECH: that can make the system pause other apps
+            // instead of ducking them.
+            AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANT).build(),
+          )
+          .setOnAudioFocusChangeListener(focusListener, mainHandler)
+          .build()
+        focusRequest = request
+        audioManager.requestAudioFocus(request)
+      } else {
+        @Suppress("DEPRECATION")
+        audioManager.requestAudioFocus(
+          focusListener,
+          AudioManager.STREAM_MUSIC,
+          AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK,
+        )
+      }
+    } catch (e: Exception) {
+      Log.w(TAG, "duck request failed", e)
+    }
+  }
+
+  /** Give focus back so ducked music returns to full volume. Idempotent. */
+  @Synchronized
+  private fun restoreMusic() {
+    if (!ducking) return
+    ducking = false
+    try {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        focusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
+        focusRequest = null
+      } else {
+        @Suppress("DEPRECATION")
+        audioManager.abandonAudioFocus(focusListener)
+      }
+    } catch (e: Exception) {
+      Log.w(TAG, "duck release failed", e)
+    }
+  }
+
+  private fun writePcm(out: ByteArrayOutputStream, samples: ShortArray, n: Int) {
+    val bytes = ByteArray(n * 2)
+    for (i in 0 until n) {
+      val v = samples[i].toInt()
+      bytes[i * 2] = (v and 0xFF).toByte()
+      bytes[i * 2 + 1] = ((v shr 8) and 0xFF).toByte()
+    }
+    out.write(bytes, 0, bytes.size)
   }
 
   /** Open the shared mic AudioRecord (16 kHz PCM16 mono, VOICE_RECOGNITION).
@@ -375,6 +551,7 @@ class WakeWordService : Service() {
   }
 
   private fun stopTurnCapture() {
+    earlyAbort = true
     turnRecording = false
     turnThread?.let { t ->
       try {
@@ -540,21 +717,23 @@ class WakeWordService : Service() {
    * notification; a wake lock holds the CPU through STT/chat/TTS and detection
    * re-arms when the turn finishes.
    */
-  private fun startBackgroundTurn() {
-    // We're on the capture thread as it ends; clear the ref so a concurrent
-    // teardown doesn't try to join this dying thread.
-    captureThread = null
+  private fun startBackgroundTurn(): Boolean {
+    // Called on the capture thread, which keeps the mic for the smart start.
+    // captureThread stays set so pause()/startTurnCapture() still join it
+    // before anyone else opens the mic.
     acquireTurnWakeLock()
     mainHandler.removeCallbacks(resumeWatchdog)
     mainHandler.postDelayed(resumeWatchdog, TURN_WATCHDOG_MS)
 
     Log.i(TAG, "Starting background turn (headless task; live JS reused if warm).")
-    try {
+    return try {
       startService(Intent(this, WakeTurnService::class.java))
+      true
     } catch (e: Exception) {
-      Log.w(TAG, "Headless turn start failed; re-arming detection", e)
-      engine?.reset()
-      startCapture()
+      Log.w(TAG, "Headless turn start failed; staying in detection", e)
+      mainHandler.removeCallbacks(resumeWatchdog)
+      releaseTurnWakeLock()
+      false
     }
   }
 
@@ -779,6 +958,25 @@ class WakeWordService : Service() {
     /** Score in [0,1] a frame must reach, and consecutive frames required. */
     const val DEFAULT_THRESHOLD = 0.5f
     const val DEFAULT_TRIGGER = 3
+
+    // ---- smart start ("Mia, pause" in one breath) ----
+    /** Result of a background turn's smart start, read by
+     *  [WakeWordModule.consumeEarlyTurn]. */
+    const val EARLY_NONE = 0
+    const val EARLY_PENDING = 1
+    const val EARLY_DONE = 2
+    @Volatile @JvmStatic var earlyTurnState: Int = EARLY_NONE
+    /** Base64 PCM16 16 kHz; null = the user stopped after "Mia". */
+    @Volatile @JvmStatic var earlyTurnAudio: String? = null
+    /** Audio kept from before detection: ~1.1 s. */
+    private const val PREROLL_CHUNKS = 14
+    /** Detection-loop levels the noise floor is taken from: ~3 s. */
+    private const val FLOOR_CHUNKS = 38
+    private const val CHUNK_MS = 80L
+    /** Speech must be under way at detection or start within this. */
+    private const val EARLY_GRACE_MS = 800L
+    /** Commands are short; also bounds endpointing over loud music. */
+    private const val EARLY_MAX_RECORD_MS = 5000L
 
     private const val SAMPLE_RATE = 16000
     private const val CHUNK_SHORTS = 1280 // 80 ms @ 16 kHz

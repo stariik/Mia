@@ -5,6 +5,7 @@ import { runAssistantTurn, type TtsPlayback } from '@/lib/assistantTurn';
 import { makeFilePlayback, mimeForPath } from '@/lib/filePlayback';
 import { fs } from '@/lib/fs';
 import { isGoodbye, pickFarewell, pickGreeting } from '@/lib/greetings';
+import { afterWakeWord } from '@/lib/musicCommands';
 import { dlog } from '@/lib/log';
 import { nativePlayback } from '@/lib/nativePlayback';
 import { orbOverlay } from '@/lib/orbOverlay';
@@ -30,6 +31,8 @@ const GREETING_SYNTH_TIMEOUT_MS = 6000; // network TTS for a greeting/farewell
 const GREETING_PLAY_TIMEOUT_MS = 15_000; // hang guard only — clips are ~2s
 const CAPTURE_TIMEOUT_MS = 20_000; // native VAD caps at 15s; slack so a missed event can't hang
 const MAX_TURNS = 10; // safety cap on a runaway conversation loop
+// Native smart start listens ≤5.8s after detection; slack so a missed event can't hang.
+const EARLY_TURN_TIMEOUT_MS = 8000;
 
 let running = false;
 
@@ -212,10 +215,22 @@ export async function runWakeSession(): Promise<void> {
     activePlayback = playback;
     if (cancelled) return; // tapped / app opened during orb show
 
-    orbOverlay.setState('speaking');
-    mlog('greeting: synth+play start');
-    await speak(pickGreeting(), playback).catch((e) => mlog('greeting failed:', String(e)));
-    mlog('greeting: done');
+    const greet = async () => {
+      orbOverlay.setState('speaking');
+      mlog('greeting: synth+play start');
+      await speak(pickGreeting(), playback).catch((e) =>
+        mlog('greeting failed:', String(e)),
+      );
+      mlog('greeting: done');
+    };
+
+    // Smart start: a command said in the same breath as "Mia" ("Mia, pause")
+    // was already recorded natively. Greet only when the user stopped at "Mia".
+    orbOverlay.setState('listening');
+    let early = await wakeWord.takeEarlyTurn(EARLY_TURN_TIMEOUT_MS);
+    mlog('early turn: bytes =', early?.length ?? 0);
+    if (cancelled) return;
+    if (!early) await greet();
 
     let turns = 0;
     let saidGoodbye = false;
@@ -224,23 +239,36 @@ export async function runWakeSession(): Promise<void> {
       if (cancelled) break;
       wakeWord.heartbeat(); // keep the native turn wake-lock / watchdog alive
 
-      playback.stop(); // release the TTS audio route before recording
-      // The "let the audio route settle before opening the mic" wait now lives
-      // in the native turn thread (WakeWordService.turnCaptureLoop). A JS
-      // setTimeout does NOT fire while the app is backgrounded — RN pauses its
-      // Timing module with no resumed Activity — which hung the whole turn here
-      // until the app was reopened.
-      orbOverlay.setState('listening');
+      let text = '';
+      if (early) {
+        orbOverlay.setState('thinking');
+        const heard = await transcribeGooglePcm(early, 16000).catch(() => '');
+        early = null;
+        mlog('early transcript:', heard);
+        if (cancelled) break;
+        // The audio starts just before "Mia": keep only what followed it.
+        text = afterWakeWord(heard);
+        if (!text) await greet(); // only "Mia" after all: greet, then listen
+      }
 
-      mlog('capture: start');
-      const { audioBase64, sampleRate } = await captureTurn();
-      mlog('capture: done, bytes =', audioBase64?.length ?? 0);
-      if (cancelled || !audioBase64) break; // tap or silence ends the session
+      if (!text) {
+        if (cancelled) break;
+        playback.stop(); // release the TTS audio route before recording
+        // The "let the audio route settle before opening the mic" wait now lives
+        // in the native turn thread (WakeWordService.turnCaptureLoop). A JS
+        // setTimeout does NOT fire while the app is backgrounded — RN pauses its
+        // Timing module with no resumed Activity — which hung the whole turn here
+        // until the app was reopened.
+        orbOverlay.setState('listening');
 
-      orbOverlay.setState('thinking');
-      const text = await transcribeGooglePcm(audioBase64, sampleRate).catch(
-        () => '',
-      );
+        mlog('capture: start');
+        const { audioBase64, sampleRate } = await captureTurn();
+        mlog('capture: done, bytes =', audioBase64?.length ?? 0);
+        if (cancelled || !audioBase64) break; // tap or silence ends the session
+
+        orbOverlay.setState('thinking');
+        text = await transcribeGooglePcm(audioBase64, sampleRate).catch(() => '');
+      }
       if (cancelled || !text.trim()) break;
       if (isGoodbye(text)) {
         saidGoodbye = true;
@@ -249,7 +277,7 @@ export async function runWakeSession(): Promise<void> {
 
       wakeWord.heartbeat();
       orbOverlay.setState('speaking');
-      const handedOff = await runAssistantTurn({
+      const { endSession } = await runAssistantTurn({
         text,
         playback,
         isCurrent: () => !cancelled,
@@ -258,8 +286,10 @@ export async function runWakeSession(): Promise<void> {
         },
       });
       abortChat = null;
-      if (handedOff) break; // Maps took over — no orb listening over navigation
       turns += 1;
+      // Music paused/resumed, or Maps took over: done. Listening on would
+      // record the music / talk over navigation.
+      if (endSession) break;
       // Voice-only (screen off): single turn by design. Orb: loop.
     } while (orbShown && turns < MAX_TURNS && !cancelled);
 

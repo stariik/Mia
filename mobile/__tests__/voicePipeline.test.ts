@@ -20,7 +20,7 @@ jest.mock('@/api/transcribeGoogle', () => ({
 }));
 
 jest.mock('@/lib/assistantTurn', () => ({
-  runAssistantTurn: jest.fn().mockResolvedValue(undefined),
+  runAssistantTurn: jest.fn().mockResolvedValue({ endSession: false }),
 }));
 
 jest.mock('@/lib/orbPlayback', () => ({
@@ -144,7 +144,7 @@ beforeEach(() => {
   mockRecorder.start.mockResolvedValue(undefined);
   mockRecorder.stop.mockResolvedValue({ audioBase64: 'AAAA', sampleRate: 16000 });
   mockTranscribe.mockResolvedValue('რა ამინდია');
-  mockTurn.mockResolvedValue(undefined);
+  mockTurn.mockResolvedValue({ endSession: false });
   (streamingEnabled as jest.Mock).mockResolvedValue(false);
   (ensureMicrophonePermission as jest.Mock).mockResolvedValue(true);
   useVoiceStore.setState({
@@ -176,9 +176,10 @@ describe('hands-free conversation loop', () => {
     expect(useVoiceStore.getState().isListening).toBe(true);
   });
 
-  test('handing off to Maps ends the session instead of re-arming', async () => {
+  // endSession covers both a silent music command and a hand-off to Maps.
+  test('a music command ends the session instead of recording the music', async () => {
     const p = await mountPipeline();
-    mockTurn.mockResolvedValue(true); // the turn opened Maps
+    mockTurn.mockResolvedValue({ endSession: true });
 
     await act(async () => {
       await p.startListening();
@@ -198,8 +199,8 @@ describe('hands-free conversation loop', () => {
     // Hold the turn open so we can "tap stop" while Mia is still answering.
     let finishTurn!: () => void;
     mockTurn.mockReturnValue(
-      new Promise<void>((resolve) => {
-        finishTurn = resolve;
+      new Promise((resolve) => {
+        finishTurn = () => resolve({ endSession: false });
       }),
     );
 

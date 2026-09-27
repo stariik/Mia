@@ -9,8 +9,12 @@ import { DeviceEventEmitter, NativeModules, Platform } from 'react-native';
 // 'turn'     → background/screen-off turn (handled by index.js → runWakeSession).
 // 'level'    → mic level (0..1) during a native turn capture (drives the orb).
 // 'turnAudio'→ final captured turn audio (base64 PCM16; null = user said nothing).
+// 'earlyTurn'→ the smart-start result is ready (see takeEarlyTurn).
 export type WakeEvent =
-  | { type: 'detected' | 'turn' | 'error' | 'started' | 'stopped'; message?: string }
+  | {
+      type: 'detected' | 'turn' | 'error' | 'started' | 'stopped' | 'earlyTurn';
+      message?: string;
+    }
   | { type: 'level'; level: number }
   | { type: 'turnAudio'; audioBase64: string | null; sampleRate: number };
 
@@ -26,6 +30,11 @@ type WakeNative = {
   isEnabled(): Promise<boolean>;
   isRunning(): Promise<boolean>;
   getInitialWakeTrigger(): Promise<boolean>;
+  // Optional: absent in native builds from before smart start.
+  consumeEarlyTurn?(): Promise<{
+    state: 'none' | 'pending' | 'done';
+    audioBase64?: string | null;
+  }>;
 };
 
 const Native =
@@ -118,6 +127,44 @@ export const wakeWord = {
   async consumeInitialWakeTrigger(): Promise<boolean> {
     if (!Native) return false;
     return Native.getInitialWakeTrigger();
+  },
+
+  /**
+   * Smart start: the audio (base64 PCM16, 16 kHz) of a command said in the same
+   * breath as "Mia", which the native service recorded right after detection.
+   * Null when there is none — the user stopped at "Mia", or a native build
+   * without smart start — and the caller greets and records as usual.
+   */
+  takeEarlyTurn(timeoutMs: number): Promise<string | null> {
+    const native = Native;
+    if (!native?.consumeEarlyTurn) return Promise.resolve(null);
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = (audio: string | null) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        sub.remove();
+        resolve(audio);
+      };
+      const check = () =>
+        native.consumeEarlyTurn!().then(
+          (r) => {
+            if (r.state !== 'pending') finish(r.audioBase64 ?? null);
+          },
+          () => finish(null),
+        );
+      // Subscribe before the first check so a result landing in between
+      // still arrives as an event.
+      const sub = DeviceEventEmitter.addListener(WAKE_EVENT, (e: WakeEvent) => {
+        if (e.type === 'earlyTurn') check();
+      });
+      const timer = setTimeout(() => {
+        native.stopTurnCapture(); // free the mic for the normal turn
+        finish(null);
+      }, timeoutMs);
+      check();
+    });
   },
 
   /** Subscribe to wake events. Returns an unsubscribe fn. */

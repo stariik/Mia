@@ -1,6 +1,7 @@
 import { streamChat } from '@/api/chat';
 import { expireSessionIf401 } from '@/api/client';
 import { dlog } from '@/lib/log';
+import { matchMusicCommand } from '@/lib/musicCommands';
 import { clearQueuedApp, openQueuedApp } from '@/lib/tools/maps';
 import { runClientToolCalls } from '@/lib/tools/runClientCalls';
 import { getPendingSmsContext } from '@/lib/tools/sms';
@@ -50,6 +51,25 @@ export interface RunTurnOptions {
   onChatAbort?: (abort: (() => void) | null) => void;
 }
 
+export interface TurnResult {
+  /** The hands-free loop must stop here rather than listen again: the turn
+   *  paused/resumed music silently (listening on would record the music), or
+   *  handed the user off to Maps (no mic over navigation). */
+  endSession: boolean;
+}
+
+// Silent server tools; must match SILENT_TOOLS in web/src/app/api/chat/route.ts.
+const MUSIC_TOOLS = new Set(['pause_music', 'resume_music']);
+
+/** Calendar days from `from` to `to` in local time: 0 = same day, 1 = tomorrow. */
+export function calendarDaysFrom(from: number, to: number): number {
+  const a = new Date(from);
+  const b = new Date(to);
+  const dayA = Date.UTC(a.getFullYear(), a.getMonth(), a.getDate());
+  const dayB = Date.UTC(b.getFullYear(), b.getMonth(), b.getDate());
+  return Math.round((dayB - dayA) / 86_400_000);
+}
+
 /**
  * Orchestrates one assistant turn: chat SSE → per-sentence TTS → playback.
  * UI-agnostic — it drives the shared Zustand stores via getState() and plays
@@ -59,17 +79,18 @@ export interface RunTurnOptions {
  *
  * STT happens upstream; this takes the final transcript.
  *
- * Resolves true when the turn handed the user off to another app (Maps) —
- * callers end the voice session instead of listening again.
+ * Apps a tool asked for (Maps) open only after Mia finished speaking; that
+ * hand-off ends the session like a music command does.
  */
-export async function runAssistantTurn(opts: RunTurnOptions): Promise<boolean> {
-  await runTurn(opts);
-  // Apps a tool asked for open only now, after Mia finished speaking.
+export async function runAssistantTurn(
+  opts: RunTurnOptions,
+): Promise<TurnResult> {
+  const result = await runTurn(opts);
   if (opts.isCurrent && !opts.isCurrent()) {
     clearQueuedApp();
-    return false;
+    return result;
   }
-  return openQueuedApp();
+  return (await openQueuedApp()) ? { endSession: true } : result;
 }
 
 async function runTurn({
@@ -77,9 +98,9 @@ async function runTurn({
   playback,
   isCurrent = () => true,
   onChatAbort,
-}: RunTurnOptions): Promise<void> {
+}: RunTurnOptions): Promise<TurnResult> {
   const trimmed = text.trim();
-  if (!trimmed) return;
+  if (!trimmed) return { endSession: false };
 
   const voice = useVoiceStore.getState();
   voice.setTranscript('');
@@ -107,6 +128,16 @@ async function runTurn({
     timestamp: Date.now(),
   });
 
+  // "Mia, pause" / "continue": act on the phone right away, no chat round trip.
+  // The action is logged so a later turn knows the music was paused.
+  const local = matchMusicCommand(trimmed);
+  if (local) {
+    const name = local === 'pause' ? 'pause_music' : 'resume_music';
+    await runClientToolCalls([{ id: `local_${Date.now()}`, name, args: {} }]);
+    addActions([`${name} {} → {"scheduled":true}`]);
+    return { endSession: true };
+  }
+
   // ponytail: fixed 20-message window; summarise older turns if cost matters.
   const recent = selectActiveMessages(useConversationStore.getState()).slice(
     -HISTORY_MESSAGES - 1,
@@ -118,6 +149,7 @@ async function runTurn({
   voice.setThinking(true);
 
   let fullReply = '';
+  let ranMusicTool = false;
   let assistantAdded = false;
   const ensureAssistant = () => {
     if (assistantAdded) return;
@@ -138,10 +170,12 @@ async function runTurn({
   const locState = useLocationStore.getState();
   const toolsState = useToolsStore.getState();
   const now = Date.now();
+  // A Settings city means "I'm here": GPS coords would describe another place.
+  const manual = Boolean(locState.manualCity?.trim());
   const userContext = {
     city: getEffectiveCity(locState),
-    lat: locState.lat,
-    lon: locState.lon,
+    lat: manual ? undefined : locState.lat,
+    lon: manual ? undefined : locState.lon,
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || undefined,
     profile: useProfileStore
       .getState()
@@ -149,7 +183,8 @@ async function runTurn({
     recentActions,
     // An SMS waiting for "კი" / "არა" (names + text only, no numbers).
     pendingSms: getPendingSmsContext(),
-    // Let the model cancel the right timer/alarm by id (see cancel_* tools).
+    // Lets the model answer "how long is left?" and cancel the right
+    // timer/alarm by id (see cancel_* tools).
     timers: toolsState.timers.map((t) => ({
       id: t.id,
       label: t.label || undefined,
@@ -162,6 +197,8 @@ async function runTurn({
         label: a.label || undefined,
         hour: d.getHours(),
         minute: d.getMinutes(),
+        dayOffset: calendarDaysFrom(now, a.ringsAt),
+        days: a.days?.length ? a.days : undefined,
       };
     }),
   };
@@ -222,6 +259,7 @@ async function runTurn({
       },
       onToolCalls: (calls) => {
         if (!isCurrent()) return;
+        if (calls.some((c) => MUSIC_TOOLS.has(c.name))) ranMusicTool = true;
         toolRuns.push(runClientToolCalls(calls));
       },
       onActions: (actions) => {
@@ -241,7 +279,7 @@ async function runTurn({
       useVoiceStore.getState().setError(msg);
       useVoiceStore.getState().setThinking(false);
     }
-    return;
+    return { endSession: false };
   }
 
   // Final sentence (no trailing whitespace, so the regex didn't catch it).
@@ -262,7 +300,7 @@ async function runTurn({
 
   if (!fullReply) {
     if (isCurrent()) useVoiceStore.getState().setThinking(false);
-    return;
+    return { endSession: ranMusicTool };
   }
 
   // Every sentence is already in flight; wait for the last one to finish
@@ -279,4 +317,5 @@ async function runTurn({
       useVoiceStore.getState().setSpeaking(false);
     }
   }
+  return { endSession: ranMusicTool };
 }

@@ -30,6 +30,7 @@ To deliver the voice AI experience, we send specific pieces of data to these ser
 | Camb.ai (optional Georgian TTS) | Mia's reply text, only if you select Camb in settings | https://www.camb.ai/privacy-policy |
 | Google Cloud (optional STT) | Your audio, only if Google STT mode is enabled | https://policies.google.com/privacy |
 | OpenStreetMap Nominatim (reverse geocoding) | Your approximate coordinates | https://wiki.osmfoundation.org/wiki/Privacy_Policy |
+| ipwho.is (IP geolocation) | Your IP address, only when you ask about weather and your phone shares no location | https://ipwhois.io/privacy |
 
 These processors act on our behalf and are bound by their own privacy commitments.
 
