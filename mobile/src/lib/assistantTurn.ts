@@ -1,6 +1,7 @@
 import { streamChat } from '@/api/chat';
 import { expireSessionIf401 } from '@/api/client';
 import { dlog } from '@/lib/log';
+import { clearQueuedApp, openQueuedApp } from '@/lib/tools/maps';
 import { runClientToolCalls } from '@/lib/tools/runClientCalls';
 import { getPendingSmsContext } from '@/lib/tools/sms';
 import {
@@ -57,8 +58,21 @@ export interface RunTurnOptions {
  * playback).
  *
  * STT happens upstream; this takes the final transcript.
+ *
+ * Resolves true when the turn handed the user off to another app (Maps) —
+ * callers end the voice session instead of listening again.
  */
-export async function runAssistantTurn({
+export async function runAssistantTurn(opts: RunTurnOptions): Promise<boolean> {
+  await runTurn(opts);
+  // Apps a tool asked for open only now, after Mia finished speaking.
+  if (opts.isCurrent && !opts.isCurrent()) {
+    clearQueuedApp();
+    return false;
+  }
+  return openQueuedApp();
+}
+
+async function runTurn({
   text,
   playback,
   isCurrent = () => true,

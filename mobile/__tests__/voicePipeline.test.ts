@@ -176,6 +176,22 @@ describe('hands-free conversation loop', () => {
     expect(useVoiceStore.getState().isListening).toBe(true);
   });
 
+  test('handing off to Maps ends the session instead of re-arming', async () => {
+    const p = await mountPipeline();
+    mockTurn.mockResolvedValue(true); // the turn opened Maps
+
+    await act(async () => {
+      await p.startListening();
+    });
+    await act(async () => {
+      await p.stopListeningAndSend();
+    });
+
+    expect(mockTurn).toHaveBeenCalledTimes(1);
+    expect(mockRecorder.start).toHaveBeenCalledTimes(1);
+    expect(p.isConversationActive()).toBe(false);
+  });
+
   test('a tap mid-answer ends the session and blocks the re-arm', async () => {
     const p = await mountPipeline();
 
