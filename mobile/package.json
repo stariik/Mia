@@ -8,9 +8,10 @@
     "icons": "node scripts/gen-icons.mjs",
     "ios": "react-native run-ios",
     "lint": "eslint .",
+    "postinstall": "patch-package",
     "start": "expo start --go",
     "test": "jest",
-    "tunnels": "adb reverse tcp:8081 tcp:8081 && adb reverse tcp:3002 tcp:3002"
+    "tunnels": "adb reverse tcp:8081 tcp:8081 && adb reverse tcp:3002 tcp:3002 && adb reverse tcp:3001 tcp:3001"
   },
   "dependencies": {
     "@notifee/react-native": "^9.1.8",
@@ -62,6 +63,7 @@
     "babel-preset-expo": "~57.0.13",
     "eslint": "^8.19.0",
     "jest": "^29.6.3",
+    "patch-package": "^8.0.1",
     "prettier": "2.8.8",
     "react-test-renderer": "19.2.3",
     "typescript": "^5.8.3"
@@ -76,6 +78,13 @@
         "typescript",
         "@react-native-async-storage/async-storage"
       ]
+    },
+    "autolinking": {
+      "android": {
+        "buildFromSource": [
+          "expo-audio"
+        ]
+      }
     }
   }
 }

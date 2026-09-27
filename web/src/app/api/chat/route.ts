@@ -86,8 +86,7 @@ export async function POST(request: Request) {
         try {
           for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
             const stream = await gemini().models.generateContentStream({
-              // Strongest flash model: Georgian quality beats the last few
-              // hundred ms of time-to-first-token. Override with GEMINI_MODEL.
+              // See CHAT_MODEL in lib/gemini.ts. Override with GEMINI_MODEL.
               model: CHAT_MODEL,
               contents,
               config: {
