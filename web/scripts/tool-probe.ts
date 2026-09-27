@@ -10,12 +10,16 @@ import type { Content, Part } from '@google/genai';
 dotenv.config({ path: '.env.local', quiet: true });
 dotenv.config({ quiet: true });
 import { gemini, CHAT_MODEL, LOW_THINKING } from '../src/lib/gemini';
-import { buildSystemInstruction, type ChatUserContext } from '../src/lib/chatSystem';
+import { buildSystemInstruction, resolveTimeZone, type ChatUserContext } from '../src/lib/chatSystem';
+import type { ToolContext } from '../src/lib/tools/types';
 import { findTool, getToolDefinitions, isServerTool } from '../src/lib/tools/registry';
 
-type Case = { turns: string[]; ctx?: ChatUserContext };
+// `now` pins the date line (ISO), to test e.g. 'at nine' said in the afternoon.
+type Case = { turns: string[]; ctx?: ChatUserContext; now?: string };
 
-async function runTurn(contents: Content[], system: string) {
+const SILENT = new Set(['pause_music', 'resume_music']);
+
+async function runTurn(contents: Content[], system: string, toolCtx: ToolContext) {
   const out: string[] = [];
   for (let round = 0; round < 3; round++) {
     const res = await gemini().models.generateContent({
@@ -41,11 +45,13 @@ async function runTurn(contents: Content[], system: string) {
       const tool = findTool(c.name ?? '');
       const response =
         tool && isServerTool(tool)
-          ? await tool.handler(c.args ?? {}, { timezone: 'Asia/Tbilisi' })
+          ? await tool.handler(c.args ?? {}, toolCtx)
           : { scheduled: true };
       responses.push({ functionResponse: { id: c.id, name: c.name, response } });
     }
     contents.push({ role: 'user', parts: responses });
+    // Mirrors SILENT_TOOLS in the route: music commands end the turn unspoken.
+    if (calls.every((c) => SILENT.has(c.name ?? ''))) return { out, text: '' };
   }
   return { out, text: '' };
 }
@@ -57,14 +63,24 @@ async function main() {
   const runs = cases.flatMap((c) => Array.from({ length: repeats }, () => c));
   await Promise.all(
     runs.map(async (c) => {
-      const system = buildSystemInstruction({ timezone: 'Asia/Tbilisi', ...c.ctx });
+      const ctx: ChatUserContext = { timezone: 'Asia/Tbilisi', ...c.ctx };
+      const system = buildSystemInstruction(ctx, c.now ? new Date(c.now) : undefined);
+      // Mirrors the route's ToolContext (no client IP here).
+      const toolCtx: ToolContext = {
+        userCoords:
+          typeof ctx.lat === 'number' && typeof ctx.lon === 'number'
+            ? { lat: ctx.lat, lon: ctx.lon }
+            : undefined,
+        userCity: ctx.city,
+        timezone: resolveTimeZone(ctx.timezone),
+      };
       const contents: Content[] = [];
       const log: string[] = [];
       for (const t of c.turns) {
         log.push(`> ${t}`);
         contents.push({ role: 'user', parts: [{ text: t }] });
         try {
-          const { out } = await runTurn(contents, system);
+          const { out } = await runTurn(contents, system, toolCtx);
           log.push(...out);
         } catch (e) {
           log.push(`  ERROR ${(e as Error).message.slice(0, 200)}`);
