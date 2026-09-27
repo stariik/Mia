@@ -164,9 +164,10 @@ async function scheduleAlarmTrigger(
       },
       trigger,
     );
-  } catch {
-    // If the OS denies exact alarm scheduling we still have the in-process
-    // setTimeout fallback for as long as the app is alive — swallow.
+  } catch (err) {
+    // The in-process handle only updates the store — it never rings — so a
+    // refused trigger means a silent alarm. Release-worthy.
+    console.error('Alarm trigger failed', id, err);
   }
 }
 
@@ -206,7 +207,9 @@ async function scheduleTimerTrigger(
       },
       trigger,
     );
-  } catch {}
+  } catch (err) {
+    console.error('Timer trigger failed', id, err);
+  }
 }
 
 async function cancelAlarmTriggers(id: string) {

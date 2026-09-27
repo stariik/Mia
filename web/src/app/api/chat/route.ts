@@ -3,12 +3,12 @@ import type { Content, Part } from "@google/genai";
 import { gemini, CHAT_MODEL, LOW_THINKING } from "@/lib/gemini";
 import { guard } from "@/lib/apiGuard";
 import { clientIp } from "@/lib/ipLocation";
-import { GEORGIAN_ASSISTANT_SYSTEM_PROMPT } from "@/lib/prompts";
+import { actionLine } from "@/lib/chatMemory";
 import {
-  actionLine,
-  formatProfile,
-  formatRecentActions,
-} from "@/lib/chatMemory";
+  buildSystemInstruction,
+  resolveTimeZone,
+  type ChatUserContext,
+} from "@/lib/chatSystem";
 import {
   getToolDefinitions,
   findTool,
@@ -18,68 +18,18 @@ import type { ToolContext, ClientToolCall } from "@/lib/tools/types";
 
 type ChatRequestMessage = { role: "user" | "assistant"; content: string };
 
-type ActiveTimer = { id: string; label?: string; remainingSeconds: number };
-type ActiveAlarm = { id: string; label?: string; hour: number; minute: number };
-
 type ChatRequestBody = {
   message: string;
   history: ChatRequestMessage[];
   // Mobile sends a flat shape ({ city, lat, lon, timezone }); the older nested
   // { coords } shape is still accepted for backward-compatibility.
-  userContext?: {
-    city?: string;
-    lat?: number;
-    lon?: number;
-    timezone?: string;
-    coords?: { lat: number; lon: number };
-    // The client's currently-active timers/alarms, so the model can cancel the
-    // right one by id (see cancel_timer / cancel_alarm).
-    timers?: ActiveTimer[];
-    alarms?: ActiveAlarm[];
-    // Long-term facts about the user and this conversation's earlier tool
-    // calls — see lib/chatMemory.ts.
-    profile?: unknown;
-    recentActions?: unknown;
-  };
+  userContext?: ChatUserContext;
 };
 
 const MAX_TOOL_ROUNDS = 3;
 // Music commands run silently: Mia must not talk over the music she just paused
 // or resumed, so a round made only of these ends the turn with no reply.
 const SILENT_TOOLS = new Set(["pause_music", "resume_music"]);
-
-/**
- * A Georgian system message describing the user's active timers/alarms so the
- * model can target a specific one for cancellation. Returns null when nothing
- * is active (no message injected — keeps the prompt lean).
- */
-function formatActiveState(ctx: ChatRequestBody["userContext"]): string | null {
-  const timers = ctx?.timers ?? [];
-  const alarms = ctx?.alarms ?? [];
-  if (timers.length === 0 && alarms.length === 0) return null;
-
-  const lines = [
-    "მომხმარებლის ამჟამად აქტიური ტაიმერები და მაღვიძარები. გამოიყენე მხოლოდ გასაუქმებლად (cancel_timer / cancel_alarm), id-ის მიხედვით. სხვა შემთხვევაში ნუ ახსენებ.",
-  ];
-  if (timers.length > 0) {
-    lines.push("ტაიმერები:");
-    for (const t of timers) {
-      const mins = Math.max(0, Math.round(t.remainingSeconds / 60));
-      const label = t.label ? `, "${t.label}"` : "";
-      lines.push(`  - id=${t.id}${label}, დარჩა დაახლოებით ${mins} წუთი`);
-    }
-  }
-  if (alarms.length > 0) {
-    lines.push("მაღვიძარები:");
-    for (const a of alarms) {
-      const hh = String(a.hour).padStart(2, "0");
-      const mm = String(a.minute).padStart(2, "0");
-      const label = a.label ? `, "${a.label}"` : "";
-      lines.push(`  - id=${a.id}, ${hh}:${mm}${label}`);
-    }
-  }
-  return lines.join("\n");
-}
 
 export async function POST(request: Request) {
   const g = guard(request);
@@ -107,16 +57,10 @@ export async function POST(request: Request) {
           ? userContext.city.trim().slice(0, 80) || undefined
           : undefined,
       clientIp: clientIp(request),
+      timezone: resolveTimeZone(userContext?.timezone),
     };
 
-    const systemInstruction = [
-      GEORGIAN_ASSISTANT_SYSTEM_PROMPT,
-      formatActiveState(userContext),
-      formatProfile(userContext?.profile),
-      formatRecentActions(userContext?.recentActions),
-    ]
-      .filter(Boolean)
-      .join("\n\n");
+    const systemInstruction = buildSystemInstruction(userContext);
     const contents: Content[] = [
       // Gemini rejects empty parts, so skip blank turns.
       ...history

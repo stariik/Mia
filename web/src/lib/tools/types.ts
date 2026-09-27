@@ -32,6 +32,8 @@ export type ToolContext = {
   userCity?: string;
   // Public client IP, for an approximate city when the phone shares none.
   clientIp?: string;
+  // The phone's IANA timezone (validated), for get_time and the date line.
+  timezone?: string;
 };
 
 export type ClientToolCall = {

@@ -5,6 +5,15 @@ import { music } from './music';
 import { nativePlatform } from './platform/native';
 import type { ClientToolCall } from './types';
 
+/** set_alarm's `days`: unique weekdays 0=Sun..6=Sat, sorted; undefined = one-shot. */
+function parseWeekdays(v: unknown): number[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const days = [...new Set(v.map(Number))]
+    .filter((d) => Number.isInteger(d) && d >= 0 && d <= 6)
+    .sort((a, b) => a - b);
+  return days.length > 0 ? days : undefined;
+}
+
 // Maps the LLM's client-side tool calls onto the native platform adapter.
 // The set of names here must match the client tools in
 // web/src/lib/tools/registry.ts — the server only ever emits those.
@@ -32,18 +41,22 @@ export async function runClientToolCalls(calls: ClientToolCall[]) {
           : 0;
         const label =
           typeof call.args.label === 'string' ? call.args.label : '';
+        const days = parseWeekdays(call.args.days);
 
         if (Number.isFinite(hour) && hour >= 0 && hour <= 23) {
           const when = new Date();
-          when.setDate(when.getDate() + dayOffset);
+          // A repeating alarm's first ring comes from `days` (see
+          // nextOccurrence), so day_offset doesn't apply to it.
+          if (!days) when.setDate(when.getDate() + dayOffset);
           when.setHours(hour, minute, 0, 0);
-          if (dayOffset === 0 && when.getTime() <= Date.now()) {
+          if (!days && dayOffset === 0 && when.getTime() <= Date.now()) {
             when.setDate(when.getDate() + 1);
           }
           await nativePlatform.scheduleAlarm({
             id: call.id,
             label,
             ringsAt: when.getTime(),
+            ...(days && { days }),
           });
         }
       } else if (call.name === 'cancel_timer') {

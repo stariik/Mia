@@ -34,6 +34,11 @@ describe('matchMusicCommand', () => {
 
   test('leaves anything else to the assistant', () => {
     expect(matchMusicCommand('გააგრძელე ზღაპარი')).toBeNull();
+    // Timer/alarm commands must reach the assistant, not pause the music.
+    expect(matchMusicCommand('გააჩერე ტაიმერი')).toBeNull();
+    expect(matchMusicCommand('მია, გააჩერე მაღვიძარა')).toBeNull();
+    expect(matchMusicCommand('გამორთე მაღვიძარა')).toBeNull();
+    expect(matchMusicCommand('Mia, pause the timer')).toBeNull();
     expect(matchMusicCommand('არ გააჩერო')).toBeNull();
     expect(matchMusicCommand('რატომ გააჩერე?')).toBeNull();
     expect(matchMusicCommand('ჩართე')).toBeNull();

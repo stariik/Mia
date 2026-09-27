@@ -58,6 +58,15 @@ export interface TurnResult {
 // Silent server tools; must match SILENT_TOOLS in web/src/app/api/chat/route.ts.
 const MUSIC_TOOLS = new Set(['pause_music', 'resume_music']);
 
+/** Calendar days from `from` to `to` in local time: 0 = same day, 1 = tomorrow. */
+export function calendarDaysFrom(from: number, to: number): number {
+  const a = new Date(from);
+  const b = new Date(to);
+  const dayA = Date.UTC(a.getFullYear(), a.getMonth(), a.getDate());
+  const dayB = Date.UTC(b.getFullYear(), b.getMonth(), b.getDate());
+  return Math.round((dayB - dayA) / 86_400_000);
+}
+
 /**
  * Orchestrates one assistant turn: chat SSE → per-sentence TTS → playback.
  * UI-agnostic — it drives the shared Zustand stores via getState() and plays
@@ -155,7 +164,8 @@ export async function runAssistantTurn({
       .getState()
       .facts.map((f) => ({ id: f.id, text: f.text })),
     recentActions,
-    // Let the model cancel the right timer/alarm by id (see cancel_* tools).
+    // Lets the model answer "how long is left?" and cancel the right
+    // timer/alarm by id (see cancel_* tools).
     timers: toolsState.timers.map((t) => ({
       id: t.id,
       label: t.label || undefined,
@@ -168,6 +178,8 @@ export async function runAssistantTurn({
         label: a.label || undefined,
         hour: d.getHours(),
         minute: d.getMinutes(),
+        dayOffset: calendarDaysFrom(now, a.ringsAt),
+        days: a.days?.length ? a.days : undefined,
       };
     }),
   };

@@ -74,6 +74,34 @@ describe('runClientToolCalls', () => {
     jest.useRealTimers();
   });
 
+  test('set_alarm with days schedules a repeating alarm and ignores day_offset', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-24T10:00:00'));
+
+    await runClientToolCalls([
+      {
+        id: 'tc_3',
+        name: 'set_alarm',
+        args: { hour: 7, minute: 0, day_offset: 3, days: [5, 1, 3, 1, 9, 'x', 2.5] },
+      },
+    ]);
+
+    const req = (nativePlatform.scheduleAlarm as jest.Mock).mock.calls[0][0];
+    expect(req.days).toEqual([1, 3, 5]);
+    const when = new Date(req.ringsAt);
+    expect(when.getDate()).toBe(24); // today's date; nextOccurrence picks the weekday
+    expect(when.getHours()).toBe(7);
+
+    jest.useRealTimers();
+  });
+
+  test('set_alarm with no valid days stays one-shot', async () => {
+    await runClientToolCalls([
+      { id: 'tc_4', name: 'set_alarm', args: { hour: 7, days: [] } },
+    ]);
+    const req = (nativePlatform.scheduleAlarm as jest.Mock).mock.calls[0][0];
+    expect(req).not.toHaveProperty('days');
+  });
+
   test('unknown tool names are ignored', async () => {
     await runClientToolCalls([{ id: 'x', name: 'bogus', args: {} }]);
     expect(nativePlatform.scheduleTimer).not.toHaveBeenCalled();

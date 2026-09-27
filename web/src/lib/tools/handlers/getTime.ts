@@ -1,6 +1,5 @@
+import { DEFAULT_TZ } from "@/lib/chatSystem";
 import type { ServerTool } from "../types";
-
-const TZ = "Asia/Tbilisi";
 
 export const getTime: ServerTool = {
   name: "get_time",
@@ -10,7 +9,7 @@ export const getTime: ServerTool = {
     function: {
       name: "get_time",
       description:
-        "Get the current time and date in Georgia (Tbilisi timezone, UTC+4). Call this whenever the user asks what time it is, what day of the week, today's date, or anything that depends on the current moment.",
+        "Get the current time and date in the user's timezone (Tbilisi when unknown). Call this whenever the user asks what time it is, what day of the week, today's date, or anything that depends on the current moment.",
       parameters: {
         type: "object",
         properties: {},
@@ -18,7 +17,8 @@ export const getTime: ServerTool = {
       },
     },
   },
-  async handler() {
+  async handler(_args, ctx) {
+    const TZ = ctx.timezone ?? DEFAULT_TZ;
     const now = new Date();
 
     const enParts = new Intl.DateTimeFormat("en-GB", {
