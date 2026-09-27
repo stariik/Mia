@@ -68,7 +68,7 @@ export function useVoicePipeline() {
       cancelActiveTurn();
       const myTurn = ++turnIdRef.current;
 
-      await runAssistantTurn({
+      const handedOff = await runAssistantTurn({
         text: trimmed,
         playback: orbPlayback,
         isCurrent: () => turnIdRef.current === myTurn,
@@ -76,6 +76,8 @@ export function useVoicePipeline() {
           chatAbortRef.current = abort;
         },
       });
+      // Maps took over — don't re-arm the mic over navigation.
+      if (handedOff) conversationRef.current = false;
     },
     [cancelActiveTurn],
   );

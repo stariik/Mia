@@ -249,7 +249,7 @@ export async function runWakeSession(): Promise<void> {
 
       wakeWord.heartbeat();
       orbOverlay.setState('speaking');
-      await runAssistantTurn({
+      const handedOff = await runAssistantTurn({
         text,
         playback,
         isCurrent: () => !cancelled,
@@ -258,6 +258,7 @@ export async function runWakeSession(): Promise<void> {
         },
       });
       abortChat = null;
+      if (handedOff) break; // Maps took over — no orb listening over navigation
       turns += 1;
       // Voice-only (screen off): single turn by design. Orb: loop.
     } while (orbShown && turns < MAX_TURNS && !cancelled);
