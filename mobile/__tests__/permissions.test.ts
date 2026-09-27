@@ -27,7 +27,7 @@ describe('Android permission requests', () => {
       .mockImplementation(async () => {
         inFlight++;
         maxInFlight = Math.max(maxInFlight, inFlight);
-        await new Promise((r) => setTimeout(r, 10));
+        await new Promise<void>((r) => setTimeout(r, 10));
         inFlight--;
         return PermissionsAndroid.RESULTS.GRANTED;
       });

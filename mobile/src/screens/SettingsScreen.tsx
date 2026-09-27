@@ -17,6 +17,7 @@ import { useNavigation } from '@react-navigation/native';
 import { authApi } from '@/api/auth';
 import { AuroraBackdrop } from '@/components/AuroraBackdrop';
 import { useWakeWordToggle } from '@/hooks/useWakeWord';
+import { isLocalBackend } from '@/config/env';
 import { refreshLocation } from '@/lib/location';
 import type { RootNav } from '@/navigation/navigationRef';
 import { useAuthStore } from '@/stores/authStore';
@@ -31,6 +32,10 @@ export function SettingsScreen() {
 
   const detectedCity = useLocationStore((s) => s.city);
   const manualCity = useLocationStore((s) => s.manualCity);
+  // Test/dev builds only: why the automatic lookup failed (no adb on device).
+  const locationError = useLocationStore((s) =>
+    __DEV__ || isLocalBackend ? s.lastError : undefined,
+  );
   const setManualCity = useLocationStore((s) => s.setManualCity);
   const [cityDraft, setCityDraft] = useState(manualCity ?? '');
 
@@ -164,6 +169,8 @@ export function SettingsScreen() {
                   ? 'ხელით მითითებული'
                   : detectedCity
                   ? `ავტომატური: ${detectedCity}`
+                  : locationError
+                  ? `მდებარეობა: ${locationError}`
                   : 'მდებარეობა ამინდისთვის'}
               </Text>
             </View>
