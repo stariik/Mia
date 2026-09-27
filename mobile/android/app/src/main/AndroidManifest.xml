@@ -16,6 +16,11 @@
        service (Android 14+ requires the type + matching permission). -->
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
   <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+  <!-- Voice SMS: find the recipient in contacts, send from the user's SIM.
+       SEND_SMS needs a Play Console permissions declaration; if it's refused,
+       delete this line — the app falls back to opening Messages prefilled. -->
+  <uses-permission android:name="android.permission.READ_CONTACTS" />
+  <uses-permission android:name="android.permission.SEND_SMS" />
   <!-- Floating "Hey Mia" orb overlay while answering with the app not in front
        (only shown when the screen is on & unlocked — Android won't let a
        non-system app draw over the secure lock screen). -->

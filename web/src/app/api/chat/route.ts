@@ -12,7 +12,9 @@ import {
   getToolDefinitions,
   findTool,
   isServerTool,
+  isClientTool,
 } from "@/lib/tools/registry";
+import { formatPendingSms } from "@/lib/tools/handlers/sms";
 import type { ToolContext, ClientToolCall } from "@/lib/tools/types";
 
 type ChatRequestMessage = { role: "user" | "assistant"; content: string };
@@ -39,6 +41,8 @@ type ChatRequestBody = {
     // calls — see lib/chatMemory.ts.
     profile?: unknown;
     recentActions?: unknown;
+    // SMS awaiting the user's yes/no — see lib/tools/handlers/sms.ts.
+    pendingSms?: unknown;
   };
 };
 
@@ -103,6 +107,7 @@ export async function POST(request: Request) {
       formatActiveState(userContext),
       formatProfile(userContext?.profile),
       formatRecentActions(userContext?.recentActions),
+      formatPendingSms(userContext?.pendingSms),
     ]
       .filter(Boolean)
       .join("\n\n");
@@ -208,6 +213,16 @@ export async function POST(request: Request) {
             }
             // The client stores these so later turns know what was done.
             send({ actions });
+            // The phone speaks these outcomes itself (e.g. SMS) — a model
+            // reply here would be a second, guessed answer.
+            if (
+              clientCalls.some((c) => {
+                const t = findTool(c.name);
+                return t && isClientTool(t) && t.speaksResult;
+              })
+            ) {
+              break;
+            }
             // loop continues: ask the model to produce a natural-language reply
           }
 

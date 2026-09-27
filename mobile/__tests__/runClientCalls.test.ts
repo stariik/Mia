@@ -18,6 +18,12 @@ jest.mock('@/lib/tools/music', () => ({
   },
 }));
 
+jest.mock('@/lib/tools/sms', () => ({
+  prepareSms: jest.fn().mockResolvedValue('მიმღები: დედა.'),
+  confirmSms: jest.fn().mockResolvedValue('გავაგზავნე.'),
+  cancelSms: jest.fn().mockReturnValue('კარგი, არ გავაგზავნე.'),
+}));
+
 const mockTimers: { id: string }[] = [];
 const mockAlarms: { id: string }[] = [];
 jest.mock('@/stores/toolsStore', () => ({
@@ -129,5 +135,19 @@ describe('runClientToolCalls', () => {
   ])('%s dispatches music.%s', async (toolName, method) => {
     await runClientToolCalls([{ id: 't', name: toolName, args: {} }]);
     expect((music as unknown as Record<string, jest.Mock>)[method]).toHaveBeenCalledTimes(1);
+  });
+
+  test('SMS tools return the line for Mia to speak; others return nothing', async () => {
+    await expect(
+      runClientToolCalls([
+        { id: 's', name: 'prepare_sms', args: { to: 'დედა', text: 'მოვდივარ' } },
+      ]),
+    ).resolves.toBe('მიმღები: დედა.');
+    await expect(
+      runClientToolCalls([{ id: 's', name: 'confirm_sms', args: {} }]),
+    ).resolves.toBe('გავაგზავნე.');
+    await expect(
+      runClientToolCalls([{ id: 't', name: 'pause_music', args: {} }]),
+    ).resolves.toBeUndefined();
   });
 });

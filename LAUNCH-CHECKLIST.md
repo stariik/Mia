@@ -86,6 +86,16 @@ Verified from outside: `/`, `/privacy`, `/delete-account` → 200 with valid TLS
 | Data encrypted in transit? | Yes (HTTPS enforced by network security config) |
 | Account deletion URL | `https://<your-domain>/delete-account` |
 | Account creation | Yes — email + password |
+| **Contacts** | Not collected (read on-device only to find an SMS recipient; never uploaded). |
+
+### SMS permission declaration (Play Console → App content → Sensitive permissions)
+`SEND_SMS` is a restricted permission — Play requires a Permissions Declaration
+and only allows it for approved core uses, so the voice-assistant case **may be
+rejected**. Declare it as the assistant sending an SMS the user dictated and
+confirmed by voice, and attach a short video of that flow. If it's refused:
+delete the `SEND_SMS` line in `mobile/android/app/src/main/AndroidManifest.xml`
+and rebuild. Mia then opens Messages prefilled instead, with no code change.
+`READ_CONTACTS` needs no declaration.
 
 ## 6. Store listing
 

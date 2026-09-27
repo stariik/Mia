@@ -2,6 +2,7 @@ import { streamChat } from '@/api/chat';
 import { expireSessionIf401 } from '@/api/client';
 import { dlog } from '@/lib/log';
 import { runClientToolCalls } from '@/lib/tools/runClientCalls';
+import { getPendingSmsContext } from '@/lib/tools/sms';
 import {
   selectActiveMessages,
   useConversationStore,
@@ -132,6 +133,8 @@ export async function runAssistantTurn({
       .getState()
       .facts.map((f) => ({ id: f.id, text: f.text })),
     recentActions,
+    // An SMS waiting for "კი" / "არა" (names + text only, no numbers).
+    pendingSms: getPendingSmsContext(),
     // Let the model cancel the right timer/alarm by id (see cancel_* tools).
     timers: toolsState.timers.map((t) => ({
       id: t.id,
@@ -156,6 +159,7 @@ export async function runAssistantTurn({
   // gap mid-reply.
   let textBuffer = '';
   const spoken: Promise<void>[] = [];
+  const toolRuns: Promise<string | undefined>[] = [];
   let firstAudioStarted = false;
 
   const flushSentence = (sentence: string) => {
@@ -204,7 +208,7 @@ export async function runAssistantTurn({
       },
       onToolCalls: (calls) => {
         if (!isCurrent()) return;
-        runClientToolCalls(calls);
+        toolRuns.push(runClientToolCalls(calls));
       },
       onActions: (actions) => {
         if (isCurrent()) addActions(actions);
@@ -230,6 +234,16 @@ export async function runAssistantTurn({
   if (textBuffer.trim()) {
     flushSentence(textBuffer);
     textBuffer = '';
+  }
+
+  // Tools whose outcome only the phone knows (SMS) return what to say; the
+  // server sent no model reply for those, so speak it and keep it in history.
+  const toolSay = (await Promise.all(toolRuns)).filter(Boolean).join(' ');
+  if (toolSay && isCurrent()) {
+    ensureAssistant();
+    fullReply = fullReply ? `${fullReply} ${toolSay}` : toolSay;
+    updateLastAssistant(fullReply);
+    flushSentence(toolSay);
   }
 
   if (!fullReply) {

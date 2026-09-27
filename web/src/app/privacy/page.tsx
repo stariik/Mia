@@ -149,6 +149,14 @@ export default function PrivacyPolicyPage() {
             Recent messages and these facts are sent with each request so Mia
             can reply in context, but our servers do not store them.
           </li>
+          <li style={li}>
+            <b>Contacts and SMS (optional).</b> When you ask Mia to text someone,
+            your contacts are searched <b>on your device</b> to find the
+            recipient; your contact list and phone numbers are never uploaded.
+            The recipient&rsquo;s name and the message text are processed like
+            any other request. Mia reads the message back and sends it from your
+            SIM only after you confirm; normal carrier SMS charges apply.
+          </li>
         </ul>
 
         <h2 style={h2}>&ldquo;Hey Mia&rdquo; wake word</h2>

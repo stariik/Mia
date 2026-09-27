@@ -15,6 +15,7 @@ import {
   restartTrack,
 } from "./handlers/music";
 import { rememberFact, forgetFact } from "./handlers/memory";
+import { prepareSms, confirmSms, cancelSms } from "./handlers/sms";
 
 export const TOOLS: Tool[] = [
   getTime,
@@ -32,6 +33,9 @@ export const TOOLS: Tool[] = [
   restartTrack,
   rememberFact,
   forgetFact,
+  prepareSms,
+  confirmSms,
+  cancelSms,
 ];
 
 export function getToolDefinitions(): FunctionDeclaration[] {
