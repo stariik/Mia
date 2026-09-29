@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--Overrides react-native-screens' fade_from_bottom open animation. The stock
+one uses decelerate_quint, which gets the screen nearly opaque and in place
+within ~60ms and then creeps the rest of the way, so it reads as a pop. The
+Material linear_out_slow_in curve and a shorter rise spread the motion out
+evenly. Keep the 350ms duration in step with rns_no_animation_350.xml.-->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shareInterpolator="false">
+    <alpha android:fromAlpha="0.0" android:toAlpha="1.0"
+        android:interpolator="@android:interpolator/linear_out_slow_in"
+        android:duration="300"/>
+    <translate android:fromYDelta="4%" android:toYDelta="0"
+        android:interpolator="@android:interpolator/linear_out_slow_in"
+        android:duration="350"/>
+</set>

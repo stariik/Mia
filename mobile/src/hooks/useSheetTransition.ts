@@ -9,10 +9,14 @@ import {
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 
-// Opening decelerates hard so the sheet arrives quickly and settles softly;
-// closing accelerates away and is shorter, so dismissing never feels sluggish.
-const OPEN = { duration: 340, easing: Easing.bezier(0.32, 0.72, 0, 1) };
-const CLOSE = { duration: 220, easing: Easing.bezier(0.3, 0, 0.8, 0.15) };
+// The sheet glides up and settles softly, and slips away a little faster so
+// dismissing never feels sluggish. The backdrop dims and clears on its own
+// gentle curve: sharing the sheet's accelerating close curve kept it dark
+// until the very end and then dropped it at once.
+const SHEET_OPEN = { duration: 420, easing: Easing.bezier(0.25, 0.8, 0.25, 1) };
+const SHEET_CLOSE = { duration: 260, easing: Easing.bezier(0.4, 0, 1, 1) };
+const BACKDROP_OPEN = { duration: 320, easing: Easing.out(Easing.quad) };
+const BACKDROP_CLOSE = { duration: 240, easing: Easing.out(Easing.quad) };
 
 /**
  * Drives a bottom sheet rendered in an `animationType="none"` Modal: the dim
@@ -26,21 +30,26 @@ export function useSheetTransition(visible: boolean) {
 
   const { height: windowHeight } = useWindowDimensions();
   const progress = useSharedValue(0);
+  const dim = useSharedValue(0);
   // Until the sheet is measured, start it a full screen down — off-screen
   // either way, so the switch to its real height is never visible.
   const sheetHeight = useSharedValue(0);
 
   useEffect(() => {
     if (visible) {
-      progress.value = withTiming(1, OPEN);
+      progress.value = withTiming(1, SHEET_OPEN);
+      dim.value = withTiming(1, BACKDROP_OPEN);
     } else {
-      progress.value = withTiming(0, CLOSE, (finished) => {
+      // The backdrop finishes first, so unmounting on the sheet's callback
+      // never cuts either short.
+      dim.value = withTiming(0, BACKDROP_CLOSE);
+      progress.value = withTiming(0, SHEET_CLOSE, (finished) => {
         if (finished) scheduleOnRN(setMounted, false);
       });
     }
-  }, [visible, progress]);
+  }, [visible, progress, dim]);
 
-  const backdropStyle = useAnimatedStyle(() => ({ opacity: progress.value }));
+  const backdropStyle = useAnimatedStyle(() => ({ opacity: dim.value }));
   const sheetStyle = useAnimatedStyle(() => ({
     transform: [
       {
