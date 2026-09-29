@@ -25,11 +25,16 @@ describe('translator direction', () => {
   it('withForeign keeps Georgian on its side', () => {
     expect(withForeign({ from: 'ka', to: 'ru' }, 'en')).toEqual({ from: 'ka', to: 'en' });
     expect(withForeign({ from: 'ru', to: 'ka' }, 'en')).toEqual({ from: 'en', to: 'ka' });
+    expect(withForeign({ from: 'ka', to: 'en' }, 'es')).toEqual({ from: 'ka', to: 'es' });
+    expect(withForeign({ from: 'de', to: 'ka' }, 'fr')).toEqual({ from: 'fr', to: 'ka' });
   });
 
   it('sanitizeDirection accepts valid pairs', () => {
     expect(sanitizeDirection({ from: 'en', to: 'ka' })).toEqual({ from: 'en', to: 'ka' });
     expect(sanitizeDirection({ from: 'ka', to: 'ru' })).toEqual({ from: 'ka', to: 'ru' });
+    expect(sanitizeDirection({ from: 'ka', to: 'de' })).toEqual({ from: 'ka', to: 'de' });
+    expect(sanitizeDirection({ from: 'fr', to: 'ka' })).toEqual({ from: 'fr', to: 'ka' });
+    expect(sanitizeDirection({ from: 'es', to: 'ka' })).toEqual({ from: 'es', to: 'ka' });
   });
 
   it.each([
@@ -39,8 +44,9 @@ describe('translator direction', () => {
     {},
     { from: 'ka', to: 'ka' },
     { from: 'ru', to: 'en' },
-    { from: 'ka', to: 'de' },
-    { from: 'fr', to: 'ka' },
+    { from: 'ka', to: 'tr' },
+    { from: 'it', to: 'ka' },
+    { from: 'de', to: 'fr' },
   ])('sanitizeDirection falls back to the default for %p', (bad) => {
     expect(sanitizeDirection(bad)).toEqual(DEFAULT_DIRECTION);
   });
@@ -49,5 +55,8 @@ describe('translator direction', () => {
     expect(languageNameKaAdverb('ka')).toBe('ქართულად');
     expect(languageNameKaAdverb('ru')).toBe('რუსულად');
     expect(languageNameKaAdverb('en')).toBe('ინგლისურად');
+    expect(languageNameKaAdverb('de')).toBe('გერმანულად');
+    expect(languageNameKaAdverb('fr')).toBe('ფრანგულად');
+    expect(languageNameKaAdverb('es')).toBe('ესპანურად');
   });
 });

@@ -42,15 +42,16 @@ export function bcp47(code: string): string {
 // The Translator always pairs Georgian with one foreign language, and the user
 // picks which side is spoken ("from") and which is produced ("to").
 
-export type Lang = 'ka' | 'ru' | 'en';
-export type ForeignLang = 'ru' | 'en';
+export type Lang = 'ka' | 'ru' | 'en' | 'de' | 'fr' | 'es';
+export type ForeignLang = Exclude<Lang, 'ka'>;
 export type Direction = { from: Lang; to: Lang };
 
-export const FOREIGN_LANGS: ForeignLang[] = ['ru', 'en'];
+// Order shown in the language picker.
+export const FOREIGN_LANGS: ForeignLang[] = ['ru', 'en', 'de', 'fr', 'es'];
 export const DEFAULT_DIRECTION: Direction = { from: 'ka', to: 'ru' };
 
 function isForeign(x: unknown): x is ForeignLang {
-  return x === 'ru' || x === 'en';
+  return (FOREIGN_LANGS as unknown[]).includes(x);
 }
 
 export function swapDirection(d: Direction): Direction {
@@ -80,6 +81,9 @@ const ADVERB_KA: Record<Lang, string> = {
   ka: 'ქართულად',
   ru: 'რუსულად',
   en: 'ინგლისურად',
+  de: 'გერმანულად',
+  fr: 'ფრანგულად',
+  es: 'ესპანურად',
 };
 
 export function languageNameKaAdverb(code: Lang): string {

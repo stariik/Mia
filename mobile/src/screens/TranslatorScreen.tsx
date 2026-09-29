@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   Keyboard,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -22,6 +23,7 @@ import { useTranslator, type Lang, type Turn } from '@/hooks/useTranslator';
 import { useSilenceAutoStop } from '@/hooks/useSilenceAutoStop';
 import {
   FOREIGN_LANGS,
+  foreignOf,
   languageNameKa,
   languageNameKaAdverb,
   type ForeignLang,
@@ -164,17 +166,17 @@ function TurnRow({ turn, onReplay }: { turn: Turn; onReplay: () => void }) {
 }
 
 // One side of the direction bar. Georgian is fixed; the foreign side is a
-// tappable chip that cycles through the supported foreign languages.
+// chip that opens the language picker.
 function LangChip({
   caption,
   lang,
   disabled,
-  onPickForeign,
+  onOpenPicker,
 }: {
   caption: string;
   lang: Lang;
   disabled: boolean;
-  onPickForeign: (lang: ForeignLang) => void;
+  onOpenPicker: () => void;
 }) {
   const label = languageNameKa(lang) ?? lang;
   if (lang === 'ka') {
@@ -187,21 +189,65 @@ function LangChip({
       </View>
     );
   }
-  const next =
-    FOREIGN_LANGS[(FOREIGN_LANGS.indexOf(lang) + 1) % FOREIGN_LANGS.length];
   return (
     <View style={styles.dirSide}>
       <Text style={styles.dirCaption}>{caption}</Text>
       <Pressable
-        onPress={() => onPickForeign(next)}
+        onPress={onOpenPicker}
         disabled={disabled}
         style={[styles.foreignChip, disabled && styles.dimmed]}
-        accessibilityLabel={`${label} — შეცვლა: ${languageNameKa(next)}`}
+        accessibilityLabel={`${label} — ენის შეცვლა`}
       >
-        <Text style={styles.foreignChipText}>{label}</Text>
+        <Text style={styles.foreignChipText} numberOfLines={1}>
+          {label}
+        </Text>
         <Text style={styles.foreignChipCaret}>▾</Text>
       </Pressable>
     </View>
+  );
+}
+
+// Bottom sheet listing the foreign languages; Georgian stays on its side.
+function LanguagePicker({
+  visible,
+  current,
+  onPick,
+  onClose,
+}: {
+  visible: boolean;
+  current: ForeignLang;
+  onPick: (lang: ForeignLang) => void;
+  onClose: () => void;
+}) {
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <Pressable style={styles.backdrop} onPress={onClose} />
+      <View style={styles.sheet}>
+        <View style={styles.handle} />
+        <Text style={[typography.title, styles.sheetTitle]}>აირჩიე ენა</Text>
+        {FOREIGN_LANGS.map((code) => {
+          const on = code === current;
+          return (
+            <Pressable
+              key={code}
+              onPress={() => onPick(code)}
+              style={[styles.langRow, on && styles.langRowOn]}
+              accessibilityState={{ selected: on }}
+            >
+              <Text style={[styles.langRowText, on && styles.langRowTextOn]}>
+                {languageNameKa(code)}
+              </Text>
+              {on ? <CheckIcon color={colors.primary} /> : null}
+            </Pressable>
+          );
+        })}
+      </View>
+    </Modal>
   );
 }
 
@@ -225,6 +271,7 @@ export function TranslatorScreen() {
   } = useTranslator();
 
   const [draft, setDraft] = useState('');
+  const [pickerOpen, setPickerOpen] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const idle = status === 'idle';
 
@@ -300,7 +347,7 @@ export function TranslatorScreen() {
             caption="საიდან"
             lang={direction.from}
             disabled={!idle}
-            onPickForeign={setForeign}
+            onOpenPicker={() => setPickerOpen(true)}
           />
           <Pressable
             onPress={swap}
@@ -315,9 +362,19 @@ export function TranslatorScreen() {
             caption="სად"
             lang={direction.to}
             disabled={!idle}
-            onPickForeign={setForeign}
+            onOpenPicker={() => setPickerOpen(true)}
           />
         </View>
+
+        <LanguagePicker
+          visible={pickerOpen}
+          current={foreignOf(direction)}
+          onPick={(lang) => {
+            setForeign(lang);
+            setPickerOpen(false);
+          }}
+          onClose={() => setPickerOpen(false)}
+        />
 
         <KeyboardAvoidingView
           style={styles.flex}
@@ -495,6 +552,52 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   dimmed: { opacity: 0.4 },
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+  },
+  sheet: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: colors.surfaceSolid,
+    borderTopLeftRadius: radius.xxl,
+    borderTopRightRadius: radius.xxl,
+    paddingTop: spacing.md,
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.xxl,
+    borderTopWidth: 1,
+    borderColor: colors.strokeBrandSoft,
+    gap: spacing.xs,
+  },
+  handle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.outlineVariant,
+    marginBottom: spacing.md,
+  },
+  sheetTitle: {
+    color: colors.text,
+    marginBottom: spacing.sm,
+  },
+  langRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    height: 52,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.lg,
+  },
+  langRowOn: { backgroundColor: colors.surfaceElev },
+  langRowText: {
+    fontFamily: fonts.bodyBold,
+    color: colors.text,
+    fontSize: 16,
+  },
+  langRowTextOn: { color: colors.primary },
   scroll: {
     paddingHorizontal: spacing.xl,
     paddingBottom: spacing.lg,
