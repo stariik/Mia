@@ -201,15 +201,18 @@ const PICKER_TITLE: Record<PickerSide, string> = {
   to: 'რომელ ენაზე?',
 };
 
-// Bottom sheet listing every Translator language, Georgian first.
+// Bottom sheet listing the Translator languages, Georgian first. The "to"
+// list leaves out the "from" language — translating into it makes no sense.
 function LanguagePicker({
   side,
   current,
+  exclude,
   onPick,
   onClose,
 }: {
   side: PickerSide | null;
   current: Lang;
+  exclude?: Lang;
   onPick: (lang: Lang) => void;
   onClose: () => void;
 }) {
@@ -226,7 +229,7 @@ function LanguagePicker({
         <Text style={[typography.title, styles.sheetTitle]}>
           {side ? PICKER_TITLE[side] : ''}
         </Text>
-        {TRANSLATOR_LANGS.map((code) => {
+        {TRANSLATOR_LANGS.filter((code) => code !== exclude).map((code) => {
           const on = code === current;
           return (
             <Pressable
@@ -366,6 +369,7 @@ export function TranslatorScreen() {
         <LanguagePicker
           side={pickerSide}
           current={pickerSide === 'to' ? direction.to : direction.from}
+          exclude={pickerSide === 'to' ? direction.from : undefined}
           onPick={(lang) => {
             if (pickerSide === 'to') setTo(lang);
             else setFrom(lang);
