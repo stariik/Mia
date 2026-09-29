@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--Overrides react-native-screens' rns_ios_from_right_foreground_close: the tool screen slides back out to the right.
+The four ios_from_right files pair up by duration (open 380ms, close 320ms);
+keep each pair in step.-->
+<translate xmlns:android="http://schemas.android.com/apk/res/android"
+    android:duration="320"
+    android:interpolator="@interpolator/mia_page_ease_out"
+    android:fromXDelta="0%"
+    android:toXDelta="100%" />

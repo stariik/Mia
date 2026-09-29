@@ -42,11 +42,11 @@ export function RootNavigator({ onReady }: { onReady?: () => void }) {
       <Stack.Navigator
         screenOptions={{
           headerShown: false,
-          // A tool opens by rising a little while it fades in over a still
-          // Home, and sinks away on close. A plain crossfade fades both
-          // screens at once, so the dark background flashes through midway.
-          animation: 'fade_from_bottom',
-          animationDuration: 450,
+          // A tool slides in from the right while Home drifts a little left
+          // underneath, and slides back out on close. The Android timing and
+          // curve are tuned in android/app/src/main/res/anim; iOS uses its
+          // native push.
+          animation: 'ios_from_right',
         }}
       >
         {!token ? (
