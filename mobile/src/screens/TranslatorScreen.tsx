@@ -482,7 +482,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  headerSideRight: { justifyContent: 'flex-end' },
+  // Nudged toward the screen edge; a transform so the centred title stays put.
+  headerSideRight: {
+    justifyContent: 'flex-end',
+    transform: [{ translateX: spacing.md }],
+  },
   dirBar: {
     flexDirection: 'row',
     alignItems: 'flex-end',
