@@ -8,7 +8,6 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import Animated, {
-  interpolate,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -33,9 +32,10 @@ type Props = {
   onClose: () => void;
 };
 
-const CARD_PAD = spacing.sm;
-const CARD_WIDTH = 120;
-const CARD_HEIGHT = WHEEL_HEIGHT + CARD_PAD * 2;
+const BORDER = 1;
+const CARD_WIDTH = 132;
+const CARD_HEIGHT = WHEEL_HEIGHT + BORDER * 2;
+const BAND_TOP = (WHEEL_HEIGHT - WHEEL_ITEM_HEIGHT) / 2;
 
 export function WheelPopover({
   anchor,
@@ -61,9 +61,10 @@ export function WheelPopover({
   const backdropStyle = useAnimatedStyle(() => ({
     opacity: progress.value,
   }));
+  // Fade only, no scale: on Android the touch area kept the scale the card
+  // started at, so only a strip around the middle row could be dragged.
   const cardStyle = useAnimatedStyle(() => ({
     opacity: progress.value,
-    transform: [{ scaleY: interpolate(progress.value, [0, 1], [0.35, 1]) }],
   }));
 
   if (!anchor) return null;
@@ -89,8 +90,16 @@ export function WheelPopover({
       </Animated.View>
       <Animated.View style={[styles.card, { left, top }, cardStyle]}>
         <View style={styles.band} pointerEvents="none" />
-        <WheelPicker count={count} value={value} onChange={onChange} />
-        <Text style={styles.unit}>{unit}</Text>
+        {/* The wheel spans the whole card, so a drag anywhere on it scrolls. */}
+        <WheelPicker
+          count={count}
+          value={value}
+          onChange={onChange}
+          width={CARD_WIDTH - BORDER * 2}
+        />
+        <View style={styles.unitWrap} pointerEvents="none">
+          <Text style={styles.unit}>{unit}</Text>
+        </View>
       </Animated.View>
     </Modal>
   );
@@ -104,27 +113,31 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: CARD_WIDTH,
     height: CARD_HEIGHT,
-    padding: CARD_PAD,
-    flexDirection: 'row',
-    alignItems: 'center',
+    overflow: 'hidden',
     borderRadius: radius.lg,
     backgroundColor: colors.surfaceSolid,
-    borderWidth: 1,
+    borderWidth: BORDER,
     borderColor: colors.strokeBrand,
   },
   band: {
     position: 'absolute',
-    top: CARD_PAD + (WHEEL_HEIGHT - WHEEL_ITEM_HEIGHT) / 2,
-    left: CARD_PAD,
-    right: CARD_PAD,
+    top: BAND_TOP,
+    left: spacing.xs,
+    right: spacing.xs,
     height: WHEEL_ITEM_HEIGHT,
     borderRadius: radius.md,
     backgroundColor: colors.primaryGlow,
+  },
+  unitWrap: {
+    position: 'absolute',
+    top: BAND_TOP,
+    right: spacing.md,
+    height: WHEEL_ITEM_HEIGHT,
+    justifyContent: 'center',
   },
   unit: {
     fontFamily: fonts.bodyBold,
     fontSize: 14,
     color: colors.textMuted,
-    marginLeft: spacing.xs,
   },
 });
