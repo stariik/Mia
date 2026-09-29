@@ -166,23 +166,6 @@ export function TimersScreen() {
             </View>
           ) : null}
 
-          {/* Quick durations */}
-          <Text style={[typography.labelSm, styles.sectionLabel]}>სწრაფი</Text>
-          <View style={styles.quickGrid}>
-            {QUICK_DURATIONS_SEC.map((q) => (
-              <Pressable
-                key={q.sec}
-                onPress={() => startTimer(q.sec)}
-                style={({ pressed }) => [
-                  styles.quickBtn,
-                  pressed && styles.quickBtnPressed,
-                ]}
-              >
-                <Text style={styles.quickText}>{q.label}</Text>
-              </Pressable>
-            ))}
-          </View>
-
           {/* Custom duration */}
           <Text style={[typography.labelSm, styles.sectionLabel]}>მორგებული</Text>
           <View style={styles.customRow}>
@@ -250,6 +233,23 @@ export function TimersScreen() {
           >
             <Text style={styles.startText}>დაწყება</Text>
           </Pressable>
+
+          {/* Quick durations */}
+          <Text style={[typography.labelSm, styles.sectionLabel]}>სწრაფი</Text>
+          <View style={styles.quickGrid}>
+            {QUICK_DURATIONS_SEC.map((q) => (
+              <Pressable
+                key={q.sec}
+                onPress={() => startTimer(q.sec)}
+                style={({ pressed }) => [
+                  styles.quickBtn,
+                  pressed && styles.quickBtnPressed,
+                ]}
+              >
+                <Text style={styles.quickText}>{q.label}</Text>
+              </Pressable>
+            ))}
+          </View>
         </ScrollView>
       </SafeAreaView>
     </View>
