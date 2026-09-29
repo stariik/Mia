@@ -11,11 +11,7 @@ import { useTranslatorStore } from '@/stores/translatorStore';
 
 import { usePcmRecorder } from './usePcmRecorder';
 
-export type {
-  Direction,
-  ForeignLang,
-  Lang,
-} from '@/lib/translateLanguages';
+export type { Direction, Lang } from '@/lib/translateLanguages';
 
 export type Turn = {
   id: string;
@@ -53,8 +49,8 @@ async function speak(text: string) {
 }
 
 /**
- * Drives the Translator screen. The user picks a direction (from → to, one side
- * always Georgian). One tap records in the "from" language, transcribes it
+ * Drives the Translator screen. The user picks a direction (from → to, any two
+ * different languages). One tap records in the "from" language, transcribes it
  * (single-language STT — fast + accurate), translates into the "to" language,
  * appends the turn, and speaks the result if auto-speak is on. Typed text goes
  * through the same translate step and lands in the same turn list.
@@ -63,7 +59,8 @@ export function useTranslator() {
   const recorder = usePcmRecorder();
   const direction = useTranslatorStore((s) => s.direction);
   const swap = useTranslatorStore((s) => s.swap);
-  const setForeign = useTranslatorStore((s) => s.setForeign);
+  const setFrom = useTranslatorStore((s) => s.setFrom);
+  const setTo = useTranslatorStore((s) => s.setTo);
   const autoSpeak = useTranslatorStore((s) => s.autoSpeak);
   const setAutoSpeakPref = useTranslatorStore((s) => s.setAutoSpeak);
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -193,7 +190,8 @@ export function useTranslator() {
   return {
     direction,
     swap,
-    setForeign,
+    setFrom,
+    setTo,
     autoSpeak,
     setAutoSpeak,
     turns,

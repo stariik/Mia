@@ -39,40 +39,40 @@ export function bcp47(code: string): string {
 }
 
 // ── Translator direction ────────────────────────────────────────────────────
-// The Translator always pairs Georgian with one foreign language, and the user
-// picks which side is spoken ("from") and which is produced ("to").
+// Any supported language can be on either side ("from" is spoken or typed,
+// "to" is produced), but the two sides are never the same language.
 
 export type Lang = 'ka' | 'ru' | 'en' | 'de' | 'fr' | 'es';
-export type ForeignLang = Exclude<Lang, 'ka'>;
 export type Direction = { from: Lang; to: Lang };
 
-// Order shown in the language picker.
-export const FOREIGN_LANGS: ForeignLang[] = ['ru', 'en', 'de', 'fr', 'es'];
+// Order shown in the language picker — Georgian always first.
+export const TRANSLATOR_LANGS: Lang[] = ['ka', 'ru', 'en', 'de', 'fr', 'es'];
 export const DEFAULT_DIRECTION: Direction = { from: 'ka', to: 'ru' };
 
-function isForeign(x: unknown): x is ForeignLang {
-  return (FOREIGN_LANGS as unknown[]).includes(x);
+function isLang(x: unknown): x is Lang {
+  return (TRANSLATOR_LANGS as unknown[]).includes(x);
 }
 
 export function swapDirection(d: Direction): Direction {
   return { from: d.to, to: d.from };
 }
 
-export function foreignOf(d: Direction): ForeignLang {
-  const f = d.from === 'ka' ? d.to : d.from;
-  return isForeign(f) ? f : 'ru';
+// Pick a language for one side. Choosing the language already on the other
+// side swaps the two, so from and to never match.
+export function withFrom(d: Direction, lang: Lang): Direction {
+  return lang === d.to ? swapDirection(d) : { from: lang, to: d.to };
 }
 
-// Change the foreign language, keeping Georgian on whichever side it was.
-export function withForeign(d: Direction, lang: ForeignLang): Direction {
-  return d.from === 'ka' ? { from: 'ka', to: lang } : { from: lang, to: 'ka' };
+export function withTo(d: Direction, lang: Lang): Direction {
+  return lang === d.from ? swapDirection(d) : { from: d.from, to: lang };
 }
 
 // Coerce anything (e.g. a stale persisted value) into a valid direction.
 export function sanitizeDirection(x: unknown): Direction {
   const d = x as Partial<Direction> | null | undefined;
-  if (d && d.from === 'ka' && isForeign(d.to)) return { from: 'ka', to: d.to };
-  if (d && d.to === 'ka' && isForeign(d.from)) return { from: d.from, to: 'ka' };
+  if (d && isLang(d.from) && isLang(d.to) && d.from !== d.to) {
+    return { from: d.from, to: d.to };
+  }
   return DEFAULT_DIRECTION;
 }
 

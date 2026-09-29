@@ -6,9 +6,10 @@ import {
   DEFAULT_DIRECTION,
   sanitizeDirection,
   swapDirection,
-  withForeign,
+  withFrom,
+  withTo,
   type Direction,
-  type ForeignLang,
+  type Lang,
 } from '@/lib/translateLanguages';
 
 // Translator preferences that survive app launches: the last chosen direction
@@ -18,7 +19,8 @@ export type TranslatorState = {
   autoSpeak: boolean;
 
   swap: () => void;
-  setForeign: (lang: ForeignLang) => void;
+  setFrom: (lang: Lang) => void;
+  setTo: (lang: Lang) => void;
   setAutoSpeak: (on: boolean) => void;
 };
 
@@ -28,8 +30,9 @@ export const useTranslatorStore = create<TranslatorState>()(
       direction: DEFAULT_DIRECTION,
       autoSpeak: true,
       swap: () => set((s) => ({ direction: swapDirection(s.direction) })),
-      setForeign: (lang) =>
-        set((s) => ({ direction: withForeign(s.direction, lang) })),
+      setFrom: (lang) =>
+        set((s) => ({ direction: withFrom(s.direction, lang) })),
+      setTo: (lang) => set((s) => ({ direction: withTo(s.direction, lang) })),
       setAutoSpeak: (autoSpeak) => set(() => ({ autoSpeak })),
     }),
     {

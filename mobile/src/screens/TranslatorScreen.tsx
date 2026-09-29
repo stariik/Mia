@@ -22,11 +22,9 @@ import type { RootNav } from '@/navigation/navigationRef';
 import { useTranslator, type Lang, type Turn } from '@/hooks/useTranslator';
 import { useSilenceAutoStop } from '@/hooks/useSilenceAutoStop';
 import {
-  FOREIGN_LANGS,
-  foreignOf,
+  TRANSLATOR_LANGS,
   languageNameKa,
   languageNameKaAdverb,
-  type ForeignLang,
 } from '@/lib/translateLanguages';
 import { haptics } from '@/lib/haptics';
 import { colors, fonts, radius, spacing, typography } from '@/theme';
@@ -165,8 +163,7 @@ function TurnRow({ turn, onReplay }: { turn: Turn; onReplay: () => void }) {
   );
 }
 
-// One side of the direction bar. Georgian is fixed; the foreign side is a
-// chip that opens the language picker.
+// One side of the direction bar: a chip that opens the language picker.
 function LangChip({
   caption,
   lang,
@@ -179,49 +176,46 @@ function LangChip({
   onOpenPicker: () => void;
 }) {
   const label = languageNameKa(lang) ?? lang;
-  if (lang === 'ka') {
-    return (
-      <View style={styles.dirSide}>
-        <Text style={styles.dirCaption}>{caption}</Text>
-        <View style={styles.kaChip}>
-          <Text style={styles.kaChipText}>{label}</Text>
-        </View>
-      </View>
-    );
-  }
   return (
     <View style={styles.dirSide}>
       <Text style={styles.dirCaption}>{caption}</Text>
       <Pressable
         onPress={onOpenPicker}
         disabled={disabled}
-        style={[styles.foreignChip, disabled && styles.dimmed]}
-        accessibilityLabel={`${label} — ენის შეცვლა`}
+        style={[styles.langChip, disabled && styles.dimmed]}
+        accessibilityLabel={`${caption}: ${label} — ენის შეცვლა`}
       >
-        <Text style={styles.foreignChipText} numberOfLines={1}>
+        <Text style={styles.langChipText} numberOfLines={1}>
           {label}
         </Text>
-        <Text style={styles.foreignChipCaret}>▾</Text>
+        <Text style={styles.langChipCaret}>▾</Text>
       </Pressable>
     </View>
   );
 }
 
-// Bottom sheet listing the foreign languages; Georgian stays on its side.
+type PickerSide = 'from' | 'to';
+
+const PICKER_TITLE: Record<PickerSide, string> = {
+  from: 'რომელი ენიდან?',
+  to: 'რომელ ენაზე?',
+};
+
+// Bottom sheet listing every Translator language, Georgian first.
 function LanguagePicker({
-  visible,
+  side,
   current,
   onPick,
   onClose,
 }: {
-  visible: boolean;
-  current: ForeignLang;
-  onPick: (lang: ForeignLang) => void;
+  side: PickerSide | null;
+  current: Lang;
+  onPick: (lang: Lang) => void;
   onClose: () => void;
 }) {
   return (
     <Modal
-      visible={visible}
+      visible={side !== null}
       transparent
       animationType="slide"
       onRequestClose={onClose}
@@ -229,8 +223,10 @@ function LanguagePicker({
       <Pressable style={styles.backdrop} onPress={onClose} />
       <View style={styles.sheet}>
         <View style={styles.handle} />
-        <Text style={[typography.title, styles.sheetTitle]}>აირჩიე ენა</Text>
-        {FOREIGN_LANGS.map((code) => {
+        <Text style={[typography.title, styles.sheetTitle]}>
+          {side ? PICKER_TITLE[side] : ''}
+        </Text>
+        {TRANSLATOR_LANGS.map((code) => {
           const on = code === current;
           return (
             <Pressable
@@ -257,7 +253,8 @@ export function TranslatorScreen() {
   const {
     direction,
     swap,
-    setForeign,
+    setFrom,
+    setTo,
     autoSpeak,
     setAutoSpeak,
     turns,
@@ -271,7 +268,7 @@ export function TranslatorScreen() {
   } = useTranslator();
 
   const [draft, setDraft] = useState('');
-  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerSide, setPickerSide] = useState<PickerSide | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   const idle = status === 'idle';
 
@@ -347,7 +344,7 @@ export function TranslatorScreen() {
             caption="საიდან"
             lang={direction.from}
             disabled={!idle}
-            onOpenPicker={() => setPickerOpen(true)}
+            onOpenPicker={() => setPickerSide('from')}
           />
           <Pressable
             onPress={swap}
@@ -362,18 +359,19 @@ export function TranslatorScreen() {
             caption="სად"
             lang={direction.to}
             disabled={!idle}
-            onOpenPicker={() => setPickerOpen(true)}
+            onOpenPicker={() => setPickerSide('to')}
           />
         </View>
 
         <LanguagePicker
-          visible={pickerOpen}
-          current={foreignOf(direction)}
+          side={pickerSide}
+          current={pickerSide === 'to' ? direction.to : direction.from}
           onPick={(lang) => {
-            setForeign(lang);
-            setPickerOpen(false);
+            if (pickerSide === 'to') setTo(lang);
+            else setFrom(lang);
+            setPickerSide(null);
           }}
-          onClose={() => setPickerOpen(false)}
+          onClose={() => setPickerSide(null)}
         />
 
         <KeyboardAvoidingView
@@ -498,22 +496,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     textAlign: 'center',
   },
-  kaChip: {
-    height: 42,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.stroke,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  kaChipText: {
-    fontFamily: fonts.bodyBold,
-    color: colors.text,
-    fontSize: 15,
-  },
-  foreignChip: {
+  langChip: {
     height: 42,
     flexDirection: 'row',
     gap: spacing.xs,
@@ -525,12 +508,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  foreignChipText: {
+  langChipText: {
     fontFamily: fonts.bodyBold,
     color: colors.primaryOn,
     fontSize: 15,
   },
-  foreignChipCaret: {
+  langChipCaret: {
     fontFamily: fonts.body,
     color: colors.primaryOn,
     fontSize: 12,
