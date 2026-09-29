@@ -1,37 +1,43 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef } from 'react';
-import {
-  StyleSheet,
-  Text,
-  View,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
-} from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
-  useAnimatedRef,
-  useAnimatedScrollHandler,
+  cancelAnimation,
+  useAnimatedReaction,
+  useAnimatedStyle,
   useSharedValue,
+  withSpring,
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 
 import { tickSound } from '@/lib/tickSound';
 import { colors, fonts } from '@/theme';
 
-// iPhone-style scroll wheel: rows snap to the centre band and fade out towards
-// the edges. The rows are plain text and the fade is a static gradient laid on
-// top, so scrolling stays entirely native — nothing is recalculated per frame.
-// The only per-row work is the click; the chosen value is reported once the
-// wheel comes to rest.
+// iPhone-style scroll wheel that runs entirely on the UI thread.
 //
-// Like the iOS timer, the wheel loops: 59 sits right above 00. The numbers are
-// repeated several times over and, whenever the wheel rests, it is silently
-// moved back to the same number in the middle copy, so there is always room
-// to keep rolling either way.
+// The finger, the fling and the settle all drive one shared number (`offset`,
+// in rows) through a gesture handler and a spring — no ScrollView and no JS in
+// the loop — and that number moves a single column of plain rows with one
+// transform. So the only per-frame work is one translate, however fast the
+// wheel spins. Like the iOS timer it loops: 59 sits right above 00.
+//
+// JS hears about it only for the click as each row passes the centre, and
+// once, with the final number, when the wheel comes to rest.
+//
+// Must sit under a GestureHandlerRootView (WheelPopover provides one, since an
+// RN <Modal> is outside the app's root view).
 
 export const WHEEL_ITEM_HEIGHT = 44;
 const VISIBLE_ITEMS = 5;
 const SIDE_ITEMS = (VISIBLE_ITEMS - 1) / 2;
 export const WHEEL_HEIGHT = WHEEL_ITEM_HEIGHT * VISIBLE_ITEMS;
+// Extra rows above and below one full lap, so the edges never show a gap.
+const BUFFER = SIDE_ITEMS + 1;
+
+// How far ahead (seconds) a fling's speed is projected to pick where it stops.
+const FLING_PROJECTION_S = 0.32;
+const SETTLE_SPRING = { damping: 30, stiffness: 240, mass: 1 };
 
 type Props = {
   count: number;
@@ -45,10 +51,9 @@ type Props = {
 
 const pad2 = (n: number) => n.toString().padStart(2, '0');
 
-// Enough copies for ~240 rows, odd so there is a middle one.
-function cyclesFor(count: number) {
-  const c = Math.max(3, Math.ceil(240 / count));
-  return c % 2 === 0 ? c + 1 : c;
+function wrap(n: number, count: number) {
+  'worklet';
+  return ((n % count) + count) % count;
 }
 
 export const WheelPicker = memo(function WheelPicker({
@@ -59,118 +64,124 @@ export const WheelPicker = memo(function WheelPicker({
   fadeColor = colors.surfaceSolid,
   format = pad2,
 }: Props) {
-  const scrollRef = useAnimatedRef<Animated.ScrollView>();
-  const cycles = cyclesFor(count);
-  const totalRows = count * cycles;
-  const middleStart = Math.floor(cycles / 2) * count;
-  const lastValue = useSharedValue(value);
+  const offset = useSharedValue(value);
+  const dragStart = useSharedValue(0);
   // Remembers the value we reported, so a parent re-render with that same
-  // value doesn't yank the wheel back.
+  // value doesn't move the wheel.
   const reported = useRef(value);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
-  // Only the first render's offset: if this prop followed `value`, every
-  // report back from the parent would jerk the wheel to that row mid-spin.
-  const initialOffset = useRef({
-    x: 0,
-    y: (middleStart + value) * WHEEL_ITEM_HEIGHT,
-  }).current;
 
-  const commit = useCallback(() => {
-    const v = lastValue.value;
+  const commit = useCallback((v: number) => {
     if (v === reported.current) return;
     reported.current = v;
     onChangeRef.current(v);
-  }, [lastValue]);
+  }, []);
 
-  const onScroll = useAnimatedScrollHandler({
-    onScroll: (e) => {
-      const row = Math.min(
-        totalRows - 1,
-        Math.max(0, Math.round(e.contentOffset.y / WHEEL_ITEM_HEIGHT)),
-      );
-      // Compare numbers, not rows, so the silent re-centring jump is silent.
-      const v = row % count;
-      if (v !== lastValue.value) {
-        lastValue.value = v;
-        scheduleOnRN(tickSound.play);
-      }
-    },
-  });
-
-  const onRest = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    commit();
-    const row = Math.round(e.nativeEvent.contentOffset.y / WHEEL_ITEM_HEIGHT);
-    if (row < middleStart || row >= middleStart + count) {
-      scrollRef.current?.scrollTo({
-        y: (middleStart + (((row % count) + count) % count)) * WHEEL_ITEM_HEIGHT,
-        animated: false,
-      });
-    }
+  const settleTo = (target: number, velocity: number) => {
+    'worklet';
+    offset.value = withSpring(
+      target,
+      { ...SETTLE_SPRING, velocity },
+      finished => {
+        if (finished) scheduleOnRN(commit, wrap(target, count));
+      },
+    );
   };
+
+  const gesture = Gesture.Pan()
+    // Active from the first touch, so a touch stops a spinning wheel dead.
+    .minDistance(0)
+    .onStart(() => {
+      cancelAnimation(offset);
+      dragStart.value = offset.value;
+    })
+    .onUpdate(e => {
+      // Dragging down brings the smaller numbers above into the centre.
+      offset.value = dragStart.value - e.translationY / WHEEL_ITEM_HEIGHT;
+    })
+    .onEnd(e => {
+      const rowsPerSec = -e.velocityY / WHEEL_ITEM_HEIGHT;
+      const isTap = Math.abs(e.translationY) < 6 && Math.abs(rowsPerSec) < 1.5;
+      if (isTap) {
+        // Tapping a row above or below rolls it into the centre.
+        const rowsFromCentre = Math.round(
+          (e.y - WHEEL_HEIGHT / 2) / WHEEL_ITEM_HEIGHT,
+        );
+        settleTo(Math.round(offset.value) + rowsFromCentre, 0);
+        return;
+      }
+      settleTo(
+        Math.round(offset.value + rowsPerSec * FLING_PROJECTION_S),
+        rowsPerSec,
+      );
+    });
+
+  // One click per row that crosses the centre.
+  const playTick = useCallback(() => tickSound.play(), []);
+  useAnimatedReaction(
+    () => Math.round(offset.value),
+    (row, prev) => {
+      if (prev !== null && row !== prev) scheduleOnRN(playTick);
+    },
+  );
 
   // Follow value changes that come from outside the wheel.
   useEffect(() => {
     if (value === reported.current) return;
     reported.current = value;
-    lastValue.value = value;
-    scrollRef.current?.scrollTo({
-      y: (middleStart + value) * WHEEL_ITEM_HEIGHT,
-      animated: true,
-    });
-  }, [value, middleStart, lastValue, scrollRef]);
+    const current = Math.round(offset.value);
+    let delta = wrap(value - current, count);
+    if (delta > count / 2) delta -= count;
+    offset.value = withSpring(current + delta, SETTLE_SPRING);
+  }, [value, count, offset]);
 
   // Closing mid-spin still keeps the row that was under the band.
-  useEffect(() => commit, [commit]);
+  useEffect(
+    () => () => commit(wrap(Math.round(offset.value), count)),
+    [commit, count, offset],
+  );
 
   const rows = useMemo(
     () =>
-      Array.from({ length: totalRows }, (_, i) => (
+      Array.from({ length: count + BUFFER * 2 }, (_, i) => (
         <Text key={i} style={styles.item}>
-          {format(i % count)}
+          {format(wrap(i - BUFFER, count))}
         </Text>
       )),
-    [totalRows, count, format],
+    [count, format],
   );
+
+  const columnStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateY:
+          (SIDE_ITEMS - BUFFER - wrap(offset.value, count)) * WHEEL_ITEM_HEIGHT,
+      },
+    ],
+  }));
 
   const clear = `${fadeColor}00`;
 
   return (
-    <View style={{ width, height: WHEEL_HEIGHT }}>
-      <Animated.ScrollView
-        ref={scrollRef}
-        onScroll={onScroll}
-        scrollEventThrottle={16}
-        onMomentumScrollEnd={onRest}
-        showsVerticalScrollIndicator={false}
-        snapToInterval={WHEEL_ITEM_HEIGHT}
-        decelerationRate="normal"
-        overScrollMode="never"
-        contentOffset={initialOffset}
-        onLayout={() =>
-          scrollRef.current?.scrollTo({
-            y: (middleStart + reported.current) * WHEEL_ITEM_HEIGHT,
-            animated: false,
-          })
-        }
-        contentContainerStyle={styles.content}
-      >
-        {rows}
-      </Animated.ScrollView>
-      {/* Plain wrappers own pointerEvents so the fades never swallow a drag. */}
-      <View style={[styles.fade, styles.fadeTop]}>
-        <LinearGradient colors={[fadeColor, clear]} style={styles.fill} />
+    <GestureDetector gesture={gesture}>
+      <View style={[styles.wheel, { width }]}>
+        <Animated.View style={columnStyle}>{rows}</Animated.View>
+        <View style={[styles.fade, styles.fadeTop]} pointerEvents="none">
+          <LinearGradient colors={[fadeColor, clear]} style={styles.fill} />
+        </View>
+        <View style={[styles.fade, styles.fadeBottom]} pointerEvents="none">
+          <LinearGradient colors={[clear, fadeColor]} style={styles.fill} />
+        </View>
       </View>
-      <View style={[styles.fade, styles.fadeBottom]}>
-        <LinearGradient colors={[clear, fadeColor]} style={styles.fill} />
-      </View>
-    </View>
+    </GestureDetector>
   );
 });
 
 const styles = StyleSheet.create({
-  content: {
-    paddingVertical: WHEEL_ITEM_HEIGHT * SIDE_ITEMS,
+  wheel: {
+    height: WHEEL_HEIGHT,
+    overflow: 'hidden',
   },
   item: {
     height: WHEEL_ITEM_HEIGHT,
@@ -188,9 +199,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: WHEEL_ITEM_HEIGHT * SIDE_ITEMS,
-    pointerEvents: 'none',
   },
-  fill: { flex: 1 },
   fadeTop: { top: 0 },
   fadeBottom: { bottom: 0 },
+  fill: { flex: 1 },
 });

@@ -13,6 +13,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { WHEEL_HEIGHT, WHEEL_ITEM_HEIGHT, WheelPicker } from './WheelPicker';
 import { colors, fonts, radius, spacing } from '@/theme';
@@ -21,7 +22,12 @@ import { colors, fonts, radius, spacing } from '@/theme';
 // the current number stays where the finger is and the rows around it open up
 // and down. Tapping anywhere outside folds it away.
 
-export type WheelAnchor = { x: number; y: number; width: number; height: number };
+export type WheelAnchor = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
 
 type Props = {
   anchor: WheelAnchor | null;
@@ -53,7 +59,7 @@ export function WheelPopover({
   }, [anchor, progress]);
 
   const close = () => {
-    progress.value = withTiming(0, { duration: 150 }, (finished) => {
+    progress.value = withTiming(0, { duration: 150 }, finished => {
       if (finished) scheduleOnRN(onClose);
     });
   };
@@ -85,27 +91,34 @@ export function WheelPopover({
       navigationBarTranslucent
       onRequestClose={close}
     >
-      <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, backdropStyle]}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={close} />
-      </Animated.View>
-      <Animated.View style={[styles.card, { left, top }, cardStyle]}>
-        <View style={styles.band} pointerEvents="none" />
-        {/* The wheel spans the whole card, so a drag anywhere on it scrolls. */}
-        <WheelPicker
-          count={count}
-          value={value}
-          onChange={onChange}
-          width={CARD_WIDTH - BORDER * 2}
-        />
-        <View style={styles.unitWrap} pointerEvents="none">
-          <Text style={styles.unit}>{unit}</Text>
-        </View>
-      </Animated.View>
+      {/* A Modal is its own window, outside the app's root view, so the
+          wheel's gesture needs a root of its own here. */}
+      <GestureHandlerRootView style={styles.root}>
+        <Animated.View
+          style={[StyleSheet.absoluteFill, styles.backdrop, backdropStyle]}
+        >
+          <Pressable style={StyleSheet.absoluteFill} onPress={close} />
+        </Animated.View>
+        <Animated.View style={[styles.card, { left, top }, cardStyle]}>
+          <View style={styles.band} pointerEvents="none" />
+          {/* The wheel spans the whole card, so a drag anywhere on it scrolls. */}
+          <WheelPicker
+            count={count}
+            value={value}
+            onChange={onChange}
+            width={CARD_WIDTH - BORDER * 2}
+          />
+          <View style={styles.unitWrap} pointerEvents="none">
+            <Text style={styles.unit}>{unit}</Text>
+          </View>
+        </Animated.View>
+      </GestureHandlerRootView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  root: { flex: 1 },
   backdrop: {
     backgroundColor: 'rgba(0,0,0,0.45)',
   },
