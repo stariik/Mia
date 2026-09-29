@@ -11,6 +11,7 @@ import Animated, {
 import { scheduleOnRN } from 'react-native-worklets';
 
 import { haptics } from '@/lib/haptics';
+import { tickSound } from '@/lib/tickSound';
 import { colors, fonts } from '@/theme';
 
 // iPhone-style scroll wheel: rows snap to the centre band, and rows further
@@ -49,6 +50,7 @@ export const WheelPicker = memo(function WheelPicker({
   const handleIndex = useCallback(
     (index: number) => {
       reported.current = index;
+      tickSound.play();
       // Vibration on iOS is a long buzz, too heavy for a per-row tick.
       if (Platform.OS === 'android') haptics.selection();
       onChange(index);

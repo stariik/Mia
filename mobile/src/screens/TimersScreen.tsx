@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -8,22 +8,14 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
 import { useNavigation } from '@react-navigation/native';
 
 import { AuroraBackdrop } from '@/components/AuroraBackdrop';
-import {
-  WHEEL_HEIGHT,
-  WHEEL_ITEM_HEIGHT,
-  WheelPicker,
-} from '@/components/WheelPicker';
+import { WheelPopover, type WheelAnchor } from '@/components/WheelPopover';
+import { tickSound } from '@/lib/tickSound';
 import { nativePlatform } from '@/lib/tools/platform/native';
 import type { RootNav } from '@/navigation/navigationRef';
 import { useToolsStore } from '@/stores/toolsStore';
@@ -51,6 +43,17 @@ function formatRemaining(ms: number) {
 
 const pad2 = (n: number) => n.toString().padStart(2, '0');
 
+type Unit = 'h' | 'm' | 's';
+type FieldDef = {
+  label: string;
+  count: number;
+  value: number;
+  set: (v: number) => void;
+};
+const UNITS: Unit[] = ['h', 'm', 's'];
+
+function noop() {}
+
 function newTimerId() {
   return `timer_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 }
@@ -64,23 +67,28 @@ export function TimersScreen() {
   const [mm, setMm] = useState(5);
   const [ss, setSs] = useState(0);
   const [label, setLabel] = useState('');
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const pickerProgress = useSharedValue(0);
+  const [editing, setEditing] = useState<{
+    unit: Unit;
+    anchor: WheelAnchor;
+  } | null>(null);
+  const fieldRefs = useRef<Record<Unit, View | null>>({ h: null, m: null, s: null });
 
-  const togglePicker = () => {
-    haptics.selection();
-    const next = !pickerOpen;
-    setPickerOpen(next);
-    pickerProgress.value = withTiming(next ? 1 : 0, { duration: 260 });
+  useEffect(() => {
+    tickSound.preload();
+  }, []);
+
+  const fields: Record<Unit, FieldDef> = {
+    h: { label: 'სთ', count: 24, value: hh, set: setHh },
+    m: { label: 'წთ', count: 60, value: mm, set: setMm },
+    s: { label: 'წმ', count: 60, value: ss, set: setSs },
   };
 
-  const pickerStyle = useAnimatedStyle(() => ({
-    height: pickerProgress.value * WHEEL_HEIGHT,
-    opacity: pickerProgress.value,
-  }));
-  const chevronStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${pickerProgress.value * 180}deg` }],
-  }));
+  const openField = (unit: Unit) => {
+    haptics.selection();
+    fieldRefs.current[unit]?.measureInWindow((x, y, width, height) =>
+      setEditing({ unit, anchor: { x, y, width, height } }),
+    );
+  };
 
   useEffect(() => {
     if (timers.length === 0) return;
@@ -192,40 +200,29 @@ export function TimersScreen() {
 
           {/* Custom duration */}
           <Text style={[typography.labelSm, styles.sectionLabel]}>მორგებული</Text>
-          <Pressable
-            onPress={togglePicker}
-            style={[styles.display, pickerOpen && styles.displayOpen]}
-          >
-            <Text style={styles.displayTime}>
-              {pad2(hh)}:{pad2(mm)}:{pad2(ss)}
-            </Text>
-            <Animated.View style={[styles.displayChevron, chevronStyle]}>
-              <Svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke={colors.textMuted}
-                strokeWidth={2}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <Path d="M6 9l6 6 6-6" />
-              </Svg>
-            </Animated.View>
-          </Pressable>
-
-          <Animated.View style={[styles.pickerWrap, pickerStyle]}>
-            <View style={styles.picker}>
-              <View style={styles.pickerBand} pointerEvents="none" />
-              <WheelPicker count={24} value={hh} onChange={setHh} />
-              <Text style={styles.pickerUnit}>სთ</Text>
-              <WheelPicker count={60} value={mm} onChange={setMm} />
-              <Text style={styles.pickerUnit}>წთ</Text>
-              <WheelPicker count={60} value={ss} onChange={setSs} />
-              <Text style={styles.pickerUnit}>წმ</Text>
-            </View>
-          </Animated.View>
+          <View style={styles.fieldRow}>
+            {UNITS.map((unit, i) => {
+              const f = fields[unit];
+              const active = editing?.unit === unit;
+              return (
+                <React.Fragment key={unit}>
+                  {i > 0 ? <Text style={styles.fieldColon}>:</Text> : null}
+                  <View style={styles.fieldCol}>
+                    <Pressable
+                      ref={(r) => {
+                        fieldRefs.current[unit] = r;
+                      }}
+                      onPress={() => openField(unit)}
+                      style={[styles.field, active && styles.fieldActive]}
+                    >
+                      <Text style={styles.fieldValue}>{pad2(f.value)}</Text>
+                    </Pressable>
+                    <Text style={styles.fieldLabel}>{f.label}</Text>
+                  </View>
+                </React.Fragment>
+              );
+            })}
+          </View>
 
           <Text style={[typography.labelSm, styles.sectionLabel]}>დასახელება</Text>
           <TextInput
@@ -268,6 +265,15 @@ export function TimersScreen() {
           </Pressable>
         </ScrollView>
       </SafeAreaView>
+
+      <WheelPopover
+        anchor={editing?.anchor ?? null}
+        unit={editing ? fields[editing.unit].label : ''}
+        count={editing ? fields[editing.unit].count : 0}
+        value={editing ? fields[editing.unit].value : 0}
+        onChange={editing ? fields[editing.unit].set : noop}
+        onClose={() => setEditing(null)}
+      />
     </View>
   );
 }
@@ -372,55 +378,45 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 15,
   },
-  display: {
+  fieldRow: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    gap: spacing.xs,
+  },
+  fieldCol: {
+    alignItems: 'center',
+  },
+  field: {
+    width: 84,
+    height: 76,
     alignItems: 'center',
     justifyContent: 'center',
-    height: 76,
     borderRadius: radius.lg,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.stroke,
   },
-  displayOpen: {
+  fieldActive: {
     borderColor: colors.strokeBrand,
   },
-  displayTime: {
+  fieldValue: {
     fontFamily: fonts.numeric,
     fontSize: 40,
     color: colors.text,
     fontVariant: ['tabular-nums'],
   },
-  displayChevron: {
-    position: 'absolute',
-    right: spacing.lg,
-  },
-  pickerWrap: {
-    overflow: 'hidden',
-  },
-  picker: {
-    height: WHEEL_HEIGHT,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pickerBand: {
-    position: 'absolute',
-    top: (WHEEL_HEIGHT - WHEEL_ITEM_HEIGHT) / 2,
-    left: 0,
-    right: 0,
-    height: WHEEL_ITEM_HEIGHT,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.stroke,
-  },
-  pickerUnit: {
-    fontFamily: fonts.bodyBold,
-    fontSize: 15,
+  fieldColon: {
+    fontFamily: fonts.numeric,
+    fontSize: 36,
+    lineHeight: 76,
     color: colors.textMuted,
-    width: 32,
-    marginRight: spacing.xs,
+  },
+  fieldLabel: {
+    fontFamily: fonts.body,
+    fontSize: 12,
+    color: colors.outline,
+    marginTop: spacing.xs,
   },
   labelInput: {
     height: 48,
