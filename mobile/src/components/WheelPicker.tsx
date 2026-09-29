@@ -4,10 +4,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   cancelAnimation,
+  Easing,
   useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
+  withTiming,
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 
@@ -80,13 +82,28 @@ export const WheelPicker = memo(function WheelPicker({
 
   const settleTo = (target: number, velocity: number) => {
     'worklet';
-    offset.value = withSpring(
-      target,
-      { ...SETTLE_SPRING, velocity },
-      finished => {
-        if (finished) scheduleOnRN(commit, wrap(target, count));
-      },
-    );
+    const done = (finished?: boolean) => {
+      if (finished) scheduleOnRN(commit, wrap(target, count));
+    };
+    const dist = target - offset.value;
+    if (Math.abs(dist) >= 1 && Math.abs(velocity) > 1.5) {
+      // A fling glides out: a cubic ease-out starts at 3×dist/duration, so
+      // picking the duration that way makes it leave at exactly the finger's
+      // speed and slow smoothly onto the row. (A spring would pull harder the
+      // further the target, speeding up after release and stopping hard.)
+      const ms = Math.min(
+        1400,
+        Math.max(220, ((3 * Math.abs(dist)) / Math.abs(velocity)) * 1000),
+      );
+      offset.value = withTiming(
+        target,
+        { duration: ms, easing: Easing.out(Easing.cubic) },
+        done,
+      );
+      return;
+    }
+    // Taps and small nudges just spring onto the nearest row.
+    offset.value = withSpring(target, { ...SETTLE_SPRING, velocity }, done);
   };
 
   const gesture = Gesture.Pan()
