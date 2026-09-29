@@ -94,7 +94,7 @@ src/
       native.ts               notifee + setTimeout adapter
   theme/            colors/typography/spacing/radius tokens from DESIGN.md
   components/       GlassCard, VoiceOrb, ChatBubble, ChipTag, GlowButton,
-                    AppTextInput, ActiveTimers, ActiveAlarms, SettingsSheet
+                    AppTextInput, ActiveTimers, ActiveAlarms
   hooks/            useVoicePipeline, usePcmRecorder, useAudioRecorder,
                     useSilenceAutoStop, usePermissions
   navigation/       RootNavigator (single Home screen, stack-ready)

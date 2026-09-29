@@ -7,6 +7,7 @@ import { HomeScreen } from '@/screens/HomeScreen';
 import { AlarmsScreen } from '@/screens/AlarmsScreen';
 import { TimersScreen } from '@/screens/TimersScreen';
 import { TranslatorScreen } from '@/screens/TranslatorScreen';
+import { SettingsScreen } from '@/screens/SettingsScreen';
 import { AlarmRingScreen } from '@/screens/AlarmRingScreen';
 import { useAuthStore } from '@/stores/authStore';
 import { colors } from '@/theme';
@@ -55,7 +56,8 @@ export function RootNavigator({ onReady }: { onReady?: () => void }) {
           <>
             <Stack.Screen name="Home" component={HomeScreen} />
             {/* Each tool enters from the side its toolbar button sits on:
-                Translator and Timers from the left, Alarms from the right. */}
+                Translator and Timers from the left, Alarms and Settings from
+                the right. */}
             <Stack.Screen name="Alarms" component={AlarmsScreen} />
             <Stack.Screen
               name="Timers"
@@ -67,6 +69,7 @@ export function RootNavigator({ onReady }: { onReady?: () => void }) {
               component={TranslatorScreen}
               options={{ animation: 'ios_from_left' }}
             />
+            <Stack.Screen name="Settings" component={SettingsScreen} />
             <Stack.Screen
               name="AlarmRing"
               component={AlarmRingScreen}

@@ -234,5 +234,5 @@ trigger = more sensitive (more false fires); higher = stricter (more misses).
 | `src/lib/orbHtml.ts` | the WebGL orb HTML — shared by the in-app orb and the overlay |
 | `src/hooks/useWakeWord.ts` | `ensureWakeWordOnLaunch`, `useWakeTrigger`, `useWakeWordToggle` (+ overlay permission) |
 | `src/hooks/useVoicePipeline.ts` | foreground turn: record + pause/resume detection + orb playback |
-| `src/components/SettingsSheet.tsx` | "Hey Mia" toggle |
+| `src/screens/SettingsScreen.tsx` | "Hey Mia" toggle |
 | `src/screens/HomeScreen.tsx` | Wires wake → `startListening` |
