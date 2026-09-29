@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--Ease-out cubic for page slides: quick enough off the mark that the page
-answers the tap, then a long, soft settle with no hard stop.-->
+<!--Soft ease-out for page slides: it leaves at under 2.5x the average speed,
+so the page answers the tap without a jolt, then settles on a long, gentle
+tail with no hard stop.-->
 <pathInterpolator xmlns:android="http://schemas.android.com/apk/res/android"
-    android:controlX1="0.22"
-    android:controlY1="0.61"
-    android:controlX2="0.36"
+    android:controlX1="0.25"
+    android:controlY1="0.6"
+    android:controlX2="0.3"
     android:controlY2="1"/>

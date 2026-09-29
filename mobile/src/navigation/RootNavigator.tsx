@@ -42,8 +42,8 @@ export function RootNavigator({ onReady }: { onReady?: () => void }) {
       <Stack.Navigator
         screenOptions={{
           headerShown: false,
-          // A tool slides in from the right while Home drifts a little left
-          // underneath, and slides back out on close. The Android timing and
+          // Screens slide in from the right while the one below drifts a
+          // little left, and slide back out on close. The Android timing and
           // curve are tuned in android/app/src/main/res/anim; iOS uses its
           // native push.
           animation: 'ios_from_right',
@@ -54,9 +54,19 @@ export function RootNavigator({ onReady }: { onReady?: () => void }) {
         ) : (
           <>
             <Stack.Screen name="Home" component={HomeScreen} />
+            {/* Each tool enters from the side its toolbar button sits on:
+                Translator and Timers from the left, Alarms from the right. */}
             <Stack.Screen name="Alarms" component={AlarmsScreen} />
-            <Stack.Screen name="Timers" component={TimersScreen} />
-            <Stack.Screen name="Translator" component={TranslatorScreen} />
+            <Stack.Screen
+              name="Timers"
+              component={TimersScreen}
+              options={{ animation: 'ios_from_left' }}
+            />
+            <Stack.Screen
+              name="Translator"
+              component={TranslatorScreen}
+              options={{ animation: 'ios_from_left' }}
+            />
             <Stack.Screen
               name="AlarmRing"
               component={AlarmRingScreen}

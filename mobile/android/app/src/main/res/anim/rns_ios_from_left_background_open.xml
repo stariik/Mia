@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--Overrides react-native-screens' rns_ios_from_right_foreground_open: the screen slides in from the right edge.
+<!--Overrides react-native-screens' rns_ios_from_left_background_open: the screen below drifts a fifth of the width right, for depth.
 Stock is 200ms on accelerate_decelerate, abrupt over a full-width slide.
 The foreground/background pair of each open and each close must share a
 duration (open 360ms, close 300ms).-->
 <translate xmlns:android="http://schemas.android.com/apk/res/android"
     android:duration="360"
     android:interpolator="@interpolator/mia_page_ease_out"
-    android:fromXDelta="100%"
-    android:toXDelta="0%" />
+    android:fromXDelta="0%"
+    android:toXDelta="20%" />
