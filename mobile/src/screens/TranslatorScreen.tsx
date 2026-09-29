@@ -12,6 +12,13 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import Animated, {
+  Easing,
+  interpolate,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path, Rect } from 'react-native-svg';
 
@@ -30,6 +37,10 @@ import { haptics } from '@/lib/haptics';
 import { colors, fonts, radius, spacing, typography } from '@/theme';
 
 const COPIED_MS = 1500;
+const MIC_HEIGHT = 72;
+// Mic row = button + its top padding; the hide animation collapses this.
+const MIC_ROW_HEIGHT = MIC_HEIGHT + spacing.sm;
+const MIC_ANIM_MS = 240;
 
 // Loaded lazily: the navigator imports this screen eagerly, so a build that
 // predates expo-clipboard's native module would otherwise crash at launch
@@ -276,6 +287,24 @@ export function TranslatorScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const inputRef = useRef<TextInput>(null);
   const idle = status === 'idle';
+  const listening = status === 'listening';
+
+  // Hidden while typing, but never mid-recording — the user must still be
+  // able to stop it. Collapses + fades rather than popping out.
+  const micShown = !(typing && !listening);
+  const micAnim = useSharedValue(1);
+  useEffect(() => {
+    micAnim.value = withTiming(micShown ? 1 : 0, {
+      duration: MIC_ANIM_MS,
+      easing: Easing.inOut(Easing.cubic),
+    });
+  }, [micShown, micAnim]);
+  const micAnimStyle = useAnimatedStyle(() => ({
+    height: MIC_ROW_HEIGHT * micAnim.value,
+    // Fade out a little ahead of the collapse so it never looks clipped.
+    opacity: interpolate(micAnim.value, [0.35, 1], [0, 1], 'clamp'),
+    transform: [{ scale: 0.94 + 0.06 * micAnim.value }],
+  }));
 
   // Auto-stop the active recording on silence (one-tap UX).
   useSilenceAutoStop(status === 'listening', stopAndTranslate);
@@ -309,7 +338,6 @@ export function TranslatorScreen() {
     }
   };
 
-  const listening = status === 'listening';
   const fromLabel = languageNameKa(direction.from) ?? direction.from;
   const toLabel = languageNameKa(direction.to) ?? direction.to;
 
@@ -420,9 +448,13 @@ export function TranslatorScreen() {
             <Text style={styles.working}>ვთარგმნი…</Text>
           ) : null}
 
-          {/* Mic: records in the "from" language. Hidden while typing, but
-              never mid-recording — the user must still be able to stop it. */}
-          {typing && !listening ? null : (
+          {/* Mic: records in the "from" language */}
+          <Animated.View
+            style={[styles.micClip, micAnimStyle]}
+            pointerEvents={micShown ? 'auto' : 'none'}
+            importantForAccessibility={micShown ? 'auto' : 'no-hide-descendants'}
+            accessibilityElementsHidden={!micShown}
+          >
             <View style={styles.micRow}>
               <Pressable
                 onPress={onMic}
@@ -441,7 +473,7 @@ export function TranslatorScreen() {
                 </Text>
               </Pressable>
             </View>
-          )}
+          </Animated.View>
 
           {/* Typed translation */}
           <View style={styles.composer}>
@@ -735,6 +767,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 14,
   },
+  micClip: { overflow: 'hidden' },
   micRow: {
     flexDirection: 'row',
     gap: spacing.md,
@@ -743,7 +776,7 @@ const styles = StyleSheet.create({
   },
   mic: {
     flex: 1,
-    height: 72,
+    height: MIC_HEIGHT,
     borderRadius: radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
