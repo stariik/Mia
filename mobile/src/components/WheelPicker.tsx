@@ -50,9 +50,12 @@ export const WheelPicker = memo(function WheelPicker({
   const reported = useRef(value);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  // Only the first render's offset: if this prop followed `value`, every
+  // report back from the parent would jerk the wheel to that row mid-spin.
+  const initialOffset = useRef({ x: 0, y: value * WHEEL_ITEM_HEIGHT }).current;
 
   const tick = useCallback(() => {
-    tickSound.play();
+    if (!tickSound.play()) return;
     // Vibration on iOS is a long buzz, too heavy for a per-row tick.
     if (Platform.OS === 'android') haptics.selection();
   }, []);
@@ -107,12 +110,11 @@ export const WheelPicker = memo(function WheelPicker({
         onScroll={onScroll}
         scrollEventThrottle={16}
         onMomentumScrollEnd={commit}
-        onScrollEndDrag={commit}
         showsVerticalScrollIndicator={false}
         snapToInterval={WHEEL_ITEM_HEIGHT}
-        decelerationRate="fast"
+        decelerationRate="normal"
         overScrollMode="never"
-        contentOffset={{ x: 0, y: value * WHEEL_ITEM_HEIGHT }}
+        contentOffset={initialOffset}
         onLayout={() =>
           scrollRef.current?.scrollTo({
             y: reported.current * WHEEL_ITEM_HEIGHT,
@@ -123,16 +125,13 @@ export const WheelPicker = memo(function WheelPicker({
       >
         {rows}
       </Animated.ScrollView>
-      <LinearGradient
-        pointerEvents="none"
-        colors={[fadeColor, clear]}
-        style={[styles.fade, styles.fadeTop]}
-      />
-      <LinearGradient
-        pointerEvents="none"
-        colors={[clear, fadeColor]}
-        style={[styles.fade, styles.fadeBottom]}
-      />
+      {/* Plain wrappers own pointerEvents so the fades never swallow a drag. */}
+      <View style={[styles.fade, styles.fadeTop]}>
+        <LinearGradient colors={[fadeColor, clear]} style={styles.fill} />
+      </View>
+      <View style={[styles.fade, styles.fadeBottom]}>
+        <LinearGradient colors={[clear, fadeColor]} style={styles.fill} />
+      </View>
     </View>
   );
 });
@@ -157,7 +156,9 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: WHEEL_ITEM_HEIGHT * SIDE_ITEMS,
+    pointerEvents: 'none',
   },
+  fill: { flex: 1 },
   fadeTop: { top: 0 },
   fadeBottom: { bottom: 0 },
 });

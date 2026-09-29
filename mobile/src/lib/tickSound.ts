@@ -5,7 +5,7 @@ import { createAudioPlayer, type AudioPlayer } from 'expo-audio';
 // other off; a minimum gap stops a hard flick turning into a buzz.
 
 const POOL_SIZE = 4;
-const MIN_GAP_MS = 35;
+const MIN_GAP_MS = 45;
 
 let pool: AudioPlayer[] | null = null;
 let next = 0;
@@ -29,9 +29,10 @@ export const tickSound = {
       getPool();
     } catch {}
   },
-  play() {
+  /** Returns false when throttled, so callers can skip their haptic too. */
+  play(): boolean {
     const now = Date.now();
-    if (now - lastAt < MIN_GAP_MS) return;
+    if (now - lastAt < MIN_GAP_MS) return false;
     lastAt = now;
     try {
       const players = getPool();
@@ -40,5 +41,6 @@ export const tickSound = {
       p.seekTo(0).catch(() => {});
       p.play();
     } catch {}
+    return true;
   },
 };
