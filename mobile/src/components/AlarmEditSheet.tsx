@@ -9,6 +9,9 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import Animated from 'react-native-reanimated';
+
+import { useSheetTransition } from '@/hooks/useSheetTransition';
 
 import { nativePlatform } from '@/lib/tools/platform/native';
 import { useToolsStore, type ActiveAlarm } from '@/stores/toolsStore';
@@ -47,7 +50,13 @@ function computeRingsAt(hour: number, minute: number, days: number[]): number {
 }
 
 export function AlarmEditSheet({ visible, alarm, onClose }: Props) {
-  const editing = !!alarm;
+  const sheet = useSheetTransition(visible);
+  // The parent clears `alarm` the moment it closes the sheet, but the sheet is
+  // still sliding away then — hold the last alarm so the title and the delete
+  // button don't swap to the "new alarm" layout mid-animation.
+  const [shownAlarm, setShownAlarm] = useState(alarm);
+  if (visible && alarm !== shownAlarm) setShownAlarm(alarm);
+  const editing = !!shownAlarm;
   const updateAlarm = useToolsStore((s) => s.updateAlarm);
 
   const [hour, setHour] = useState('07');
@@ -126,17 +135,22 @@ export function AlarmEditSheet({ visible, alarm, onClose }: Props) {
 
   return (
     <Modal
-      visible={visible}
-      animationType="slide"
+      visible={sheet.mounted}
+      animationType="none"
       transparent
       onRequestClose={onClose}
     >
       <KeyboardAvoidingView
-        style={styles.backdrop}
+        style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <Pressable style={styles.backdropPress} onPress={onClose} />
-        <View style={styles.sheet}>
+        <Animated.View style={[styles.backdrop, sheet.backdropStyle]}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        </Animated.View>
+        <Animated.View
+          style={[styles.sheet, sheet.sheetStyle]}
+          onLayout={sheet.onSheetLayout}
+        >
           <View style={styles.handle} />
           <Text style={[typography.title, styles.title]}>
             {editing ? 'მაღვიძარის რედაქტირება' : 'ახალი მაღვიძარა'}
@@ -250,24 +264,24 @@ export function AlarmEditSheet({ visible, alarm, onClose }: Props) {
               <Text style={styles.saveText}>შენახვა</Text>
             </Pressable>
           </View>
-        </View>
+        </Animated.View>
       </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
+  container: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.6)',
   },
-  backdropPress: {
+  backdrop: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.6)',
   },
   sheet: {
     backgroundColor: colors.surfaceSolid,

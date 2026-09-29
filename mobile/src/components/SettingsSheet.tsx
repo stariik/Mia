@@ -10,8 +10,10 @@ import {
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import Animated from 'react-native-reanimated';
 
 import { authApi } from '@/api/auth';
+import { useSheetTransition } from '@/hooks/useSheetTransition';
 import { useWakeWordToggle } from '@/hooks/useWakeWord';
 import { refreshLocation } from '@/lib/location';
 import { useAuthStore } from '@/stores/authStore';
@@ -26,6 +28,7 @@ type Props = {
 
 export function SettingsSheet({ visible, onClose }: Props) {
   const { user, logout } = useAuthStore();
+  const sheet = useSheetTransition(visible);
 
   const detectedCity = useLocationStore((s) => s.city);
   const manualCity = useLocationStore((s) => s.manualCity);
@@ -86,13 +89,18 @@ export function SettingsSheet({ visible, onClose }: Props) {
 
   return (
     <Modal
-      visible={visible}
+      visible={sheet.mounted}
       transparent
-      animationType="slide"
+      animationType="none"
       onRequestClose={onClose}
     >
-      <Pressable style={styles.backdrop} onPress={onClose} />
-      <View style={styles.sheet}>
+      <Animated.View style={[styles.backdrop, sheet.backdropStyle]}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+      </Animated.View>
+      <Animated.View
+        style={[styles.sheet, sheet.sheetStyle]}
+        onLayout={sheet.onSheetLayout}
+      >
         <View style={styles.handle} />
         <Text style={[typography.title, styles.title]}>პარამეტრები</Text>
 
@@ -288,7 +296,7 @@ export function SettingsSheet({ visible, onClose }: Props) {
           />
           <Text style={styles.doneText}>დასრულება</Text>
         </Pressable>
-      </View>
+      </Animated.View>
     </Modal>
   );
 }

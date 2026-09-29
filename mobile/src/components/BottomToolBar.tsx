@@ -1,9 +1,9 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
+  Easing,
   useAnimatedStyle,
   useSharedValue,
-  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import Svg, { Circle, Path } from 'react-native-svg';
@@ -70,6 +70,11 @@ function ToolIcon({ tool, color }: { tool: ToolKey; color: string }) {
   }
 }
 
+// A shallow, quick press-in and a slightly slower, overshoot-free release:
+// the icon acknowledges the touch without bouncing while the screen opens.
+const PRESS_IN = { duration: 90, easing: Easing.out(Easing.quad) };
+const RELEASE = { duration: 220, easing: Easing.out(Easing.cubic) };
+
 function ToolButton({ tool, onPress }: { tool: ToolKey; onPress: () => void }) {
   const meta = META[tool];
   const scale = useSharedValue(1);
@@ -83,12 +88,12 @@ function ToolButton({ tool, onPress }: { tool: ToolKey; onPress: () => void }) {
   return (
     <Pressable
       onPressIn={() => {
-        scale.value = withSpring(0.86, { damping: 13, stiffness: 340 });
-        glow.value = withTiming(0.22, { duration: 110 });
+        scale.value = withTiming(0.93, PRESS_IN);
+        glow.value = withTiming(0.16, PRESS_IN);
       }}
       onPressOut={() => {
-        scale.value = withSpring(1, { damping: 11, stiffness: 260 });
-        glow.value = withTiming(0, { duration: 260 });
+        scale.value = withTiming(1, RELEASE);
+        glow.value = withTiming(0, RELEASE);
       }}
       onPress={() => {
         onPress();

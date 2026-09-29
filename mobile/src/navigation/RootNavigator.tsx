@@ -40,7 +40,14 @@ export function RootNavigator({ onReady }: { onReady?: () => void }) {
   return (
     <NavigationContainer theme={theme} ref={navigationRef} onReady={onReady}>
       <Stack.Navigator
-        screenOptions={{ headerShown: false, animation: 'fade' }}
+        screenOptions={{
+          headerShown: false,
+          // A tool opens by rising a little while it fades in over a still
+          // Home, and sinks away on close. A plain crossfade fades both
+          // screens at once, so the dark background flashes through midway.
+          animation: 'fade_from_bottom',
+          animationDuration: 320,
+        }}
       >
         {!token ? (
           <Stack.Screen name="Auth" component={AuthScreen} />
