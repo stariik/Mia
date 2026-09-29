@@ -150,7 +150,6 @@ export function HomeScreen() {
   // mid-sentence. Between turns the mic re-arms itself, so the tap is only ever
   // needed to start and to stop.
   const onMic = () => {
-    haptics.tap();
     if (
       pipeline.isConversationActive() ||
       isListening ||
@@ -209,7 +208,6 @@ export function HomeScreen() {
   const onSend = () => {
     const text = input.trim();
     if (!text) return;
-    haptics.tap();
     setInput('');
     pipeline.sendText(text);
     setShowInput(false);
@@ -226,7 +224,6 @@ export function HomeScreen() {
           <View style={styles.topSide}>
             <Pressable
               onPress={() => {
-                haptics.tap();
                 setShowDrawer(true);
               }}
               style={styles.historyBtn}
@@ -248,7 +245,6 @@ export function HomeScreen() {
           <View style={[styles.topSide, styles.topSideRight]}>
             <Pressable
               onPress={() => {
-                haptics.tap();
                 setShowInput((v) => !v);
               }}
               style={styles.topIconBtn}
