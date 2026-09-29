@@ -441,7 +441,7 @@ export function TranslatorScreen() {
                 status === 'working' && styles.micDisabled,
               ]}
             >
-              <MicIcon color={listening ? colors.primaryOn : colors.text} />
+              <MicIcon color={listening ? colors.primary : colors.text} />
               <Text style={[styles.micLabel, listening && styles.micLabelActive]}>
                 {listening
                   ? 'მისმენ… (შეჩერება)'
@@ -502,20 +502,20 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     paddingHorizontal: spacing.lg,
     borderRadius: radius.lg,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: colors.primary,
+    borderColor: colors.stroke,
     alignItems: 'center',
     justifyContent: 'center',
   },
   langChipText: {
     fontFamily: fonts.bodyBold,
-    color: colors.primaryOn,
+    color: colors.text,
     fontSize: 15,
   },
   langChipCaret: {
     fontFamily: fonts.body,
-    color: colors.primaryOn,
+    color: colors.textMuted,
     fontSize: 12,
   },
   swapBtn: {
@@ -698,13 +698,15 @@ const styles = StyleSheet.create({
     height: 44,
     paddingHorizontal: spacing.lg,
     borderRadius: radius.lg,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.stroke,
     alignItems: 'center',
     justifyContent: 'center',
   },
   sendText: {
     fontFamily: fonts.bodyBold,
-    color: colors.primaryOn,
+    color: colors.text,
     fontSize: 14,
   },
   micRow: {
@@ -726,7 +728,7 @@ const styles = StyleSheet.create({
     borderColor: colors.stroke,
   },
   micActive: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.surfaceElev,
     borderColor: colors.primary,
   },
   micDisabled: { opacity: 0.4 },
@@ -735,5 +737,5 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 14,
   },
-  micLabelActive: { color: colors.primaryOn },
+  micLabelActive: { color: colors.text },
 });
