@@ -316,6 +316,13 @@ export function TranslatorScreen() {
           </View>
           <Text style={[typography.title, styles.title]}>თარჯიმანი</Text>
           <View style={[styles.headerSide, styles.headerSideRight]}>
+            {/* Trash only once there is something to clear, so the speaker
+                toggle always sits at the far right. */}
+            {turns.length > 0 ? (
+              <Pressable onPress={clear} style={styles.iconBtn} hitSlop={8}>
+                <TrashIcon />
+              </Pressable>
+            ) : null}
             <Pressable
               onPress={() => setAutoSpeak(!autoSpeak)}
               style={styles.iconBtn}
@@ -330,18 +337,10 @@ export function TranslatorScreen() {
                 <SpeakerOffIcon color={colors.textMuted} size={20} />
               )}
             </Pressable>
-            <Pressable
-              onPress={clear}
-              style={styles.iconBtn}
-              hitSlop={8}
-              disabled={turns.length === 0}
-            >
-              {turns.length > 0 ? <TrashIcon /> : null}
-            </Pressable>
           </View>
         </View>
 
-        {/* Direction: From → To, one side always Georgian */}
+        {/* Direction: From → To */}
         <View style={styles.dirBar}>
           <LangChip
             caption="საიდან"
