@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--An ease-out quad: it leaves at under twice the average speed and eases to
+a stop, so a transition glides from its very first frame. The platform's
+decelerate and linear_out_slow_in curves start at 5x or more, which reads
+as a jump.-->
+<pathInterpolator xmlns:android="http://schemas.android.com/apk/res/android"
+    android:controlX1="0.25"
+    android:controlY1="0.46"
+    android:controlX2="0.45"
+    android:controlY2="0.94"/>

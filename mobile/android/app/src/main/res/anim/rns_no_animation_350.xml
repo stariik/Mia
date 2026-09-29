@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--Overrides react-native-screens' hold animation for the screen underneath
+a fade_from_bottom open (its only use). It must last as long as
+rns_fade_from_bottom.xml, or the screen below is dropped while the new one
+is still translucent and the background flashes through. The name is the
+library's; the duration is ours.-->
+<alpha xmlns:android="http://schemas.android.com/apk/res/android"
+    android:fromAlpha="1.0"
+    android:toAlpha="1.0"
+    android:duration="450"
+    />

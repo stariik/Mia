@@ -46,7 +46,7 @@ export function RootNavigator({ onReady }: { onReady?: () => void }) {
           // Home, and sinks away on close. A plain crossfade fades both
           // screens at once, so the dark background flashes through midway.
           animation: 'fade_from_bottom',
-          animationDuration: 320,
+          animationDuration: 450,
         }}
       >
         {!token ? (
