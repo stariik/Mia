@@ -272,11 +272,22 @@ export function TranslatorScreen() {
 
   const [draft, setDraft] = useState('');
   const [pickerSide, setPickerSide] = useState<PickerSide | null>(null);
+  const [typing, setTyping] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
+  const inputRef = useRef<TextInput>(null);
   const idle = status === 'idle';
 
   // Auto-stop the active recording on silence (one-tap UX).
   useSilenceAutoStop(status === 'listening', stopAndTranslate);
+
+  // Android's back button closes the keyboard but leaves the input focused,
+  // which would keep the mic hidden — blur it whenever the keyboard goes away.
+  useEffect(() => {
+    const sub = Keyboard.addListener('keyboardDidHide', () => {
+      inputRef.current?.blur();
+    });
+    return () => sub.remove();
+  }, []);
 
   useEffect(() => {
     if (turns.length > 0) {
@@ -409,28 +420,35 @@ export function TranslatorScreen() {
             <Text style={styles.working}>ვთარგმნი…</Text>
           ) : null}
 
-          {/* Mic: records in the "from" language */}
-          <View style={styles.micRow}>
-            <Pressable
-              onPress={onMic}
-              disabled={status === 'working'}
-              style={[
-                styles.mic,
-                listening && styles.micActive,
-                status === 'working' && styles.micDisabled,
-              ]}
-            >
-              <MicIcon color={listening ? colors.primary : colors.text} />
-              <Text style={[styles.micLabel, listening && styles.micLabelActive]}>
-                {listening
-                  ? 'მისმენ… (შეჩერება)'
-                  : `ისაუბრე ${languageNameKaAdverb(direction.from)}`}
-              </Text>
-            </Pressable>
-          </View>
+          {/* Mic: records in the "from" language. Hidden while typing, but
+              never mid-recording — the user must still be able to stop it. */}
+          {typing && !listening ? null : (
+            <View style={styles.micRow}>
+              <Pressable
+                onPress={onMic}
+                disabled={status === 'working'}
+                style={[
+                  styles.mic,
+                  listening && styles.micActive,
+                  status === 'working' && styles.micDisabled,
+                ]}
+              >
+                <MicIcon color={listening ? colors.primary : colors.text} />
+                <Text style={[styles.micLabel, listening && styles.micLabelActive]}>
+                  {listening
+                    ? 'მისმენ… (შეჩერება)'
+                    : `ისაუბრე ${languageNameKaAdverb(direction.from)}`}
+                </Text>
+              </Pressable>
+            </View>
+          )}
+
           {/* Typed translation */}
           <View style={styles.composer}>
             <TextInput
+              ref={inputRef}
+              onFocus={() => setTyping(true)}
+              onBlur={() => setTyping(false)}
               value={draft}
               onChangeText={setDraft}
               placeholder={`დაწერე ${languageNameKaAdverb(direction.from)}…`}
