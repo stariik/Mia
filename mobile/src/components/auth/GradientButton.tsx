@@ -1,27 +1,20 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Reanimated, {
-  cancelAnimation,
-  Easing,
   FadeIn,
   FadeOut,
-  interpolate,
   useAnimatedStyle,
-  useReducedMotion,
   useSharedValue,
-  withDelay,
-  withRepeat,
   withSpring,
-  withTiming,
 } from 'react-native-reanimated';
 
 import { brandGradient, colors, fonts, radius } from '@/theme';
 
 import { ArrowIcon } from './icons';
 
-// Primary CTA: brand gradient with a glossy light sweep every few seconds,
-// a springy press, and a label ↔ spinner crossfade while loading.
+// Primary CTA: brand gradient, a springy press, and a label ↔ spinner
+// crossfade while loading.
 
 type Props = {
   label: string;
@@ -33,38 +26,10 @@ type Props = {
 const AnimatedPressable = Reanimated.createAnimatedComponent(Pressable);
 
 export function GradientButton({ label, onPress, loading, ready = true }: Props) {
-  const reduced = useReducedMotion();
-  const [width, setWidth] = useState(0);
   const press = useSharedValue(0);
-  const sweep = useSharedValue(0);
-  const on = useSharedValue(ready ? 1 : 0);
-
-  useEffect(() => {
-    on.value = withTiming(ready ? 1 : 0, { duration: 220 });
-  }, [ready, on]);
-
-  useEffect(() => {
-    if (reduced || !ready || loading) {
-      cancelAnimation(sweep);
-      sweep.value = 0;
-      return;
-    }
-    sweep.value = withRepeat(
-      withDelay(1400, withTiming(1, { duration: 1100, easing: Easing.inOut(Easing.cubic) })),
-      -1,
-    );
-  }, [reduced, ready, loading, sweep]);
 
   const btnStyle = useAnimatedStyle(() => ({
     transform: [{ scale: 1 - press.value * 0.035 }],
-    opacity: interpolate(on.value, [0, 1], [0.5, 1]),
-    shadowOpacity: on.value * 0.55,
-  }));
-  const sweepStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: interpolate(sweep.value, [0, 1], [-120, width + 40]) },
-      { skewX: '-20deg' },
-    ],
   }));
 
   return (
@@ -77,11 +42,10 @@ export function GradientButton({ label, onPress, loading, ready = true }: Props)
       onPressOut={() => {
         press.value = withSpring(0, { damping: 12, stiffness: 260 });
       }}
-      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ busy: !!loading }}
-      style={[styles.btn, btnStyle]}
+      style={[styles.btn, !ready && styles.btnIdle, btnStyle]}
     >
       <LinearGradient
         colors={[...brandGradient]}
@@ -96,14 +60,6 @@ export function GradientButton({ label, onPress, loading, ready = true }: Props)
         end={{ x: 0.5, y: 0.6 }}
         style={StyleSheet.absoluteFill}
       />
-      <Reanimated.View style={[styles.sweep, sweepStyle]} pointerEvents="none">
-        <LinearGradient
-          colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.35)', 'rgba(255,255,255,0)']}
-          start={{ x: 0, y: 0.5 }}
-          end={{ x: 1, y: 0.5 }}
-          style={StyleSheet.absoluteFill}
-        />
-      </Reanimated.View>
 
       {loading ? (
         <Reanimated.View key="spin" entering={FadeIn.duration(160)} exiting={FadeOut.duration(120)}>
@@ -135,15 +91,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.55,
     shadowRadius: 20,
     elevation: 8,
   },
-  sweep: {
-    position: 'absolute',
-    top: -10,
-    bottom: -10,
-    left: 0,
-    width: 70,
+  btnIdle: {
+    opacity: 0.5,
+    shadowOpacity: 0,
   },
   row: {
     flexDirection: 'row',
