@@ -90,11 +90,15 @@ export function TimersScreen() {
     );
   };
 
+  // Paused while a wheel is open: the countdowns sit under its dimmed
+  // backdrop, and redrawing the screen 4×/s competes with the wheel's clicks.
+  const wheelOpen = editing !== null;
   useEffect(() => {
-    if (timers.length === 0) return;
+    if (timers.length === 0 || wheelOpen) return;
+    setNow(Date.now());
     const id = setInterval(() => setNow(Date.now()), 250);
     return () => clearInterval(id);
-  }, [timers.length]);
+  }, [timers.length, wheelOpen]);
 
   const customDurationSec = hh * 3600 + mm * 60 + ss;
 
