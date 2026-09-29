@@ -40,7 +40,9 @@ const COPIED_MS = 1500;
 const MIC_HEIGHT = 72;
 // Mic row = button + its top padding; the hide animation collapses this.
 const MIC_ROW_HEIGHT = MIC_HEIGHT + spacing.sm;
-const MIC_ANIM_MS = 240;
+const MIC_ANIM_MS = 300;
+// How far the mic drifts down as it fades out.
+const MIC_SETTLE_PX = 8;
 
 // Loaded lazily: the navigator imports this screen eagerly, so a build that
 // predates expo-clipboard's native module would otherwise crash at launch
@@ -290,20 +292,32 @@ export function TranslatorScreen() {
   const listening = status === 'listening';
 
   // Hidden while typing, but never mid-recording — the user must still be
-  // able to stop it. Collapses + fades rather than popping out.
+  // able to stop it. Two phases on one progress value (1 shown → 0 hidden):
+  // the mic fades out at full size first, and only once it's invisible does
+  // its row collapse, so nothing visible is ever squashed or clipped. Showing
+  // runs the same curve backwards: the space opens, then the mic fades in.
   const micShown = !(typing && !listening);
   const micAnim = useSharedValue(1);
   useEffect(() => {
     micAnim.value = withTiming(micShown ? 1 : 0, {
       duration: MIC_ANIM_MS,
-      easing: Easing.inOut(Easing.cubic),
+      // Symmetric, so the fade and the collapse each get half the duration.
+      easing: Easing.inOut(Easing.quad),
     });
   }, [micShown, micAnim]);
   const micAnimStyle = useAnimatedStyle(() => ({
-    height: MIC_ROW_HEIGHT * micAnim.value,
-    // Fade out a little ahead of the collapse so it never looks clipped.
-    opacity: interpolate(micAnim.value, [0.35, 1], [0, 1], 'clamp'),
-    transform: [{ scale: 0.94 + 0.06 * micAnim.value }],
+    height: interpolate(micAnim.value, [0, 0.5], [0, MIC_ROW_HEIGHT], 'clamp'),
+    opacity: interpolate(micAnim.value, [0.5, 1], [0, 1], 'clamp'),
+    transform: [
+      {
+        translateY: interpolate(
+          micAnim.value,
+          [0.5, 1],
+          [MIC_SETTLE_PX, 0],
+          'clamp',
+        ),
+      },
+    ],
   }));
 
   // Auto-stop the active recording on silence (one-tap UX).
