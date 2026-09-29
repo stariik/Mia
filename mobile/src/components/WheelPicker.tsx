@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { memo, useCallback, useEffect, useRef } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   interpolate,
@@ -30,7 +30,8 @@ type Props = {
 
 const pad2 = (n: number) => n.toString().padStart(2, '0');
 
-export function WheelPicker({
+// Memoised: the timer screen re-renders every 250ms while a timer runs.
+export const WheelPicker = memo(function WheelPicker({
   count,
   value,
   onChange,
@@ -105,9 +106,9 @@ export function WheelPicker({
       </Animated.ScrollView>
     </View>
   );
-}
+});
 
-function WheelItem({
+const WheelItem = memo(function WheelItem({
   index,
   scrollY,
   label,
@@ -134,7 +135,7 @@ function WheelItem({
       <Text style={styles.itemText}>{label}</Text>
     </Animated.View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   item: {
