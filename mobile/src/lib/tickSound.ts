@@ -16,6 +16,10 @@ type WheelTickModule = { preload(): void; tick(volume: number): void };
 const native: WheelTickModule | undefined =
   Platform.OS === 'android' ? NativeModules.WheelTick : undefined;
 
+// TEMPORARY diagnostic: silences every click and vibration, to test whether
+// the per-row click is what makes the wheel stutter. Set back to true.
+const TICKS_ENABLED = false;
+
 const VOLUME = 0.6;
 const MIN_GAP_MS = native ? 30 : 45;
 const POOL_SIZE = 4;
@@ -44,6 +48,7 @@ export const tickSound = {
     } catch {}
   },
   play() {
+    if (!TICKS_ENABLED) return;
     const now = Date.now();
     if (now - lastAt < MIN_GAP_MS) return;
     lastAt = now;
