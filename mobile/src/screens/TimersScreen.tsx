@@ -223,17 +223,6 @@ export function TimersScreen() {
             maxLength={60}
           />
 
-          <Pressable
-            onPress={() => startTimer(customDurationSec)}
-            disabled={customDurationSec <= 0}
-            style={[
-              styles.startBtn,
-              customDurationSec <= 0 && styles.startBtnDisabled,
-            ]}
-          >
-            <Text style={styles.startText}>დაწყება</Text>
-          </Pressable>
-
           {/* Quick durations */}
           <Text style={[typography.labelSm, styles.sectionLabel]}>სწრაფი</Text>
           <View style={styles.quickGrid}>
@@ -250,6 +239,17 @@ export function TimersScreen() {
               </Pressable>
             ))}
           </View>
+
+          <Pressable
+            onPress={() => startTimer(customDurationSec)}
+            disabled={customDurationSec <= 0}
+            style={[
+              styles.startBtn,
+              customDurationSec <= 0 && styles.startBtnDisabled,
+            ]}
+          >
+            <Text style={styles.startText}>დაწყება</Text>
+          </Pressable>
         </ScrollView>
       </SafeAreaView>
     </View>
