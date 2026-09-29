@@ -6,12 +6,12 @@ import { translateText } from '@/api/translate';
 import { synthesizeWithElevenLabs } from '@/api/synthesize';
 import { fs } from '@/lib/fs';
 import { nativeAudio } from '@/lib/nativeAudio';
-import { bcp47 } from '@/lib/translateLanguages';
+import { bcp47, type Direction, type Lang } from '@/lib/translateLanguages';
+import { useTranslatorStore } from '@/stores/translatorStore';
 
 import { usePcmRecorder } from './usePcmRecorder';
 
-export type Lang = 'ka' | 'ru' | 'en';
-export type ForeignLang = 'ru' | 'en';
+export type { Direction, Lang } from '@/lib/translateLanguages';
 
 export type Turn = {
   id: string;
@@ -49,87 +49,132 @@ async function speak(text: string) {
 }
 
 /**
- * Drives the Translator screen: one tap records in a known language, then
- * transcribes (single-language STT — fast + accurate), translates to the other
- * side of the pair, appends the turn, and speaks the result.
+ * Drives the Translator screen. The user picks a direction (from → to, any two
+ * different languages). One tap records in the "from" language, transcribes it
+ * (single-language STT — fast + accurate), translates into the "to" language,
+ * appends the turn, and speaks the result if auto-speak is on. Typed text goes
+ * through the same translate step and lands in the same turn list.
  */
 export function useTranslator() {
   const recorder = usePcmRecorder();
-  const [other, setOther] = useState<ForeignLang>('ru');
+  const direction = useTranslatorStore((s) => s.direction);
+  const swap = useTranslatorStore((s) => s.swap);
+  const setFrom = useTranslatorStore((s) => s.setFrom);
+  const setTo = useTranslatorStore((s) => s.setTo);
+  const autoSpeak = useTranslatorStore((s) => s.autoSpeak);
+  const setAutoSpeakPref = useTranslatorStore((s) => s.setAutoSpeak);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [status, setStatus] = useState<TranslatorStatus>('idle');
-  const [activeSource, setActiveSource] = useState<Lang | null>(null);
   const [error, setError] = useState<string | null>(null);
   const recordingRef = useRef(false);
+  // Set synchronously so a double tap can't send the same typed text twice
+  // before the 'working' status renders.
+  const typingRef = useRef(false);
+  // Direction captured when recording starts, so a change mid-recording can't
+  // mismatch the STT language and the translation pair.
+  const directionRef = useRef<Direction>(direction);
 
-  const startListening = useCallback(
-    async (source: Lang) => {
-      if (status !== 'idle') return;
-      setError(null);
-      nativeAudio.stop();
-      try {
-        await recorder.start();
-        recordingRef.current = true;
-        setActiveSource(source);
-        setStatus('listening');
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'მიკროფონი ვერ ჩაირთო');
-        setActiveSource(null);
-        setStatus('idle');
-      }
-    },
-    [recorder, status],
-  );
-
-  const stopAndTranslate = useCallback(async () => {
-    if (!recordingRef.current) return;
-    recordingRef.current = false;
-    const source = activeSource ?? 'ka';
-    const target: Lang = source === 'ka' ? other : 'ka';
-    setStatus('working');
-    try {
-      const { audioBase64, sampleRate } = await recorder.stop();
-      if (!audioBase64) {
-        setStatus('idle');
-        setActiveSource(null);
-        return;
-      }
-      const heard = (
-        await transcribeGooglePcm(audioBase64, sampleRate, [bcp47(source)])
-      ).trim();
-      if (!heard) {
-        setError('ვერ გავიგე, სცადე თავიდან');
-        setStatus('idle');
-        setActiveSource(null);
-        return;
-      }
-      const translated = (await translateText(heard, source, target)).trim();
+  const finishTurn = useCallback(
+    (source: Lang, target: Lang, heard: string, translated: string) => {
       setTurns((prev) => [
         ...prev,
         { id: newId(), source, target, heard, translated },
       ]);
       setStatus('idle');
-      setActiveSource(null);
-      void speak(translated);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'თარგმნა ვერ მოხერხდა';
-      expireSessionIf401(msg);
-      setError(msg);
-      setStatus('idle');
-      setActiveSource(null);
-    }
-  }, [recorder, activeSource, other]);
+      // Read the latest pref, not the one captured when the turn started.
+      if (useTranslatorStore.getState().autoSpeak) void speak(translated);
+    },
+    [],
+  );
 
-  // Tap a language: start if idle, stop+translate if it's the one recording.
-  const toggleListen = useCallback(
-    (source: Lang) => {
-      if (status === 'listening' && activeSource === source) {
-        void stopAndTranslate();
-      } else if (status === 'idle') {
-        void startListening(source);
+  const fail = useCallback((e: unknown) => {
+    const msg = e instanceof Error ? e.message : 'თარგმნა ვერ მოხერხდა';
+    expireSessionIf401(msg);
+    setError(msg);
+    setStatus('idle');
+  }, []);
+
+  const startListening = useCallback(async () => {
+    if (status !== 'idle') return;
+    setError(null);
+    nativeAudio.stop();
+    try {
+      directionRef.current = direction;
+      await recorder.start();
+      recordingRef.current = true;
+      setStatus('listening');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'მიკროფონი ვერ ჩაირთო');
+      setStatus('idle');
+    }
+  }, [recorder, status, direction]);
+
+  const stopAndTranslate = useCallback(async () => {
+    if (!recordingRef.current) return;
+    recordingRef.current = false;
+    const { from, to } = directionRef.current;
+    setStatus('working');
+    try {
+      const { audioBase64, sampleRate } = await recorder.stop();
+      if (!audioBase64) {
+        setStatus('idle');
+        return;
+      }
+      const heard = (
+        await transcribeGooglePcm(audioBase64, sampleRate, [bcp47(from)])
+      ).trim();
+      if (!heard) {
+        setError('ვერ გავიგე, სცადე თავიდან');
+        setStatus('idle');
+        return;
+      }
+      const translated = (await translateText(heard, from, to)).trim();
+      finishTurn(from, to, heard, translated);
+    } catch (e) {
+      fail(e);
+    }
+  }, [recorder, finishTurn, fail]);
+
+  // Mic tap: start if idle, stop+translate if recording.
+  const toggleListen = useCallback(() => {
+    if (status === 'listening') {
+      void stopAndTranslate();
+    } else if (status === 'idle') {
+      void startListening();
+    }
+  }, [status, startListening, stopAndTranslate]);
+
+  // Translate typed text in the current direction. Resolves true on success so
+  // the caller can clear its input.
+  const translateTyped = useCallback(
+    async (input: string): Promise<boolean> => {
+      const text = input.trim();
+      if (!text || status !== 'idle' || typingRef.current) return false;
+      typingRef.current = true;
+      const { from, to } = direction;
+      setError(null);
+      nativeAudio.stop();
+      setStatus('working');
+      try {
+        const translated = (await translateText(text, from, to)).trim();
+        finishTurn(from, to, text, translated);
+        return true;
+      } catch (e) {
+        fail(e);
+        return false;
+      } finally {
+        typingRef.current = false;
       }
     },
-    [status, activeSource, startListening, stopAndTranslate],
+    [status, direction, finishTurn, fail],
+  );
+
+  const setAutoSpeak = useCallback(
+    (on: boolean) => {
+      if (!on) nativeAudio.stop();
+      setAutoSpeakPref(on);
+    },
+    [setAutoSpeakPref],
   );
 
   const replay = useCallback((turn: Turn) => {
@@ -143,14 +188,18 @@ export function useTranslator() {
   }, []);
 
   return {
-    other,
-    setOther,
+    direction,
+    swap,
+    setFrom,
+    setTo,
+    autoSpeak,
+    setAutoSpeak,
     turns,
     status,
-    activeSource,
     error,
     toggleListen,
     stopAndTranslate,
+    translateTyped,
     replay,
     clear,
   };
