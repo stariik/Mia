@@ -1,11 +1,24 @@
+import { NativeModules, Platform } from 'react-native';
 import { createAudioPlayer, type AudioPlayer } from 'expo-audio';
 
-// The soft click a scroll wheel makes as each row passes the centre. A small
-// pool of players lets fast flicks overlap clicks instead of cutting each
-// other off; a minimum gap stops a hard flick turning into a buzz.
+import { haptics } from './haptics';
 
+// The soft click (and haptic tick) a scroll wheel makes as each row passes
+// the centre.
+//
+// On Android this goes to the native WheelTick module: a SoundPool sample plus
+// the system CLOCK_TICK haptic, cheap enough to fire on every row without
+// touching the scroll. Elsewhere — or on a build that predates the module —
+// it falls back to a small pool of expo-audio players, with a wider gap so a
+// hard flick doesn't turn into a buzz.
+
+type WheelTickModule = { preload(): void; tick(volume: number): void };
+const native: WheelTickModule | undefined =
+  Platform.OS === 'android' ? NativeModules.WheelTick : undefined;
+
+const VOLUME = 0.6;
+const MIN_GAP_MS = native ? 30 : 45;
 const POOL_SIZE = 4;
-const MIN_GAP_MS = 45;
 
 let pool: AudioPlayer[] | null = null;
 let next = 0;
@@ -15,7 +28,7 @@ function getPool(): AudioPlayer[] {
   if (!pool) {
     pool = Array.from({ length: POOL_SIZE }, () => {
       const p = createAudioPlayer(require('../../assets/sounds/tick.wav'));
-      p.volume = 0.6;
+      p.volume = VOLUME;
       return p;
     });
   }
@@ -23,24 +36,29 @@ function getPool(): AudioPlayer[] {
 }
 
 export const tickSound = {
-  /** Create the players ahead of time so the first click isn't late. */
+  /** Load the sound ahead of time so the first click isn't late. */
   preload() {
     try {
-      getPool();
+      if (native) native.preload();
+      else getPool();
     } catch {}
   },
-  /** Returns false when throttled, so callers can skip their haptic too. */
-  play(): boolean {
+  play() {
     const now = Date.now();
-    if (now - lastAt < MIN_GAP_MS) return false;
+    if (now - lastAt < MIN_GAP_MS) return;
     lastAt = now;
     try {
+      if (native) {
+        native.tick(VOLUME);
+        return;
+      }
       const players = getPool();
       const p = players[next];
       next = (next + 1) % players.length;
       p.seekTo(0).catch(() => {});
       p.play();
+      // Vibration on iOS is a long buzz, too heavy for a per-row tick.
+      if (Platform.OS === 'android') haptics.selection();
     } catch {}
-    return true;
   },
 };

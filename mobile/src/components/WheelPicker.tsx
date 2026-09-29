@@ -1,6 +1,5 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
-  Platform,
   StyleSheet,
   Text,
   View,
@@ -15,7 +14,6 @@ import Animated, {
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 
-import { haptics } from '@/lib/haptics';
 import { tickSound } from '@/lib/tickSound';
 import { colors, fonts } from '@/theme';
 
@@ -78,12 +76,6 @@ export const WheelPicker = memo(function WheelPicker({
     y: (middleStart + value) * WHEEL_ITEM_HEIGHT,
   }).current;
 
-  const tick = useCallback(() => {
-    if (!tickSound.play()) return;
-    // Vibration on iOS is a long buzz, too heavy for a per-row tick.
-    if (Platform.OS === 'android') haptics.selection();
-  }, []);
-
   const commit = useCallback(() => {
     const v = lastValue.value;
     if (v === reported.current) return;
@@ -101,7 +93,7 @@ export const WheelPicker = memo(function WheelPicker({
       const v = row % count;
       if (v !== lastValue.value) {
         lastValue.value = v;
-        scheduleOnRN(tick);
+        scheduleOnRN(tickSound.play);
       }
     },
   });
