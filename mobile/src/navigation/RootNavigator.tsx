@@ -7,6 +7,7 @@ import { HomeScreen } from '@/screens/HomeScreen';
 import { AlarmsScreen } from '@/screens/AlarmsScreen';
 import { TimersScreen } from '@/screens/TimersScreen';
 import { TranslatorScreen } from '@/screens/TranslatorScreen';
+import { SettingsScreen } from '@/screens/SettingsScreen';
 import { AlarmRingScreen } from '@/screens/AlarmRingScreen';
 import { useAuthStore } from '@/stores/authStore';
 import { colors } from '@/theme';
@@ -40,16 +41,35 @@ export function RootNavigator({ onReady }: { onReady?: () => void }) {
   return (
     <NavigationContainer theme={theme} ref={navigationRef} onReady={onReady}>
       <Stack.Navigator
-        screenOptions={{ headerShown: false, animation: 'fade' }}
+        screenOptions={{
+          headerShown: false,
+          // Screens slide in from the right while the one below drifts a
+          // little left, and slide back out on close. The Android timing and
+          // curve are tuned in android/app/src/main/res/anim; iOS uses its
+          // native push.
+          animation: 'ios_from_right',
+        }}
       >
         {!token ? (
           <Stack.Screen name="Auth" component={AuthScreen} />
         ) : (
           <>
             <Stack.Screen name="Home" component={HomeScreen} />
+            {/* Each tool enters from the side its toolbar button sits on:
+                Translator and Timers from the left, Alarms and Settings from
+                the right. */}
             <Stack.Screen name="Alarms" component={AlarmsScreen} />
-            <Stack.Screen name="Timers" component={TimersScreen} />
-            <Stack.Screen name="Translator" component={TranslatorScreen} />
+            <Stack.Screen
+              name="Timers"
+              component={TimersScreen}
+              options={{ animation: 'ios_from_left' }}
+            />
+            <Stack.Screen
+              name="Translator"
+              component={TranslatorScreen}
+              options={{ animation: 'ios_from_left' }}
+            />
+            <Stack.Screen name="Settings" component={SettingsScreen} />
             <Stack.Screen
               name="AlarmRing"
               component={AlarmRingScreen}

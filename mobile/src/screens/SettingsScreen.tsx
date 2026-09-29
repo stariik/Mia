@@ -1,30 +1,32 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
-  Modal,
   Pressable,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Switch,
   Text,
   TextInput,
   View,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import Svg, { Path } from 'react-native-svg';
+
+import { useNavigation } from '@react-navigation/native';
 
 import { authApi } from '@/api/auth';
+import { AuroraBackdrop } from '@/components/AuroraBackdrop';
 import { useWakeWordToggle } from '@/hooks/useWakeWord';
 import { refreshLocation } from '@/lib/location';
+import type { RootNav } from '@/navigation/navigationRef';
 import { useAuthStore } from '@/stores/authStore';
 import { useLocationStore } from '@/stores/locationStore';
 import { useProfileStore } from '@/stores/profileStore';
-import { brandGradient, colors, fonts, radius, spacing, typography } from '@/theme';
+import { colors, radius, spacing, typography } from '@/theme';
 
-type Props = {
-  visible: boolean;
-  onClose: () => void;
-};
-
-export function SettingsSheet({ visible, onClose }: Props) {
+export function SettingsScreen() {
+  const navigation = useNavigation<RootNav>();
+  const onBack = () => navigation.goBack();
   const { user, logout } = useAuthStore();
 
   const detectedCity = useLocationStore((s) => s.city);
@@ -75,28 +77,41 @@ export function SettingsSheet({ visible, onClose }: Props) {
     }
   };
 
-  useEffect(() => {
-    if (visible) setCityDraft(manualCity ?? '');
-  }, [visible, manualCity]);
-
   const commitCity = () => {
     const trimmed = cityDraft.trim();
     setManualCity(trimmed || undefined);
   };
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      <Pressable style={styles.backdrop} onPress={onClose} />
-      <View style={styles.sheet}>
-        <View style={styles.handle} />
-        <Text style={[typography.title, styles.title]}>პარამეტრები</Text>
+    <View style={styles.root}>
+      <AuroraBackdrop />
+      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+        <StatusBar barStyle="light-content" backgroundColor={colors.bgDeep} />
 
-        <ScrollView contentContainerStyle={styles.body}>
+        <View style={styles.header}>
+          <Pressable onPress={onBack} style={styles.iconBtn} hitSlop={8}>
+            <Svg
+              width="22"
+              height="22"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke={colors.text}
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <Path d="M19 12H5" />
+              <Path d="M12 19l-7-7 7-7" />
+            </Svg>
+          </Pressable>
+          <Text style={[typography.title, styles.title]}>პარამეტრები</Text>
+          <View style={styles.iconBtn} />
+        </View>
+
+        <ScrollView
+          contentContainerStyle={styles.body}
+          keyboardShouldPersistTaps="handled"
+        >
           {wake.available ? (
             <>
               <Text
@@ -272,61 +287,33 @@ export function SettingsSheet({ visible, onClose }: Props) {
             </View>
           )}
         </ScrollView>
-
-        <Pressable
-          onPress={onClose}
-          style={({ pressed }) => [
-            styles.doneBtn,
-            pressed && { opacity: 0.92, transform: [{ scale: 0.99 }] },
-          ]}
-        >
-          <LinearGradient
-            colors={[...brandGradient]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={StyleSheet.absoluteFill}
-          />
-          <Text style={styles.doneText}>დასრულება</Text>
-        </Pressable>
-      </View>
-    </Modal>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-  },
-  sheet: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: colors.surfaceSolid,
-    borderTopLeftRadius: radius.xxl,
-    borderTopRightRadius: radius.xxl,
-    paddingTop: spacing.md,
+  root: { flex: 1, backgroundColor: colors.bgDeep },
+  safe: { flex: 1, backgroundColor: 'transparent' },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: spacing.xl,
-    paddingBottom: spacing.xxl,
-    borderTopWidth: 1,
-    borderColor: colors.strokeBrandSoft,
+    paddingVertical: spacing.md,
   },
-  handle: {
-    alignSelf: 'center',
+  title: { color: colors.text },
+  iconBtn: {
     width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.outlineVariant,
-    marginBottom: spacing.md,
-  },
-  title: {
-    color: colors.text,
-    marginBottom: spacing.md,
+    height: 40,
+    borderRadius: radius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   body: {
-    paddingBottom: spacing.xl,
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.xxl,
   },
   section: {
     color: colors.outline,
@@ -425,24 +412,5 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     gap: spacing.sm,
     marginTop: spacing.md,
-  },
-  doneBtn: {
-    width: '100%',
-    height: 52,
-    borderRadius: radius.xl,
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: colors.primary,
-    shadowOpacity: 0.45,
-    shadowOffset: { width: 0, height: 0 },
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  doneText: {
-    color: '#ffffff',
-    fontFamily: fonts.bodyBold,
-    fontSize: 15,
-    letterSpacing: 0.3,
   },
 });

@@ -24,7 +24,6 @@ import Animated, {
 
 import { ActiveOrbRings } from '@/components/ActiveOrbRings';
 import { ConversationDrawer } from '@/components/ConversationDrawer';
-import { SettingsSheet } from '@/components/SettingsSheet';
 import { AIAssistantOrb } from '@/components/AIAssistantOrb';
 import { AuroraBackdrop } from '@/components/AuroraBackdrop';
 import { BottomToolBar } from '@/components/BottomToolBar';
@@ -125,7 +124,6 @@ export function HomeScreen() {
 
   const pipeline = useVoicePipeline();
   const navigation = useNavigation<RootNav>();
-  const [showSettings, setShowSettings] = useState(false);
   const [showDrawer, setShowDrawer] = useState(false);
   const [showInput, setShowInput] = useState(false);
   const [input, setInput] = useState('');
@@ -373,7 +371,7 @@ export function HomeScreen() {
               onTranslate={() => navigation.navigate('Translator')}
               onTimer={() => navigation.navigate('Timers')}
               onAlarm={() => navigation.navigate('Alarms')}
-              onSettings={() => setShowSettings(true)}
+              onSettings={() => navigation.navigate('Settings')}
             />
           )}
         </KeyboardAvoidingView>
@@ -391,11 +389,6 @@ export function HomeScreen() {
             </Pressable>
           </Animated.View>
         ) : null}
-
-        <SettingsSheet
-          visible={showSettings}
-          onClose={() => setShowSettings(false)}
-        />
 
         <ConversationDrawer
           visible={showDrawer}
