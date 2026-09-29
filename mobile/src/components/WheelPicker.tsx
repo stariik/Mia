@@ -1,5 +1,12 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef } from 'react';
-import { Platform, StyleSheet, Text, View } from 'react-native';
+import {
+  Platform,
+  StyleSheet,
+  Text,
+  View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
   useAnimatedRef,
@@ -17,6 +24,11 @@ import { colors, fonts } from '@/theme';
 // top, so scrolling stays entirely native — nothing is recalculated per frame.
 // The only per-row work is the click; the chosen value is reported once the
 // wheel comes to rest.
+//
+// Like the iOS timer, the wheel loops: 59 sits right above 00. The numbers are
+// repeated several times over and, whenever the wheel rests, it is silently
+// moved back to the same number in the middle copy, so there is always room
+// to keep rolling either way.
 
 export const WHEEL_ITEM_HEIGHT = 44;
 const VISIBLE_ITEMS = 5;
@@ -35,6 +47,12 @@ type Props = {
 
 const pad2 = (n: number) => n.toString().padStart(2, '0');
 
+// Enough copies for ~240 rows, odd so there is a middle one.
+function cyclesFor(count: number) {
+  const c = Math.max(3, Math.ceil(240 / count));
+  return c % 2 === 0 ? c + 1 : c;
+}
+
 export const WheelPicker = memo(function WheelPicker({
   count,
   value,
@@ -44,7 +62,10 @@ export const WheelPicker = memo(function WheelPicker({
   format = pad2,
 }: Props) {
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
-  const lastIndex = useSharedValue(value);
+  const cycles = cyclesFor(count);
+  const totalRows = count * cycles;
+  const middleStart = Math.floor(cycles / 2) * count;
+  const lastValue = useSharedValue(value);
   // Remembers the value we reported, so a parent re-render with that same
   // value doesn't yank the wheel back.
   const reported = useRef(value);
@@ -52,7 +73,10 @@ export const WheelPicker = memo(function WheelPicker({
   onChangeRef.current = onChange;
   // Only the first render's offset: if this prop followed `value`, every
   // report back from the parent would jerk the wheel to that row mid-spin.
-  const initialOffset = useRef({ x: 0, y: value * WHEEL_ITEM_HEIGHT }).current;
+  const initialOffset = useRef({
+    x: 0,
+    y: (middleStart + value) * WHEEL_ITEM_HEIGHT,
+  }).current;
 
   const tick = useCallback(() => {
     if (!tickSound.play()) return;
@@ -61,44 +85,60 @@ export const WheelPicker = memo(function WheelPicker({
   }, []);
 
   const commit = useCallback(() => {
-    const index = lastIndex.value;
-    if (index === reported.current) return;
-    reported.current = index;
-    onChangeRef.current(index);
-  }, [lastIndex]);
+    const v = lastValue.value;
+    if (v === reported.current) return;
+    reported.current = v;
+    onChangeRef.current(v);
+  }, [lastValue]);
 
   const onScroll = useAnimatedScrollHandler({
     onScroll: (e) => {
-      const index = Math.min(
-        count - 1,
+      const row = Math.min(
+        totalRows - 1,
         Math.max(0, Math.round(e.contentOffset.y / WHEEL_ITEM_HEIGHT)),
       );
-      if (index !== lastIndex.value) {
-        lastIndex.value = index;
+      // Compare numbers, not rows, so the silent re-centring jump is silent.
+      const v = row % count;
+      if (v !== lastValue.value) {
+        lastValue.value = v;
         scheduleOnRN(tick);
       }
     },
   });
 
+  const onRest = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    commit();
+    const row = Math.round(e.nativeEvent.contentOffset.y / WHEEL_ITEM_HEIGHT);
+    if (row < middleStart || row >= middleStart + count) {
+      scrollRef.current?.scrollTo({
+        y: (middleStart + (((row % count) + count) % count)) * WHEEL_ITEM_HEIGHT,
+        animated: false,
+      });
+    }
+  };
+
   // Follow value changes that come from outside the wheel.
   useEffect(() => {
     if (value === reported.current) return;
     reported.current = value;
-    lastIndex.value = value;
-    scrollRef.current?.scrollTo({ y: value * WHEEL_ITEM_HEIGHT, animated: true });
-  }, [value, lastIndex, scrollRef]);
+    lastValue.value = value;
+    scrollRef.current?.scrollTo({
+      y: (middleStart + value) * WHEEL_ITEM_HEIGHT,
+      animated: true,
+    });
+  }, [value, middleStart, lastValue, scrollRef]);
 
   // Closing mid-spin still keeps the row that was under the band.
   useEffect(() => commit, [commit]);
 
   const rows = useMemo(
     () =>
-      Array.from({ length: count }, (_, i) => (
-        <View key={i} style={styles.item}>
-          <Text style={styles.itemText}>{format(i)}</Text>
-        </View>
+      Array.from({ length: totalRows }, (_, i) => (
+        <Text key={i} style={styles.item}>
+          {format(i % count)}
+        </Text>
       )),
-    [count, format],
+    [totalRows, count, format],
   );
 
   const clear = `${fadeColor}00`;
@@ -109,7 +149,7 @@ export const WheelPicker = memo(function WheelPicker({
         ref={scrollRef}
         onScroll={onScroll}
         scrollEventThrottle={16}
-        onMomentumScrollEnd={commit}
+        onMomentumScrollEnd={onRest}
         showsVerticalScrollIndicator={false}
         snapToInterval={WHEEL_ITEM_HEIGHT}
         decelerationRate="normal"
@@ -117,7 +157,7 @@ export const WheelPicker = memo(function WheelPicker({
         contentOffset={initialOffset}
         onLayout={() =>
           scrollRef.current?.scrollTo({
-            y: reported.current * WHEEL_ITEM_HEIGHT,
+            y: (middleStart + reported.current) * WHEEL_ITEM_HEIGHT,
             animated: false,
           })
         }
@@ -142,10 +182,10 @@ const styles = StyleSheet.create({
   },
   item: {
     height: WHEEL_ITEM_HEIGHT,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  itemText: {
+    lineHeight: WHEEL_ITEM_HEIGHT,
+    textAlign: 'center',
+    textAlignVertical: 'center',
+    includeFontPadding: false,
     fontFamily: fonts.numeric,
     fontSize: 28,
     color: colors.text,
