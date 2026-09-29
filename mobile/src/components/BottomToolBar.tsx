@@ -8,7 +8,6 @@ import Animated, {
 } from 'react-native-reanimated';
 import Svg, { Circle, Path } from 'react-native-svg';
 
-import { haptics } from '@/lib/haptics';
 import { colors, fonts, radius, spacing } from '@/theme';
 
 type ToolKey = 'translate' | 'timer' | 'alarm' | 'settings';
@@ -92,7 +91,6 @@ function ToolButton({ tool, onPress }: { tool: ToolKey; onPress: () => void }) {
         glow.value = withTiming(0, { duration: 260 });
       }}
       onPress={() => {
-        haptics.tap();
         onPress();
       }}
       style={styles.btn}

@@ -3,7 +3,6 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import Svg, { Circle, Path } from 'react-native-svg';
 
-import { haptics } from '@/lib/haptics';
 import { colors, fonts, radius, spacing } from '@/theme';
 
 // First-run discovery: one example per core capability (weather, timer,
@@ -90,7 +89,6 @@ export function SuggestionChips({ onPick }: Props) {
           >
             <Pressable
               onPress={() => {
-                haptics.tap();
                 onPick(s.text);
               }}
               style={({ pressed }) => [
