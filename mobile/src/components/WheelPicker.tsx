@@ -19,6 +19,7 @@ import { colors, fonts } from '@/theme';
 export const WHEEL_ITEM_HEIGHT = 44;
 const VISIBLE_ITEMS = 5;
 const SIDE_ITEMS = (VISIBLE_ITEMS - 1) / 2;
+export const WHEEL_HEIGHT = WHEEL_ITEM_HEIGHT * VISIBLE_ITEMS;
 
 type Props = {
   count: number;
@@ -80,7 +81,7 @@ export const WheelPicker = memo(function WheelPicker({
   const items = Array.from({ length: count }, (_, i) => i);
 
   return (
-    <View style={{ width, height: WHEEL_ITEM_HEIGHT * VISIBLE_ITEMS }}>
+    <View style={{ width, height: WHEEL_HEIGHT }}>
       <Animated.ScrollView
         ref={scrollRef}
         onScroll={onScroll}

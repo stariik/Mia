@@ -8,13 +8,22 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
 import { useNavigation } from '@react-navigation/native';
 
 import { AuroraBackdrop } from '@/components/AuroraBackdrop';
-import { WHEEL_ITEM_HEIGHT, WheelPicker } from '@/components/WheelPicker';
+import {
+  WHEEL_HEIGHT,
+  WHEEL_ITEM_HEIGHT,
+  WheelPicker,
+} from '@/components/WheelPicker';
 import { nativePlatform } from '@/lib/tools/platform/native';
 import type { RootNav } from '@/navigation/navigationRef';
 import { useToolsStore } from '@/stores/toolsStore';
@@ -40,6 +49,8 @@ function formatRemaining(ms: number) {
   return h > 0 ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
 }
 
+const pad2 = (n: number) => n.toString().padStart(2, '0');
+
 function newTimerId() {
   return `timer_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 }
@@ -53,6 +64,23 @@ export function TimersScreen() {
   const [mm, setMm] = useState(5);
   const [ss, setSs] = useState(0);
   const [label, setLabel] = useState('');
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const pickerProgress = useSharedValue(0);
+
+  const togglePicker = () => {
+    haptics.selection();
+    const next = !pickerOpen;
+    setPickerOpen(next);
+    pickerProgress.value = withTiming(next ? 1 : 0, { duration: 260 });
+  };
+
+  const pickerStyle = useAnimatedStyle(() => ({
+    height: pickerProgress.value * WHEEL_HEIGHT,
+    opacity: pickerProgress.value,
+  }));
+  const chevronStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${pickerProgress.value * 180}deg` }],
+  }));
 
   useEffect(() => {
     if (timers.length === 0) return;
@@ -164,15 +192,40 @@ export function TimersScreen() {
 
           {/* Custom duration */}
           <Text style={[typography.labelSm, styles.sectionLabel]}>მორგებული</Text>
-          <View style={styles.picker}>
-            <View style={styles.pickerBand} pointerEvents="none" />
-            <WheelPicker count={24} value={hh} onChange={setHh} />
-            <Text style={styles.pickerUnit}>სთ</Text>
-            <WheelPicker count={60} value={mm} onChange={setMm} />
-            <Text style={styles.pickerUnit}>წთ</Text>
-            <WheelPicker count={60} value={ss} onChange={setSs} />
-            <Text style={styles.pickerUnit}>წმ</Text>
-          </View>
+          <Pressable
+            onPress={togglePicker}
+            style={[styles.display, pickerOpen && styles.displayOpen]}
+          >
+            <Text style={styles.displayTime}>
+              {pad2(hh)}:{pad2(mm)}:{pad2(ss)}
+            </Text>
+            <Animated.View style={[styles.displayChevron, chevronStyle]}>
+              <Svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke={colors.textMuted}
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <Path d="M6 9l6 6 6-6" />
+              </Svg>
+            </Animated.View>
+          </Pressable>
+
+          <Animated.View style={[styles.pickerWrap, pickerStyle]}>
+            <View style={styles.picker}>
+              <View style={styles.pickerBand} pointerEvents="none" />
+              <WheelPicker count={24} value={hh} onChange={setHh} />
+              <Text style={styles.pickerUnit}>სთ</Text>
+              <WheelPicker count={60} value={mm} onChange={setMm} />
+              <Text style={styles.pickerUnit}>წთ</Text>
+              <WheelPicker count={60} value={ss} onChange={setSs} />
+              <Text style={styles.pickerUnit}>წმ</Text>
+            </View>
+          </Animated.View>
 
           <Text style={[typography.labelSm, styles.sectionLabel]}>დასახელება</Text>
           <TextInput
@@ -319,13 +372,41 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 15,
   },
+  display: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 76,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.stroke,
+  },
+  displayOpen: {
+    borderColor: colors.strokeBrand,
+  },
+  displayTime: {
+    fontFamily: fonts.numeric,
+    fontSize: 40,
+    color: colors.text,
+    fontVariant: ['tabular-nums'],
+  },
+  displayChevron: {
+    position: 'absolute',
+    right: spacing.lg,
+  },
+  pickerWrap: {
+    overflow: 'hidden',
+  },
   picker: {
+    height: WHEEL_HEIGHT,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
   },
   pickerBand: {
     position: 'absolute',
+    top: (WHEEL_HEIGHT - WHEEL_ITEM_HEIGHT) / 2,
     left: 0,
     right: 0,
     height: WHEEL_ITEM_HEIGHT,
