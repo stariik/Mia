@@ -70,6 +70,9 @@ export function useTranslator() {
   const [status, setStatus] = useState<TranslatorStatus>('idle');
   const [error, setError] = useState<string | null>(null);
   const recordingRef = useRef(false);
+  // Set synchronously so a double tap can't send the same typed text twice
+  // before the 'working' status renders.
+  const typingRef = useRef(false);
   // Direction captured when recording starts, so a change mid-recording can't
   // mismatch the STT language and the translation pair.
   const directionRef = useRef<Direction>(direction);
@@ -149,7 +152,8 @@ export function useTranslator() {
   const translateTyped = useCallback(
     async (input: string): Promise<boolean> => {
       const text = input.trim();
-      if (!text || status !== 'idle') return false;
+      if (!text || status !== 'idle' || typingRef.current) return false;
+      typingRef.current = true;
       const { from, to } = direction;
       setError(null);
       nativeAudio.stop();
@@ -161,6 +165,8 @@ export function useTranslator() {
       } catch (e) {
         fail(e);
         return false;
+      } finally {
+        typingRef.current = false;
       }
     },
     [status, direction, finishTurn, fail],

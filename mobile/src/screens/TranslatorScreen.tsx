@@ -13,7 +13,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path, Rect } from 'react-native-svg';
-import * as Clipboard from 'expo-clipboard';
 
 import { useNavigation } from '@react-navigation/native';
 
@@ -31,6 +30,14 @@ import { haptics } from '@/lib/haptics';
 import { colors, fonts, radius, spacing, typography } from '@/theme';
 
 const COPIED_MS = 1500;
+
+// Loaded lazily: the navigator imports this screen eagerly, so a build that
+// predates expo-clipboard's native module would otherwise crash at launch
+// instead of just failing to copy.
+async function copyToClipboard(text: string) {
+  const Clipboard: typeof import('expo-clipboard') = require('expo-clipboard');
+  await Clipboard.setStringAsync(text);
+}
 
 function BackIcon() {
   return (
@@ -110,7 +117,7 @@ function TurnRow({ turn, onReplay }: { turn: Turn; onReplay: () => void }) {
 
   const onCopy = async () => {
     try {
-      await Clipboard.setStringAsync(turn.translated);
+      await copyToClipboard(turn.translated);
     } catch (e) {
       console.warn('[Translator] copy failed', e);
       return;
