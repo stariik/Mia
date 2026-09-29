@@ -409,6 +409,25 @@ export function TranslatorScreen() {
             <Text style={styles.working}>ვთარგმნი…</Text>
           ) : null}
 
+          {/* Mic: records in the "from" language */}
+          <View style={styles.micRow}>
+            <Pressable
+              onPress={onMic}
+              disabled={status === 'working'}
+              style={[
+                styles.mic,
+                listening && styles.micActive,
+                status === 'working' && styles.micDisabled,
+              ]}
+            >
+              <MicIcon color={listening ? colors.primary : colors.text} />
+              <Text style={[styles.micLabel, listening && styles.micLabelActive]}>
+                {listening
+                  ? 'მისმენ… (შეჩერება)'
+                  : `ისაუბრე ${languageNameKaAdverb(direction.from)}`}
+              </Text>
+            </Pressable>
+          </View>
           {/* Typed translation */}
           <View style={styles.composer}>
             <TextInput
@@ -433,25 +452,6 @@ export function TranslatorScreen() {
             </Pressable>
           </View>
 
-          {/* Mic: records in the "from" language */}
-          <View style={styles.micRow}>
-            <Pressable
-              onPress={onMic}
-              disabled={status === 'working'}
-              style={[
-                styles.mic,
-                listening && styles.micActive,
-                status === 'working' && styles.micDisabled,
-              ]}
-            >
-              <MicIcon color={listening ? colors.primary : colors.text} />
-              <Text style={[styles.micLabel, listening && styles.micLabelActive]}>
-                {listening
-                  ? 'მისმენ… (შეჩერება)'
-                  : `ისაუბრე ${languageNameKaAdverb(direction.from)}`}
-              </Text>
-            </Pressable>
-          </View>
         </KeyboardAvoidingView>
       </SafeAreaView>
     </View>
@@ -685,6 +685,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
   },
   input: {
     flex: 1,
@@ -721,7 +722,6 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
   },
   mic: {
     flex: 1,
