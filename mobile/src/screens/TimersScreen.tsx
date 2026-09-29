@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -14,6 +14,7 @@ import Svg, { Path } from 'react-native-svg';
 import { useNavigation } from '@react-navigation/native';
 
 import { AuroraBackdrop } from '@/components/AuroraBackdrop';
+import { WHEEL_ITEM_HEIGHT, WheelPicker } from '@/components/WheelPicker';
 import { nativePlatform } from '@/lib/tools/platform/native';
 import type { RootNav } from '@/navigation/navigationRef';
 import { useToolsStore } from '@/stores/toolsStore';
@@ -48,9 +49,9 @@ export function TimersScreen() {
   const onBack = () => navigation.goBack();
   const timers = useToolsStore((s) => s.timers);
   const [now, setNow] = useState(() => Date.now());
-  const [hh, setHh] = useState('00');
-  const [mm, setMm] = useState('05');
-  const [ss, setSs] = useState('00');
+  const [hh, setHh] = useState(0);
+  const [mm, setMm] = useState(5);
+  const [ss, setSs] = useState(0);
   const [label, setLabel] = useState('');
 
   useEffect(() => {
@@ -59,12 +60,7 @@ export function TimersScreen() {
     return () => clearInterval(id);
   }, [timers.length]);
 
-  const customDurationSec = useMemo(() => {
-    const h = parseInt(hh, 10) || 0;
-    const m = parseInt(mm, 10) || 0;
-    const s = parseInt(ss, 10) || 0;
-    return Math.max(0, h * 3600 + m * 60 + s);
-  }, [hh, mm, ss]);
+  const customDurationSec = hh * 3600 + mm * 60 + ss;
 
   const startTimer = (durationSec: number) => {
     if (durationSec <= 0) return;
@@ -168,47 +164,14 @@ export function TimersScreen() {
 
           {/* Custom duration */}
           <Text style={[typography.labelSm, styles.sectionLabel]}>მორგებული</Text>
-          <View style={styles.customRow}>
-            <TextInput
-              value={hh}
-              onChangeText={(t) => setHh(t.replace(/[^0-9]/g, '').slice(0, 2))}
-              keyboardType="number-pad"
-              maxLength={2}
-              style={styles.customInput}
-              placeholder="00"
-              placeholderTextColor={colors.outline}
-              cursorColor={colors.primary}
-              selectionColor={colors.primaryGlow}
-            />
-            <Text style={styles.customColon}>:</Text>
-            <TextInput
-              value={mm}
-              onChangeText={(t) => setMm(t.replace(/[^0-9]/g, '').slice(0, 2))}
-              keyboardType="number-pad"
-              maxLength={2}
-              style={styles.customInput}
-              placeholder="00"
-              placeholderTextColor={colors.outline}
-              cursorColor={colors.primary}
-              selectionColor={colors.primaryGlow}
-            />
-            <Text style={styles.customColon}>:</Text>
-            <TextInput
-              value={ss}
-              onChangeText={(t) => setSs(t.replace(/[^0-9]/g, '').slice(0, 2))}
-              keyboardType="number-pad"
-              maxLength={2}
-              style={styles.customInput}
-              placeholder="00"
-              placeholderTextColor={colors.outline}
-              cursorColor={colors.primary}
-              selectionColor={colors.primaryGlow}
-            />
-          </View>
-          <View style={styles.customLabels}>
-            <Text style={styles.customLabel}>სთ</Text>
-            <Text style={styles.customLabel}>წთ</Text>
-            <Text style={styles.customLabel}>წმ</Text>
+          <View style={styles.picker}>
+            <View style={styles.pickerBand} pointerEvents="none" />
+            <WheelPicker count={24} value={hh} onChange={setHh} />
+            <Text style={styles.pickerUnit}>სთ</Text>
+            <WheelPicker count={60} value={mm} onChange={setMm} />
+            <Text style={styles.pickerUnit}>წთ</Text>
+            <WheelPicker count={60} value={ss} onChange={setSs} />
+            <Text style={styles.pickerUnit}>წმ</Text>
           </View>
 
           <Text style={[typography.labelSm, styles.sectionLabel]}>დასახელება</Text>
@@ -356,41 +319,27 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 15,
   },
-  customRow: {
+  picker: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.xs,
   },
-  customInput: {
-    width: 76,
-    height: 76,
-    fontFamily: fonts.numeric,
-    fontSize: 40,
-    textAlign: 'center',
-    color: colors.text,
-    backgroundColor: colors.surface,
+  pickerBand: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: WHEEL_ITEM_HEIGHT,
     borderRadius: radius.lg,
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.stroke,
   },
-  customColon: {
-    fontFamily: fonts.numeric,
-    fontSize: 36,
+  pickerUnit: {
+    fontFamily: fonts.bodyBold,
+    fontSize: 15,
     color: colors.textMuted,
-  },
-  customLabels: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 64,
-    marginTop: spacing.xs,
-  },
-  customLabel: {
-    fontFamily: fonts.body,
-    fontSize: 12,
-    color: colors.outline,
-    width: 76,
-    textAlign: 'center',
+    width: 32,
+    marginRight: spacing.xs,
   },
   labelInput: {
     height: 48,
