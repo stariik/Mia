@@ -637,8 +637,8 @@ export function AuthScreen() {
       </ScrollView>
 
       {/* Status-bar orb beside the Dynamic Island; above the scroll view so it
-          draws over the status bar. */}
-      <IslandOrb pulse={pulse} />
+          draws over the status bar. iOS only — Android has no orb. */}
+      {Platform.OS === 'ios' && <IslandOrb pulse={pulse} />}
     </View>
   );
 }
