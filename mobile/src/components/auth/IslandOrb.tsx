@@ -20,9 +20,9 @@ import { HeroOrb, ORB_RING, ORB_STAGE } from './HeroOrb';
 // the Dynamic Island. On entry the island pushes out a black drop sideways
 // that pinches off into a droplet and lights up as the orb.
 //
-// Other phones: Android parks it just left of the (usually centered) camera
-// hole, dropping out of the camera; iPhones with a notch or no cutout have no
-// free status-bar gap, so it sits at the top-left just under the status bar.
+// iOS only (AuthScreen doesn't render it on Android). iPhones with a notch or
+// no cutout have no free status-bar gap, so it sits at the top-left just under
+// the status bar.
 
 const DROP = 22; // parked orb ring diameter
 const ORB_SCALE = DROP / ORB_RING;
@@ -50,10 +50,6 @@ function useGeometry(): Geometry {
     const clockRight = island.x / 2 + 24; // "9:41" ≈ 48pt wide, centered in the strip
     const cx = (clockRight + island.x) / 2 + 4; // nudged toward the island
     return { start: island, orb: square(cx, island.y + island.h / 2, DROP) };
-  }
-  if (Platform.OS === 'android') {
-    const cy = insets.top / 2;
-    return { start: square(mid, cy, 12), orb: square(mid - 36, cy, DROP) };
   }
   const orb = square(spacing.xl + DROP / 2, insets.top + 10 + DROP / 2, DROP);
   return { start: square(orb.x + DROP / 2, orb.y + DROP / 2, 6), orb };

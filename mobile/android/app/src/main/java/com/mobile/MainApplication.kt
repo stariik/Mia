@@ -12,6 +12,7 @@ import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
 import com.mobile.alarm.AlarmPackage
 import com.mobile.music.MusicControlPackage
 import com.mobile.sms.SmsPackage
+import com.mobile.tick.WheelTickPackage
 import com.mobile.wake.WakeWordPackage
 
 class MainApplication : Application(), ReactApplication {
@@ -25,6 +26,7 @@ class MainApplication : Application(), ReactApplication {
           add(MusicControlPackage())
           add(WakeWordPackage())
           add(SmsPackage())
+          add(WheelTickPackage())
         },
     )
   }

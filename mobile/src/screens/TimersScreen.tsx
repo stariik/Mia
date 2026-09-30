@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -14,6 +14,8 @@ import Svg, { Path } from 'react-native-svg';
 import { useNavigation } from '@react-navigation/native';
 
 import { AuroraBackdrop } from '@/components/AuroraBackdrop';
+import { WheelPopover, type WheelAnchor } from '@/components/WheelPopover';
+import { tickSound } from '@/lib/tickSound';
 import { nativePlatform } from '@/lib/tools/platform/native';
 import type { RootNav } from '@/navigation/navigationRef';
 import { useToolsStore } from '@/stores/toolsStore';
@@ -39,6 +41,19 @@ function formatRemaining(ms: number) {
   return h > 0 ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
 }
 
+const pad2 = (n: number) => n.toString().padStart(2, '0');
+
+type Unit = 'h' | 'm' | 's';
+type FieldDef = {
+  label: string;
+  count: number;
+  value: number;
+  set: (v: number) => void;
+};
+const UNITS: Unit[] = ['h', 'm', 's'];
+
+function noop() {}
+
 function newTimerId() {
   return `timer_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 }
@@ -48,23 +63,44 @@ export function TimersScreen() {
   const onBack = () => navigation.goBack();
   const timers = useToolsStore((s) => s.timers);
   const [now, setNow] = useState(() => Date.now());
-  const [hh, setHh] = useState('00');
-  const [mm, setMm] = useState('05');
-  const [ss, setSs] = useState('00');
+  const [hh, setHh] = useState(0);
+  const [mm, setMm] = useState(5);
+  const [ss, setSs] = useState(0);
   const [label, setLabel] = useState('');
+  const [editing, setEditing] = useState<{
+    unit: Unit;
+    anchor: WheelAnchor;
+  } | null>(null);
+  const fieldRefs = useRef<Record<Unit, View | null>>({ h: null, m: null, s: null });
 
   useEffect(() => {
-    if (timers.length === 0) return;
+    tickSound.preload();
+  }, []);
+
+  const fields: Record<Unit, FieldDef> = {
+    h: { label: 'სთ', count: 24, value: hh, set: setHh },
+    m: { label: 'წთ', count: 60, value: mm, set: setMm },
+    s: { label: 'წმ', count: 60, value: ss, set: setSs },
+  };
+
+  const openField = (unit: Unit) => {
+    haptics.selection();
+    fieldRefs.current[unit]?.measureInWindow((x, y, width, height) =>
+      setEditing({ unit, anchor: { x, y, width, height } }),
+    );
+  };
+
+  // Paused while a wheel is open: the countdowns sit under its dimmed
+  // backdrop, and redrawing the screen 4×/s competes with the wheel's clicks.
+  const wheelOpen = editing !== null;
+  useEffect(() => {
+    if (timers.length === 0 || wheelOpen) return;
+    setNow(Date.now());
     const id = setInterval(() => setNow(Date.now()), 250);
     return () => clearInterval(id);
-  }, [timers.length]);
+  }, [timers.length, wheelOpen]);
 
-  const customDurationSec = useMemo(() => {
-    const h = parseInt(hh, 10) || 0;
-    const m = parseInt(mm, 10) || 0;
-    const s = parseInt(ss, 10) || 0;
-    return Math.max(0, h * 3600 + m * 60 + s);
-  }, [hh, mm, ss]);
+  const customDurationSec = hh * 3600 + mm * 60 + ss;
 
   const startTimer = (durationSec: number) => {
     if (durationSec <= 0) return;
@@ -166,6 +202,44 @@ export function TimersScreen() {
             </View>
           ) : null}
 
+          {/* Custom duration */}
+          <Text style={[typography.labelSm, styles.sectionLabel]}>მორგებული</Text>
+          <View style={styles.fieldRow}>
+            {UNITS.map((unit, i) => {
+              const f = fields[unit];
+              const active = editing?.unit === unit;
+              return (
+                <React.Fragment key={unit}>
+                  {i > 0 ? <Text style={styles.fieldColon}>:</Text> : null}
+                  <View style={styles.fieldCol}>
+                    <Pressable
+                      ref={(r) => {
+                        fieldRefs.current[unit] = r;
+                      }}
+                      onPress={() => openField(unit)}
+                      style={[styles.field, active && styles.fieldActive]}
+                    >
+                      <Text style={styles.fieldValue}>{pad2(f.value)}</Text>
+                    </Pressable>
+                    <Text style={styles.fieldLabel}>{f.label}</Text>
+                  </View>
+                </React.Fragment>
+              );
+            })}
+          </View>
+
+          <Text style={[typography.labelSm, styles.sectionLabel]}>დასახელება</Text>
+          <TextInput
+            value={label}
+            onChangeText={setLabel}
+            placeholder="არასავალდებულო"
+            placeholderTextColor={colors.outline}
+            cursorColor={colors.primary}
+            selectionColor={colors.primaryGlow}
+            style={styles.labelInput}
+            maxLength={60}
+          />
+
           {/* Quick durations */}
           <Text style={[typography.labelSm, styles.sectionLabel]}>სწრაფი</Text>
           <View style={styles.quickGrid}>
@@ -183,63 +257,6 @@ export function TimersScreen() {
             ))}
           </View>
 
-          {/* Custom duration */}
-          <Text style={[typography.labelSm, styles.sectionLabel]}>მორგებული</Text>
-          <View style={styles.customRow}>
-            <TextInput
-              value={hh}
-              onChangeText={(t) => setHh(t.replace(/[^0-9]/g, '').slice(0, 2))}
-              keyboardType="number-pad"
-              maxLength={2}
-              style={styles.customInput}
-              placeholder="00"
-              placeholderTextColor={colors.outline}
-              cursorColor={colors.primary}
-              selectionColor={colors.primaryGlow}
-            />
-            <Text style={styles.customColon}>:</Text>
-            <TextInput
-              value={mm}
-              onChangeText={(t) => setMm(t.replace(/[^0-9]/g, '').slice(0, 2))}
-              keyboardType="number-pad"
-              maxLength={2}
-              style={styles.customInput}
-              placeholder="00"
-              placeholderTextColor={colors.outline}
-              cursorColor={colors.primary}
-              selectionColor={colors.primaryGlow}
-            />
-            <Text style={styles.customColon}>:</Text>
-            <TextInput
-              value={ss}
-              onChangeText={(t) => setSs(t.replace(/[^0-9]/g, '').slice(0, 2))}
-              keyboardType="number-pad"
-              maxLength={2}
-              style={styles.customInput}
-              placeholder="00"
-              placeholderTextColor={colors.outline}
-              cursorColor={colors.primary}
-              selectionColor={colors.primaryGlow}
-            />
-          </View>
-          <View style={styles.customLabels}>
-            <Text style={styles.customLabel}>სთ</Text>
-            <Text style={styles.customLabel}>წთ</Text>
-            <Text style={styles.customLabel}>წმ</Text>
-          </View>
-
-          <Text style={[typography.labelSm, styles.sectionLabel]}>დასახელება</Text>
-          <TextInput
-            value={label}
-            onChangeText={setLabel}
-            placeholder="არასავალდებულო"
-            placeholderTextColor={colors.outline}
-            cursorColor={colors.primary}
-            selectionColor={colors.primaryGlow}
-            style={styles.labelInput}
-            maxLength={60}
-          />
-
           <Pressable
             onPress={() => startTimer(customDurationSec)}
             disabled={customDurationSec <= 0}
@@ -252,6 +269,15 @@ export function TimersScreen() {
           </Pressable>
         </ScrollView>
       </SafeAreaView>
+
+      <WheelPopover
+        anchor={editing?.anchor ?? null}
+        unit={editing ? fields[editing.unit].label : ''}
+        count={editing ? fields[editing.unit].count : 0}
+        value={editing ? fields[editing.unit].value : 0}
+        onChange={editing ? fields[editing.unit].set : noop}
+        onClose={() => setEditing(null)}
+      />
     </View>
   );
 }
@@ -356,41 +382,45 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 15,
   },
-  customRow: {
+  fieldRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'center',
     gap: spacing.xs,
   },
-  customInput: {
-    width: 76,
+  fieldCol: {
+    alignItems: 'center',
+  },
+  field: {
+    width: 84,
     height: 76,
-    fontFamily: fonts.numeric,
-    fontSize: 40,
-    textAlign: 'center',
-    color: colors.text,
-    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: radius.lg,
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.stroke,
   },
-  customColon: {
+  fieldActive: {
+    borderColor: colors.strokeBrand,
+  },
+  fieldValue: {
+    fontFamily: fonts.numeric,
+    fontSize: 40,
+    color: colors.text,
+    fontVariant: ['tabular-nums'],
+  },
+  fieldColon: {
     fontFamily: fonts.numeric,
     fontSize: 36,
+    lineHeight: 76,
     color: colors.textMuted,
   },
-  customLabels: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 64,
-    marginTop: spacing.xs,
-  },
-  customLabel: {
+  fieldLabel: {
     fontFamily: fonts.body,
     fontSize: 12,
     color: colors.outline,
-    width: 76,
-    textAlign: 'center',
+    marginTop: spacing.xs,
   },
   labelInput: {
     height: 48,

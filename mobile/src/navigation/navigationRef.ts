@@ -7,6 +7,7 @@ export type RootStackParamList = {
   Alarms: undefined;
   Timers: undefined;
   Translator: undefined;
+  Settings: undefined;
   AlarmRing: { alarmId: string };
 };
 
