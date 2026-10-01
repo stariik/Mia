@@ -8,12 +8,20 @@ type VoiceState = SttState & {
   isListening: boolean;
   isThinking: boolean;
   isSpeaking: boolean;
+  /** Speech captured, awaiting the reply (transcribing) — still "thinking"
+   *  for the orb, so it never drops to idle between listening and thinking. */
+  isProcessing: boolean;
+  /** The mic is being opened (config check, permission, recorder start) —
+   *  the orb wakes into listening right away instead of sitting idle. */
+  isArming: boolean;
   currentTranscript: string;
   error: string | null;
 
   setListening: (v: boolean) => void;
   setThinking: (v: boolean) => void;
   setSpeaking: (v: boolean) => void;
+  setProcessing: (v: boolean) => void;
+  setArming: (v: boolean) => void;
   setTranscript: (v: string) => void;
   setError: (v: string | null) => void;
 };
@@ -29,12 +37,16 @@ export const useVoiceStore = create<VoiceState>((set) => ({
   isListening: false,
   isThinking: false,
   isSpeaking: false,
+  isProcessing: false,
+  isArming: false,
   currentTranscript: '',
   error: null,
 
   setListening: (v) => set({ isListening: v }),
   setThinking: (v) => set({ isThinking: v }),
   setSpeaking: (v) => set({ isSpeaking: v }),
+  setProcessing: (v) => set({ isProcessing: v }),
+  setArming: (v) => set({ isArming: v }),
   setTranscript: (v) => set({ currentTranscript: v }),
   setError: (v) => set({ error: v }),
 }));

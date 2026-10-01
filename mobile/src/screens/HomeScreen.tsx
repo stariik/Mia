@@ -15,22 +15,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import Svg, { Line, Path, Polygon, Rect } from 'react-native-svg';
-import Animated, {
-  FadeIn,
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-} from 'react-native-reanimated';
+import Animated, { FadeIn } from 'react-native-reanimated';
 
 import { ActiveOrbRings } from '@/components/ActiveOrbRings';
 import { ConversationDrawer } from '@/components/ConversationDrawer';
-import { AIAssistantOrb } from '@/components/AIAssistantOrb';
 import { AuroraBackdrop } from '@/components/AuroraBackdrop';
 import { BottomToolBar } from '@/components/BottomToolBar';
 import { MiaWordmark } from '@/components/MiaWordmark';
 import { OrbStatus } from '@/components/OrbStatus';
 import { SuggestionChips } from '@/components/SuggestionChips';
-import { audioLevel as audioLevelSV } from '@/lib/audioLevel';
 import { userErrorMessage } from '@/lib/errorMessages';
 import { haptics } from '@/lib/haptics';
 import { useSilenceAutoStop } from '@/hooks/useSilenceAutoStop';
@@ -44,7 +37,13 @@ import {
   type Message,
 } from '@/stores/conversationStore';
 import { useVoiceStore } from '@/stores/voiceStore';
+import { MiaOrb, type MiaOrbHandle, type OrbState } from '@/orb';
 import { brandGradient, colors, fonts, radius, spacing, typography } from '@/theme';
+
+// Dev-only orb lab (state preview + simulated voices). Folded out of release.
+const OrbLab: typeof import('@/dev/OrbLab').OrbLab | null = __DEV__
+  ? require('@/dev/OrbLab').OrbLab
+  : null;
 
 
 function orbState(
@@ -55,6 +54,25 @@ function orbState(
   if (listening) return 'listening';
   if (speaking) return 'speaking';
   if (thinking) return 'thinking';
+  return 'idle';
+}
+
+/**
+ * The orb's view of the conversation, which bridges the pipeline's gaps so it
+ * never drops to idle mid-conversation: a recording being transcribed (or a
+ * streaming transcript finalizing) is already "thinking", and a mic that is
+ * still opening is already "listening".
+ */
+function orbFlow(
+  base: OrbState,
+  processing: boolean,
+  arming: boolean,
+  streaming: boolean,
+  sttState: string,
+): OrbState {
+  if (base !== 'idle') return base;
+  if (processing || (streaming && sttState === 'finalizing')) return 'thinking';
+  if (arming || (streaming && sttState === 'connecting')) return 'listening';
   return 'idle';
 }
 
@@ -116,6 +134,8 @@ export function HomeScreen() {
     isListening,
     isThinking,
     isSpeaking,
+    isProcessing,
+    isArming,
     currentTranscript,
     error,
     setError,
@@ -136,12 +156,12 @@ export function HomeScreen() {
   }, [error, setError]);
 
   const state = orbState(isListening, isThinking, isSpeaking);
-
-  // Springy press feedback on the orb itself.
-  const orbScale = useSharedValue(1);
-  const orbPressStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: orbScale.value }],
-  }));
+  // The orb dims gently while an error is showing and nothing else is going on.
+  // OrbStatus keeps the plain pipeline state.
+  const [labState, setLabState] = useState<OrbState | null>(null);
+  const flow = orbFlow(state, isProcessing, isArming, streaming, sttState);
+  const orbLook: OrbState = labState ?? (error && flow === 'idle' ? 'error' : flow);
+  const orbRef = useRef<MiaOrbHandle>(null);
 
   // The orb is a single toggle for the whole hands-free conversation: first tap
   // opens it, the next one closes it — whether Mia is listening, thinking or
@@ -267,20 +287,15 @@ export function HomeScreen() {
           <View style={styles.orbSection}>
             <Pressable
               onPress={onMic}
-              onPressIn={() => {
-                orbScale.value = withSpring(0.965, { damping: 16, stiffness: 320 });
-              }}
-              onPressOut={() => {
-                orbScale.value = withSpring(1, { damping: 12, stiffness: 220 });
-              }}
               accessibilityRole="button"
               accessibilityLabel="ხმოვანი ჩაწერა"
               style={{ width: orbSize, height: orbSize, borderRadius: orbSize / 2 }}
             >
-              <Animated.View style={[styles.flex1, orbPressStyle]}>
-                <AIAssistantOrb size={orbSize} state={state} audioLevel={audioLevelSV} />
+              {/* The orb owns its press physics (shell dip + ripple). */}
+              <View style={styles.flex1}>
+                <MiaOrb ref={orbRef} size={orbSize} state={orbLook} />
                 <ActiveOrbRings size={orbSize} />
-              </Animated.View>
+              </View>
             </Pressable>
             <OrbStatus state={state} transcript={currentTranscript} />
             {streaming && (sttState === 'connecting' || sttState === 'finalizing') ? (
@@ -394,6 +409,10 @@ export function HomeScreen() {
           visible={showDrawer}
           onClose={() => setShowDrawer(false)}
         />
+
+        {OrbLab ? (
+          <OrbLab orbRef={orbRef} labState={labState} onLabState={setLabState} />
+        ) : null}
       </SafeAreaView>
     </View>
   );

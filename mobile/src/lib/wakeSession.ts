@@ -46,7 +46,7 @@ const mlog = (...args: unknown[]) => dlog('[MiaBg]', ...args);
 // MediaSource as it arrives, so sound starts on the first bytes (~1.4s) instead
 // of after the complete MP3 (~2.7s) plus a base64 hop across the bridge. This is
 // the same window.speakTTSStream the in-app orb uses — the overlay hosts the
-// identical buildOrbHtml output, it just never called it until now.
+// identical buildOrbPage output, it just never called it until now.
 //
 // Fallback: synthesize to a file in RN and hand it over as base64 (the path this
 // used to take), kept because it is the difference between "slower" and "mute".
