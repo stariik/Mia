@@ -1,5 +1,11 @@
 import React, { useMemo } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  type GestureResponderEvent,
+} from 'react-native';
 import Animated, { FadeIn, useReducedMotion } from 'react-native-reanimated';
 
 import { colors, duration, spacing, typography } from '@/theme';
@@ -25,9 +31,17 @@ function greeting(hour: number) {
 export function EmptyState({
   onSuggestion,
   bottomPadding,
+  touchProps,
+  onControlPressIn,
 }: {
   onSuggestion: (text: string) => void;
   bottomPadding: number;
+  /** Tap-to-type on the empty space (see useTapToCompose). */
+  touchProps: {
+    onTouchStart: (e: GestureResponderEvent) => void;
+    onTouchEnd: (e: GestureResponderEvent) => void;
+  };
+  onControlPressIn: () => void;
 }) {
   const reduceMotion = useReducedMotion();
   const hello = useMemo(() => greeting(new Date().getHours()), []);
@@ -44,6 +58,7 @@ export function EmptyState({
       ]}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
+      {...touchProps}
     >
       <Animated.Text entering={enter(0)} style={styles.hello} accessibilityRole="header">
         {hello}
@@ -57,6 +72,7 @@ export function EmptyState({
         {EXAMPLES.map((e) => (
           <Pressable
             key={e}
+            onPressIn={onControlPressIn}
             onPress={() => onSuggestion(e)}
             accessibilityRole="button"
             accessibilityHint="Mia-ს ეს გაეგზავნება"

@@ -510,6 +510,17 @@ export function HomeScreen() {
                   ) : null}
                 </View>
 
+                {/* Sighted users tap the conversation to type; screen-reader
+                    users get this (visually empty) control instead. */}
+                {!composerOpen ? (
+                  <Pressable
+                    onPress={openComposer}
+                    accessibilityRole="button"
+                    accessibilityLabel="შეტყობინების დაწერა"
+                    style={styles.srOnly}
+                  />
+                ) : null}
+
                 {composerOpen ? (
                   <Composer
                     value={draft}
@@ -597,6 +608,15 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: FADE_H,
+  },
+
+  srOnly: {
+    position: 'absolute',
+    left: 0,
+    bottom: 0,
+    width: 1,
+    height: 1,
+    opacity: 0,
   },
 
   noticeWrap: {

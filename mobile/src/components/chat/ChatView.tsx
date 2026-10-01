@@ -12,6 +12,7 @@ import { JumpToLatest } from './JumpToLatest';
 import { LiveLine } from './LiveLine';
 import { useSmoothReveal } from './useSmoothReveal';
 import { useStickyScroll } from './useStickyScroll';
+import { useTapToCompose } from './useTapToCompose';
 
 // The conversation as typography, not bubbles. Mia's replies are plain
 // reading text across the full measure; what the user said sits quieter —
@@ -25,7 +26,6 @@ type RowProps = {
   opensTurn: boolean;
   live: boolean;
   animate: boolean;
-  onCompose: () => void;
   onCopied: () => void;
 };
 
@@ -36,7 +36,6 @@ const Row = memo(function Row({
   opensTurn,
   live,
   animate,
-  onCompose,
   onCopied,
 }: RowProps) {
   const isUser = message.role === 'user';
@@ -60,8 +59,8 @@ const Row = memo(function Row({
         opensTurn && styles.opensTurn,
       ]}
     >
+      {/* A tap falls through to the list (tap-to-type); long-press copies. */}
       <Pressable
-        onPress={onCompose}
         onLongPress={copy}
         delayLongPress={380}
         accessibilityLabel={`${isUser ? 'შენ' : 'Mia'}: ${message.content}`}
@@ -97,8 +96,9 @@ export function ChatView({
   bottomPadding: number;
 }) {
   const reduceMotion = useReducedMotion();
+  const { touchProps, claim, noteScroll } = useTapToCompose(onCompose);
   const { ref, behind, jumpToLatest, scrollProps } =
-    useStickyScroll<FlatList<Message>>();
+    useStickyScroll<FlatList<Message>>(noteScroll);
   // Only messages that arrive while the view is up fade in; history doesn't.
   const mountedAt = useRef(Date.now()).current;
 
@@ -110,11 +110,10 @@ export function ChatView({
         opensTurn={index > 0 && item.role === 'user'}
         live={replyLive && index === lastIndex && item.role === 'assistant'}
         animate={!reduceMotion && item.timestamp > mountedAt}
-        onCompose={onCompose}
         onCopied={onCopied}
       />
     ),
-    [replyLive, lastIndex, reduceMotion, mountedAt, onCompose, onCopied],
+    [replyLive, lastIndex, reduceMotion, mountedAt, onCopied],
   );
 
   const footer = useMemo(
@@ -129,18 +128,17 @@ export function ChatView({
 
   if (messages.length === 0 && !liveTranscript) {
     return (
-      <Pressable
-        style={styles.flex}
-        onPress={onCompose}
-        accessible={false}
-      >
-        <EmptyState onSuggestion={onSuggestion} bottomPadding={bottomPadding} />
-      </Pressable>
+      <EmptyState
+        onSuggestion={onSuggestion}
+        bottomPadding={bottomPadding}
+        touchProps={touchProps}
+        onControlPressIn={claim}
+      />
     );
   }
 
   return (
-    <Pressable style={styles.flex} onPress={onCompose} accessible={false}>
+    <View style={styles.flex}>
       <FlatList
         ref={ref}
         data={messages}
@@ -157,11 +155,12 @@ export function ChatView({
         initialNumToRender={20}
         windowSize={11}
         {...scrollProps}
+        {...touchProps}
       />
       {behind ? (
         <JumpToLatest onPress={jumpToLatest} bottom={bottomPadding + spacing.md} />
       ) : null}
-    </Pressable>
+    </View>
   );
 }
 

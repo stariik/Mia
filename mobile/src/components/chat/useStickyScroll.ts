@@ -15,7 +15,7 @@ const NEAR_BOTTOM = 72;
 
 type Scrollable = { scrollToEnd(opts?: { animated?: boolean }): void };
 
-export function useStickyScroll<T extends Scrollable>() {
+export function useStickyScroll<T extends Scrollable>(onUserScroll?: () => void) {
   const ref = useRef<T>(null);
   const attached = useRef(true);
   const userDriven = useRef(false);
@@ -48,16 +48,19 @@ export function useStickyScroll<T extends Scrollable>() {
 
   const onScrollBeginDrag = useCallback(() => {
     userDriven.current = true;
-  }, []);
+    onUserScroll?.();
+  }, [onUserScroll]);
   const onMomentumScrollEnd = useCallback(() => {
     userDriven.current = false;
-  }, []);
+    onUserScroll?.();
+  }, [onUserScroll]);
   const onScrollEndDrag = useCallback(() => {
+    onUserScroll?.();
     // Momentum (if any) keeps it user-driven until onMomentumScrollEnd.
     setTimeout(() => {
       userDriven.current = false;
     }, 250);
-  }, []);
+  }, [onUserScroll]);
 
   const onContentSizeChange = useCallback((_w: number, h: number) => {
     const grew = h > m.current.content + 1;

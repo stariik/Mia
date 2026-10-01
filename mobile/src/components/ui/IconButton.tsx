@@ -13,6 +13,7 @@ export function IconButton({
   icon,
   label,
   onPress,
+  onPressIn,
   color = colors.textMuted,
   size = 22,
   disabled,
@@ -23,6 +24,7 @@ export function IconButton({
   /** Screen-reader label (required — icon buttons have no visible text). */
   label: string;
   onPress: () => void;
+  onPressIn?: () => void;
   color?: string;
   size?: number;
   disabled?: boolean;
@@ -32,6 +34,7 @@ export function IconButton({
   return (
     <Pressable
       onPress={onPress}
+      onPressIn={onPressIn}
       disabled={disabled}
       hitSlop={4}
       accessibilityRole="button"

@@ -23,6 +23,7 @@ import { JumpToLatest } from './JumpToLatest';
 import { LanguageSheet, type LanguageSide } from './LanguageSheet';
 import { LiveLine } from './LiveLine';
 import { useStickyScroll } from './useStickyScroll';
+import { useTapToCompose } from './useTapToCompose';
 
 // Translator mode takes over the chat area. The language pair sits on top
 // (from → to, with a swap), each turn shows what was said, quietly, above its
@@ -65,13 +66,13 @@ const Turn = memo(function Turn({
   turn,
   showPair,
   animate,
-  onCompose,
+  onControlPressIn,
   onCopied,
 }: {
   turn: TranslationTurn;
   showPair: boolean;
   animate: boolean;
-  onCompose: () => void;
+  onControlPressIn: () => void;
   onCopied: () => void;
 }) {
   const copy = useCallback(async () => {
@@ -99,13 +100,14 @@ const Turn = memo(function Turn({
             size={18}
             color={colors.textFaint}
             label="თარგმანის ხელახლა მოსმენა"
+            onPressIn={onControlPressIn}
             onPress={() => translator.replay(turn)}
             style={styles.replay}
           />
         ) : null}
       </View>
+      {/* A tap falls through to the list (tap-to-type); long-press copies. */}
       <Pressable
-        onPress={onCompose}
         onLongPress={copy}
         delayLongPress={380}
         accessibilityLabel={
@@ -142,8 +144,9 @@ export function TranslatorView({
   const direction = useTranslatorStore((s) => s.direction);
   const autoSpeak = useTranslatorStore((s) => s.autoSpeak);
   const [picking, setPicking] = useState<LanguageSide | null>(null);
+  const { touchProps, claim, noteScroll } = useTapToCompose(onCompose);
   const { ref, behind, jumpToLatest, scrollProps } =
-    useStickyScroll<FlatList<TranslationTurn>>();
+    useStickyScroll<FlatList<TranslationTurn>>(noteScroll);
   const mountedAt = useRef(Date.now()).current;
 
   const renderItem = useCallback(
@@ -156,12 +159,12 @@ export function TranslatorView({
             !prev || prev.source !== item.source || prev.target !== item.target
           }
           animate={!reduceMotion && Number(item.id.split('_')[1]) > mountedAt}
-          onCompose={onCompose}
+          onControlPressIn={claim}
           onCopied={onCopied}
         />
       );
     },
-    [turns, reduceMotion, mountedAt, onCompose, onCopied],
+    [turns, reduceMotion, mountedAt, claim, onCopied],
   );
 
   return (
@@ -207,9 +210,9 @@ export function TranslatorView({
         </View>
       </View>
 
-      <Pressable style={styles.flex} onPress={onCompose} accessible={false}>
+      <View style={styles.flex}>
         {turns.length === 0 && !liveText ? (
-          <View style={styles.empty}>
+          <View style={[styles.flex, styles.empty]} {...touchProps}>
             <Text style={styles.emptyLead}>
               ილაპარაკე {languageNameKaAdverb(direction.from)} — ყოველ წინადადებას{' '}
               {languageNameKaAdverb(direction.to)} გადავთარგმნი
@@ -240,12 +243,13 @@ export function TranslatorView({
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="interactive"
             {...scrollProps}
+            {...touchProps}
           />
         )}
         {behind ? (
           <JumpToLatest onPress={jumpToLatest} bottom={bottomPadding + spacing.md} />
         ) : null}
-      </Pressable>
+      </View>
 
       <LanguageSheet
         side={picking}
