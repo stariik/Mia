@@ -1,3 +1,5 @@
+import type { Capture } from './controller';
+
 /** Stateful area resampler: keeps fractional sample area across native callbacks.
  * Channels are averaged, not discarded. No normalization or silence trimming.
  */
@@ -60,4 +62,26 @@ export class PcmPacketizer {
     this.packet = [];
     this.emit(result);
   }
+}
+
+/** Feeds silence instead of the mic while muted (e.g. while a translation is
+ * spoken), so the recognizer never transcribes our own voice. Frames keep
+ * flowing, so the client and gateway stall checks stay quiet. */
+export function mutedCapture(capture: Capture) {
+  let muted = false;
+  return {
+    start: (
+      frame: (data: ArrayBuffer, rate: number, channels: number) => void,
+      interrupted: () => void,
+    ) =>
+      capture.start(
+        (data, rate, channels) =>
+          frame(muted ? new ArrayBuffer(data.byteLength) : data, rate, channels),
+        interrupted,
+      ),
+    stop: () => capture.stop(),
+    setMuted(on: boolean) {
+      muted = on;
+    },
+  };
 }

@@ -275,6 +275,7 @@ export function TranslatorScreen() {
     setAutoSpeak,
     turns,
     status,
+    liveText,
     error,
     toggleListen,
     stopAndTranslate,
@@ -289,7 +290,9 @@ export function TranslatorScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const inputRef = useRef<TextInput>(null);
   const idle = status === 'idle';
-  const listening = status === 'listening';
+  const live = status === 'live';
+  // Mic is "on" for a legacy recording or a live interpreter session.
+  const listening = status === 'listening' || live;
 
   // Hidden while typing, but never mid-recording — the user must still be
   // able to stop it. Two phases on one progress value (1 shown → 0 hidden):
@@ -457,6 +460,10 @@ export function TranslatorScreen() {
             )}
           </ScrollView>
 
+          {/* Live: the sentence being spoken right now */}
+          {live ? (
+            <Text style={styles.live}>{liveText}▌</Text>
+          ) : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}
           {status === 'working' ? (
             <Text style={styles.working}>ვთარგმნი…</Text>
@@ -481,7 +488,9 @@ export function TranslatorScreen() {
               >
                 <MicIcon color={listening ? colors.primary : colors.text} />
                 <Text style={[styles.micLabel, listening && styles.micLabelActive]}>
-                  {listening
+                  {live
+                    ? 'პირდაპირი თარგმანი… (შეჩერება)'
+                    : listening
                     ? 'მისმენ… (შეჩერება)'
                     : `ისაუბრე ${languageNameKaAdverb(direction.from)}`}
                 </Text>
@@ -733,6 +742,14 @@ const styles = StyleSheet.create({
     color: colors.danger,
     fontSize: 13,
     textAlign: 'center',
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.sm,
+  },
+  live: {
+    fontFamily: fonts.body,
+    color: colors.text,
+    fontSize: 17,
+    lineHeight: 24,
     paddingHorizontal: spacing.xl,
     paddingBottom: spacing.sm,
   },

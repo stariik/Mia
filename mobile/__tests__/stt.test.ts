@@ -1,4 +1,4 @@
-import { PcmPacketizer } from '../src/stt/audio';
+import { PcmPacketizer, mutedCapture } from '../src/stt/audio';
 import { SttController, type Socket } from '../src/stt/controller';
 
 function convert(rate: number, frames: number, chunk: number) {
@@ -31,7 +31,7 @@ test('changing audio route fails explicitly', () => {
   expect(() => p.push(new ArrayBuffer(10), 44100, 1)).toThrow('route changed');
 });
 
-function harness(start?: () => Promise<void>) {
+function harness(start?: () => Promise<void>, extra: object = {}) {
   let frame!: (data: ArrayBuffer, rate: number, channels: number) => void;
   let interrupt!: () => void;
   const ws: Socket = {
@@ -61,6 +61,7 @@ function harness(start?: () => Promise<void>) {
     state: jest.fn(),
     elapsed: jest.fn(),
     partial,
+    ...extra,
   });
   const event = (e: object) =>
     ws.onmessage?.({
@@ -193,4 +194,34 @@ test('native transports without bufferedAmount still enforce two seconds of unac
   expect(await failure).toBeInstanceOf(Error);
   expect((h.ws.send as jest.Mock).mock.calls.filter(c => c[0] instanceof ArrayBuffer)).toHaveLength(20);
   expect(h.capture.stop).toHaveBeenCalled();
+});
+
+test('language rides on start; committed sentences reach the segment callback', async () => {
+  const segment = jest.fn();
+  const h = harness(undefined, { language: 'ru', segment });
+  void h.controller.start().catch(() => {});
+  h.ws.onopen?.();
+  const start = JSON.parse((h.ws.send as jest.Mock).mock.calls[0][0]);
+  expect(start).toMatchObject({ type: 'start', language: 'ru' });
+  await ready(h);
+  h.event({ type: 'segment', segment: 1, text: ' Привет. ' });
+  h.event({ type: 'segment', segment: 2, text: '  ' });
+  expect(segment.mock.calls).toEqual([['Привет.']]);
+  h.controller.cancel();
+});
+
+test('muted capture forwards same-size silence, unmuted forwards the mic', async () => {
+  const frames: ArrayBuffer[] = [];
+  let push!: (data: ArrayBuffer, rate: number, channels: number) => void;
+  const inner = { start: jest.fn(async (f) => { push = f; }), stop: jest.fn() };
+  const muted = mutedCapture(inner);
+  await muted.start(d => frames.push(d), () => {});
+  const loud = Int16Array.from([1000, -1000]).buffer;
+  push(loud, 16000, 1);
+  muted.setMuted(true);
+  push(loud, 16000, 1);
+  expect(Array.from(new Int16Array(frames[0]))).toEqual([1000, -1000]);
+  expect(Array.from(new Int16Array(frames[1]))).toEqual([0, 0]);
+  muted.stop();
+  expect(inner.stop).toHaveBeenCalled();
 });
