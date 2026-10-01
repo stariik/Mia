@@ -34,4 +34,47 @@ describe('matchContacts', () => {
     expect(matchContacts('გიორგი', contacts)).toEqual([]);
     expect(matchContacts('  ', contacts)).toEqual([]);
   });
+
+  test('a Georgian name finds Latin (keyboard or spelled) and Russian spellings', () => {
+    const book: Contact[] = [
+      { name: 'Baco', number: '1' },
+      { name: 'Batso', number: '2' },
+      { name: 'Бацо', number: '3' },
+      { name: 'ბაცო', number: '4' },
+      { name: 'Bacho', number: '5' },
+    ];
+    expect(matchContacts('ბაცო', book).map((c) => c.name)).toEqual([
+      'Baco',
+      'Batso',
+      'Бацо',
+      'ბაცო',
+    ]);
+    expect(matchContacts('ბაჩო', book).map((c) => c.name)).toEqual(['Bacho']);
+  });
+
+  test('keyboard letters w / x and their spelled-out forms', () => {
+    const book: Contact[] = [
+      { name: 'Wiwi', number: '1' },
+      { name: 'Xatia', number: '2' },
+      { name: 'Khatia', number: '3' },
+      { name: 'Хатия', number: '4' },
+      { name: 'Yana', number: '5' },
+    ];
+    expect(matchContacts('წიწი', book).map((c) => c.name)).toEqual(['Wiwi']);
+    expect(matchContacts('ხატია', book).map((c) => c.name)).toEqual([
+      'Xatia',
+      'Khatia',
+      'Хатия',
+    ]);
+    expect(matchContacts('იანა', book).map((c) => c.name)).toEqual(['Yana']);
+  });
+
+  test('Russian full name narrows like a Latin one', () => {
+    const book: Contact[] = [
+      { name: 'Нино Беридзе', number: '1' },
+      { name: 'Нино Капанадзе', number: '2' },
+    ];
+    expect(matchContacts('ნინო ბერიძე', book)).toEqual([book[0]]);
+    expect(matchContacts('ნინო', book)).toEqual(book);
+  });
 });

@@ -43,34 +43,69 @@ export function getPendingSmsContext() {
     : { text: p.text, options: p.options.map((o) => o.name) };
 }
 
-// Contacts are often saved in Latin ("Nino", "Deda") while the user speaks
-// Georgian, so both sides are folded to Latin before comparing.
-// ponytail: plain letter map; Latin spelling variants (x/kh, c/ts) won't match.
-const GEO_TO_LAT: Record<string, string> = {
+// The user speaks Georgian, but contacts are saved in Georgian, Latin ("Baco",
+// "Batso" — Georgian-keyboard letters or spelled out) or Cyrillic ("Бацо").
+// Every script is folded into one lossy sound key where letters people spell
+// interchangeably collapse: ც/წ/c/ts/ц → c, ხ/ჰ/x/kh/h/х → x, ქ/კ/ყ/q → k, …
+// Uppercase marks the sounds that need two Latin letters (S=sh, C=ch, Z=zh, D=dz).
+const GEO_KEY: Record<string, string> = {
   ა: 'a', ბ: 'b', გ: 'g', დ: 'd', ე: 'e', ვ: 'v', ზ: 'z', თ: 't', ი: 'i',
-  კ: 'k', ლ: 'l', მ: 'm', ნ: 'n', ო: 'o', პ: 'p', ჟ: 'zh', რ: 'r', ს: 's',
-  ტ: 't', უ: 'u', ფ: 'p', ქ: 'k', ღ: 'gh', ყ: 'q', შ: 'sh', ჩ: 'ch', ც: 'ts',
-  ძ: 'dz', წ: 'ts', ჭ: 'ch', ხ: 'kh', ჯ: 'j', ჰ: 'h',
+  კ: 'k', ლ: 'l', მ: 'm', ნ: 'n', ო: 'o', პ: 'p', ჟ: 'Z', რ: 'r', ს: 's',
+  ტ: 't', უ: 'u', ფ: 'p', ქ: 'k', ღ: 'g', ყ: 'k', შ: 'S', ჩ: 'C', ც: 'c',
+  ძ: 'D', წ: 'c', ჭ: 'C', ხ: 'x', ჯ: 'j', ჰ: 'x',
 };
+const CYR_KEY: Record<string, string> = {
+  а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж: 'Z', з: 'z',
+  и: 'i', й: 'i', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r',
+  с: 's', т: 't', у: 'u', ф: 'p', х: 'x', ц: 'c', ч: 'C', ш: 'S', щ: 'S',
+  ъ: '', ы: 'i', ь: '', э: 'e', ю: 'iu', я: 'ia', і: 'i', є: 'e', ґ: 'g',
+};
+const LAT_DIGRAPH: Record<string, string> = {
+  dzh: 'j', dj: 'j', dz: 'D', sh: 'S', ch: 'C', zh: 'Z', kh: 'x', gh: 'g',
+  ts: 'c', tz: 'c', th: 't', ph: 'p',
+};
+// w and y mean წ and ყ on the Georgian keyboard but v and i in "Will", "Yana",
+// so they get both readings.
+const LAT_KEY: Record<string, string[]> = {
+  f: ['p'], q: ['k'], h: ['x'], w: ['c', 'v'], y: ['i', 'k'],
+};
+const MAX_KEYS = 4;
 
-const fold = (s: string) =>
-  [...s.toLowerCase()]
-    .map((ch) => GEO_TO_LAT[ch] ?? ch)
-    .join('')
-    .replace(/[^a-z0-9 ]/g, '')
-    .trim();
+/** Sound keys for a name in any script — usually one, more for w/y. */
+function nameKeys(s: string): string[] {
+  const text = s
+    .toLowerCase()
+    .replace(/и([яю])/g, '$1') // Хатия = ხატია, not "xatiia"
+    .replace(/дж/g, 'j')
+    .replace(/дз/g, 'D')
+    .replace(/dzh|dj|dz|sh|ch|zh|kh|gh|ts|tz|th|ph/g, (d) => LAT_DIGRAPH[d]);
+  let keys = [''];
+  for (const ch of text) {
+    const opts =
+      GEO_KEY[ch] !== undefined ? [GEO_KEY[ch]]
+      : CYR_KEY[ch] !== undefined ? [CYR_KEY[ch]]
+      : LAT_KEY[ch] ?? (/[a-zA-Z0-9]/.test(ch) ? [ch] : /\s/.test(ch) ? [' '] : []);
+    if (opts.length === 0) continue;
+    keys =
+      keys.length * opts.length > MAX_KEYS
+        ? keys.map((k) => k + opts[0])
+        : keys.flatMap((k) => opts.map((o) => k + o));
+  }
+  return [...new Set(keys.map((k) => k.replace(/\s+/g, ' ').trim()))].filter(Boolean);
+}
 
 /** Best-matching contacts for a spoken name: exact > a word matches > substring.
  *  One entry per contact name (first number wins). */
 export function matchContacts(query: string, contacts: Contact[]): Contact[] {
-  const q = fold(query);
-  if (!q) return [];
-  const score = (name: string) => {
-    const n = fold(name);
+  const qs = nameKeys(query);
+  if (qs.length === 0) return [];
+  const scoreKey = (n: string, q: string) => {
     if (n === q) return 3;
     if (n.split(' ').includes(q) || n.startsWith(q + ' ')) return 2;
     return n.includes(q) ? 1 : 0;
   };
+  const score = (name: string) =>
+    Math.max(0, ...nameKeys(name).flatMap((n) => qs.map((q) => scoreKey(n, q))));
   let best = 0;
   const byName = new Map<string, Contact>();
   for (const c of contacts) {
