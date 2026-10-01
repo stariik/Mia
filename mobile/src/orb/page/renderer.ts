@@ -201,7 +201,7 @@ export const ORB_RENDERER_JS = `
 
       // Mic: envelopes on the RN-side analysis; stale feed decays to silence.
       var now = performance.now();
-      var micLive = I.state === 'listening' && now - I.micT < A.micStaleMs;
+      var micLive = I.state === 'listening' && now - I.micT < (I.micHold || A.micStaleMs);
       var atk = A.attackMs / 1000, rel = A.releaseMs / 1000;
       for (var b = 0; b < 4; b++) {
         var mt = micLive ? I.mic[b] : 0;

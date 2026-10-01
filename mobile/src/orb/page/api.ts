@@ -17,6 +17,8 @@ export const ORB_API_JS = `
       // Latest mic analysis: level, low, mid, high (0..1) and when it arrived.
       mic: [0, 0, 0, 0],
       micT: -1e9,
+      // How long the last mic value stays valid (ms); 0 = config default.
+      micHold: 0,
       // Strongest syllable onset since the renderer last consumed it.
       micOnset: 0,
       touch: { down: false, x: 0, y: 0, n: 0 },
@@ -38,6 +40,10 @@ export const ORB_API_JS = `
     }
 
     function mic(level, low, mid, high, onset) {
+      pushMic(level, low, mid, high, onset, 0);
+    }
+    function pushMic(level, low, mid, high, onset, hold) {
+      I.micHold = hold;
       I.mic[0] = clamp01(level);
       I.mic[1] = clamp01(low);
       I.mic[2] = clamp01(mid);
@@ -50,6 +56,9 @@ export const ORB_API_JS = `
     // Legacy single-level input (the floating overlay's setLevel). The level is
     // dBFS mapped to 0..1, so silence sits well above 0; track an ambient floor
     // and derive approximate bands from the normalized loudness and its rise.
+    // These arrive via the headless JS runtime, which can lag and burst, so
+    // each value is held much longer than the in-app feed's.
+    var HOVER_HOLD_MS = 1500;
     var hoverFloor = 0.3;
     var hoverPrev = 0;
     function setHover(v) {
@@ -61,7 +70,7 @@ export const ORB_API_JS = `
       var n = clamp01((v - hoverFloor - 0.04) / 0.34);
       var rise = n - hoverPrev;
       hoverPrev = n;
-      mic(n, n, n * 0.85, clamp01(rise * 2.5), rise > 0.12 ? clamp01(rise * 1.6) : 0);
+      pushMic(n, n, n * 0.85, clamp01(rise * 2.5), rise > 0.12 ? clamp01(rise * 1.6) : 0, HOVER_HOLD_MS);
     }
 
     // x, y in -1..1 relative to the orb's centre (y up). phase 0 down, 1 move, 2 up.

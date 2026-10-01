@@ -26,10 +26,17 @@ const POWER_REF = (N / 4) * (N / 4) * 1.5;
 // dB above the floor before anything shows, and the span that maps to 0..1.
 const KNEE_DB = 6;
 const RANGE_DB = 30;
-// Floors start at a quiet-room guess, fall fast and rise slowly (~8 s).
+// Each capture session seeds its floors from its first frame, learns the room
+// quickly for ~0.5 s, then falls fast (speech gaps) and rises slowly (~8 s).
+// Seeding matters: a fixed quiet-room guess would read an ordinary room's
+// ambience as speech for the first seconds of every session.
 const FLOOR_INIT = [-62, -65, -65, -65];
 const FLOOR_FALL = 0.3;
 const FLOOR_RISE = 0.004;
+const FLOOR_RISE_WARMUP = 0.15;
+const WARMUP_FRAMES = 16;
+// A pause in frames this long means a new capture session.
+const SESSION_GAP_MS = 1000;
 const ONSET_THRESHOLD = 0.11;
 
 /* eslint-disable no-bitwise -- bit reversal and power-of-two strides are the FFT */
@@ -85,6 +92,9 @@ function fft() {
 
 const floors = Float32Array.from(FLOOR_INIT);
 const prev = new Float32Array(3);
+let warmup = 0;
+let seeded = false;
+let lastFrameAt = 0;
 
 /** The latest analysis. `onset` latches the strongest onset until taken. */
 export type MicFrame = {
@@ -99,8 +109,10 @@ export type MicFrame = {
 const frame: MicFrame = { seq: 0, level: 0, low: 0, mid: 0, high: 0, onset: 0 };
 
 function normalize(db: number, ch: number): number {
+  if (!seeded) floors[ch] = db;
   const f = floors[ch];
-  floors[ch] = f + (db - f) * (db < f ? FLOOR_FALL : FLOOR_RISE);
+  const rise = warmup > 0 ? FLOOR_RISE_WARMUP : FLOOR_RISE;
+  floors[ch] = f + (db - f) * (db < f ? FLOOR_FALL : rise);
   const v = (db - floors[ch] - KNEE_DB) / RANGE_DB;
   return v < 0 ? 0 : v > 1 ? 1 : v;
 }
@@ -112,6 +124,13 @@ function normalize(db: number, ch: number): number {
 export function analyzeMicFrame(samples: ArrayLike<number>): void {
   const n = samples.length;
   if (n === 0) return;
+  const now = Date.now();
+  if (now - lastFrameAt > SESSION_GAP_MS) {
+    seeded = false;
+    warmup = WARMUP_FRAMES;
+    prev.fill(0);
+  }
+  lastFrameAt = now;
   const take = n < N ? n : N;
   const pad = N - take;
   let sumSq = 0;
@@ -140,7 +159,12 @@ export function analyzeMicFrame(samples: ArrayLike<number>): void {
     else if (b === 1) frame.mid = v;
     else frame.high = v;
   }
-  if (flux > ONSET_THRESHOLD && flux > frame.onset) frame.onset = flux > 1 ? 1 : flux;
+  // No onsets while the floor is still learning the room.
+  if (seeded && warmup === 0 && flux > ONSET_THRESHOLD && flux > frame.onset) {
+    frame.onset = flux > 1 ? 1 : flux;
+  }
+  seeded = true;
+  if (warmup > 0) warmup--;
   frame.seq++;
 }
 
@@ -159,6 +183,9 @@ export function consumeMicOnset(): void {
 export function resetMicAnalysis(): void {
   floors.set(FLOOR_INIT);
   prev.fill(0);
+  warmup = 0;
+  seeded = false;
+  lastFrameAt = 0;
   frame.seq = 0;
   frame.level = frame.low = frame.mid = frame.high = frame.onset = 0;
 }

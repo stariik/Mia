@@ -90,7 +90,8 @@ vec3 ramp(float t) {
 // integer multiple of the (wrapped) twinkle phase so it never pops.
 float sparkleLayer(vec2 uv, float density, float seed) {
   vec2 g = uv * 13.0;
-  vec2 id = floor(g);
+  // The drift phase wraps at 1000 → 13000 cells; mod keeps the hash identical.
+  vec2 id = mod(floor(g), 13000.0);
   vec2 f = fract(g) - 0.5;
   vec3 h = hash32(id + seed);
   if (h.z > density) return 0.0;
@@ -211,7 +212,9 @@ void main() {
     vec2 sxy = rot(float(i) * 1.9) * (pt.xy * 1.15 + warp * (0.65 + 0.35 * fi));
     vec3 s = vec3(sxy, pt.z * 1.0) + vec3(lp, 0.0, lp);
     float base = vnoise(s);
-    float det = vnoise(s * 2.4 + vec3(0.0, 5.2, lp));
+    // Integer multiplier: a 256 wrap of lp stays a multiple of 256 in every
+    // axis (2·256 + 256 in z), so the detail octave is seamless across wraps.
+    float det = vnoise(s * 2.0 + vec3(0.0, 5.2, lp));
     float nv = base * 0.76 + det * 0.24;
 
     // Ink: soft absorbing clouds (with fine detail).
