@@ -11,7 +11,7 @@
 // bundles never contain them (MiaOrb requires them behind __DEV__).
 
 import { mergeConfig, STATE_KEYS, type OrbConfigOverrides } from './config';
-import { ORB_FRAG, ORB_VERT } from './glsl';
+import { ORB_COMPOSITE_FRAG, ORB_INTERIOR_FRAG, ORB_VERT } from './glsl';
 import { ORB_API_JS } from './page/api';
 import { ORB_RENDERER_JS } from './page/renderer';
 import { TTS_ENGINE_JS } from './page/ttsEngine';
@@ -54,12 +54,16 @@ function pageConfig(opts: BuildOrbPageOpts): string {
     audio: cfg.audio,
     voice: cfg.voice,
     interaction: cfg.interaction,
+    knot: cfg.knot,
+    choreography: cfg.choreography,
+    pacing: cfg.pacing,
     reducedMotion: cfg.reducedMotion,
     quality: cfg.quality,
     pal: order.flatMap(hexToRgb),
     palRgb,
     vert: ORB_VERT,
-    frag: ORB_FRAG,
+    fragInterior: ORB_INTERIOR_FRAG,
+    fragComposite: ORB_COMPOSITE_FRAG,
     floatIn: !!opts.floatIn,
     dev: !!opts.devTools,
   });

@@ -57,6 +57,25 @@ function orbState(
   return 'idle';
 }
 
+/**
+ * The orb's view of the conversation, which bridges the pipeline's gaps so it
+ * never drops to idle mid-conversation: a recording being transcribed (or a
+ * streaming transcript finalizing) is already "thinking", and a mic that is
+ * still opening is already "listening".
+ */
+function orbFlow(
+  base: OrbState,
+  processing: boolean,
+  arming: boolean,
+  streaming: boolean,
+  sttState: string,
+): OrbState {
+  if (base !== 'idle') return base;
+  if (processing || (streaming && sttState === 'finalizing')) return 'thinking';
+  if (arming || (streaming && sttState === 'connecting')) return 'listening';
+  return 'idle';
+}
+
 function RecentMessages({ messages }: { messages: Message[] }) {
   const scrollRef = useRef<ScrollView>(null);
 
@@ -115,6 +134,8 @@ export function HomeScreen() {
     isListening,
     isThinking,
     isSpeaking,
+    isProcessing,
+    isArming,
     currentTranscript,
     error,
     setError,
@@ -138,7 +159,8 @@ export function HomeScreen() {
   // The orb dims gently while an error is showing and nothing else is going on.
   // OrbStatus keeps the plain pipeline state.
   const [labState, setLabState] = useState<OrbState | null>(null);
-  const orbLook: OrbState = labState ?? (error && state === 'idle' ? 'error' : state);
+  const flow = orbFlow(state, isProcessing, isArming, streaming, sttState);
+  const orbLook: OrbState = labState ?? (error && flow === 'idle' ? 'error' : flow);
   const orbRef = useRef<MiaOrbHandle>(null);
 
   // The orb is a single toggle for the whole hands-free conversation: first tap

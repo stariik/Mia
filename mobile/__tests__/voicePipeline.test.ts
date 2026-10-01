@@ -151,6 +151,8 @@ beforeEach(() => {
     isListening: false,
     isThinking: false,
     isSpeaking: false,
+    isProcessing: false,
+    isArming: false,
     currentTranscript: '',
     error: null,
   });
@@ -310,5 +312,130 @@ describe('hands-free conversation loop', () => {
     expect(mockTranscribe).not.toHaveBeenCalled(); // …but nothing transcribed
     expect(mockTurn).not.toHaveBeenCalled();
     expect(p.isConversationActive()).toBe(false);
+  });
+});
+
+// The orb maps these flags so it never falls back to idle mid-conversation:
+// processing → thinking (while the recording is transcribed), arming →
+// listening (while the mic opens).
+describe('orb continuity flags', () => {
+  test('keeps "processing" from the end of recording until the reply takes over', async () => {
+    const p = await mountPipeline();
+    let finishStt!: (text: string) => void;
+    mockTranscribe.mockReturnValue(
+      new Promise((resolve) => {
+        finishStt = resolve;
+      }),
+    );
+    let processingWhenTurnStarted: boolean | null = null;
+    mockTurn.mockImplementation(async () => {
+      processingWhenTurnStarted = useVoiceStore.getState().isProcessing;
+      return { endSession: true };
+    });
+
+    await act(async () => {
+      await p.startListening();
+    });
+    let sending!: Promise<void>;
+    await act(async () => {
+      sending = p.stopListeningAndSend();
+      await Promise.resolve();
+    });
+
+    // Recording is over, but the orb must not drop to idle while STT runs.
+    expect(useVoiceStore.getState().isListening).toBe(false);
+    expect(useVoiceStore.getState().isProcessing).toBe(true);
+
+    await act(async () => {
+      finishStt('რა ამინდია');
+      await sending;
+    });
+    expect(processingWhenTurnStarted).toBe(false);
+    expect(useVoiceStore.getState().isProcessing).toBe(false);
+  });
+
+  test('clears "processing" when transcription fails', async () => {
+    const p = await mountPipeline();
+    mockTranscribe.mockRejectedValue(new Error('Transcription failed'));
+
+    await act(async () => {
+      await p.startListening();
+    });
+    await act(async () => {
+      await p.stopListeningAndSend();
+    });
+
+    expect(useVoiceStore.getState().isProcessing).toBe(false);
+    expect(useVoiceStore.getState().error).toBe('Transcription failed');
+  });
+
+  test('a tap during transcription clears "processing" at once', async () => {
+    const p = await mountPipeline();
+    let finishStt!: (text: string) => void;
+    mockTranscribe.mockReturnValue(
+      new Promise((resolve) => {
+        finishStt = resolve;
+      }),
+    );
+
+    await act(async () => {
+      await p.startListening();
+    });
+    let sending!: Promise<void>;
+    await act(async () => {
+      sending = p.stopListeningAndSend();
+      await Promise.resolve();
+    });
+    expect(useVoiceStore.getState().isProcessing).toBe(true);
+
+    await act(async () => {
+      await p.stopConversation();
+    });
+    expect(useVoiceStore.getState().isProcessing).toBe(false);
+
+    await act(async () => {
+      finishStt('რა ამინდია');
+      await sending;
+    });
+    expect(useVoiceStore.getState().isProcessing).toBe(false);
+    expect(mockTurn).not.toHaveBeenCalled();
+  });
+
+  test('shows "arming" while the mic opens, then hands over to listening', async () => {
+    const p = await mountPipeline();
+    let micOpen!: () => void;
+    mockRecorder.start.mockReturnValue(
+      new Promise<void>((resolve) => {
+        micOpen = resolve;
+      }),
+    );
+
+    let starting!: Promise<void>;
+    await act(async () => {
+      starting = p.startListening();
+      await Promise.resolve();
+    });
+    expect(useVoiceStore.getState().isArming).toBe(true);
+    expect(useVoiceStore.getState().isListening).toBe(false);
+
+    await act(async () => {
+      micOpen();
+      await starting;
+    });
+    expect(useVoiceStore.getState().isArming).toBe(false);
+    expect(useVoiceStore.getState().isListening).toBe(true);
+  });
+
+  test('clears "arming" when the mic fails to open', async () => {
+    const p = await mountPipeline();
+    mockRecorder.start.mockRejectedValue(new Error('Microphone permission denied'));
+
+    await act(async () => {
+      await p.startListening();
+    });
+
+    expect(useVoiceStore.getState().isArming).toBe(false);
+    expect(useVoiceStore.getState().isListening).toBe(false);
+    expect(useVoiceStore.getState().error).toBe('Microphone permission denied');
   });
 });

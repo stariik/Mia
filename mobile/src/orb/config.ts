@@ -22,7 +22,7 @@ export type StateLook = {
   flow: number;
   /** Colour temperature bias: 0 cool violet, 1 hot coral. */
   warmth: number;
-  /** Braided orbit (thinking) amount, 0..1. */
+  /** How strongly the medium swirls around the thought (thinking), 0..1. */
   vortex: number;
   /** Ambient sparkle density, 0..1 (audio adds on top). */
   sparkle: number;
@@ -70,17 +70,18 @@ export const ORB_CONFIG = {
   states: {
     idle: { energy: 0.86, flow: 0.07, warmth: 0.42, vortex: 0, sparkle: 0.1, lean: 0, dim: 0, core: 0.3, warp: 0.55, breath: 0.015 },
     listening: { energy: 1.0, flow: 0.12, warmth: 0.48, vortex: 0, sparkle: 0.3, lean: 0.14, dim: 0, core: 0.31, warp: 0.65, breath: 0.01 },
-    thinking: { energy: 0.94, flow: 0.08, warmth: 0.3, vortex: 1, sparkle: 0.2, lean: 0.05, dim: 0, core: 0.24, warp: 0.4, breath: 0.006 },
+    // Focused: the medium dims and cools so the thought itself is the light.
+    thinking: { energy: 0.74, flow: 0.06, warmth: 0.3, vortex: 1, sparkle: 0.05, lean: 0.04, dim: 0, core: 0.2, warp: 0.36, breath: 0.006 },
     speaking: { energy: 1.0, flow: 0.13, warmth: 0.56, vortex: 0, sparkle: 0.24, lean: 0, dim: 0, core: 0.29, warp: 0.68, breath: 0.006 },
     error: { energy: 0.6, flow: 0.025, warmth: 0.22, vortex: 0, sparkle: 0.02, lean: 0, dim: 1, core: 0.26, warp: 0.4, breath: 0.008 },
   } satisfies Record<OrbState, StateLook>,
 
-  /** Per-parameter springs: brightness leads, the vortex lags — overlap. */
+  /** Per-parameter springs: brightness leads, the swirl lags — overlap. */
   springs: {
-    energy: { freq: 1.6, damping: 0.85 },
+    energy: { freq: 1.2, damping: 1 },
     flow: { freq: 0.5, damping: 1 },
     warmth: { freq: 0.6, damping: 1 },
-    vortex: { freq: 0.45, damping: 0.95 },
+    vortex: { freq: 0.4, damping: 1 },
     sparkle: { freq: 1.0, damping: 1 },
     lean: { freq: 0.9, damping: 0.7 },
     dim: { freq: 0.5, damping: 1 },
@@ -151,6 +152,84 @@ export const ORB_CONFIG = {
     pressSpring: { freq: 3.2, damping: 0.38 },
   },
 
+  /**
+   * The thought (thinking): one continuous (3, q) torus knot — a single strand
+   * winding 3 times around its orbit and q times around its own tube. q must
+   * not be a multiple of 3 (else it splits into separate loops). Low q reads
+   * as loose crossing rings; ~10 reads as one braided rope of light.
+   */
+  knot: {
+    q: 10,
+    /** Orbit and tube radius, strand width (sphere units). */
+    radius: 0.56,
+    tube: 0.055,
+    /** Orbit plane tilt toward the viewer (rad), its slow drift, and precession. */
+    incline: 1.0,
+    inclineDrift: 0.08,
+    precess: 0.16,
+    /** Cruise spin (rad/s) and the strands' roll around the tube (rad/s). */
+    spin: 0.5,
+    roll: 0.7,
+    /** How much the medium is dragged along by the spin. */
+    mediumDrag: 0.32,
+    /** "Deliberation" breath: the knot tightens and releases (s). */
+    breathPeriod: 3.6,
+    /** Drawn out of the core like a pen stroke (s), after a short delay —
+     *  longer when coming from listening, so the words are absorbed first. */
+    traceS: 1.35,
+    traceDelay: 0.08,
+    traceDelayAfterListening: 0.26,
+    /** Born at (and dissolves into) the core; released outward into speech. */
+    birthRadius: 0.1,
+    birthIncline: 0.35,
+    releaseRadius: 0.95,
+    releaseIncline: 0.45,
+    /** Thought pulses travelling along the strand: speeds in knot-lengths/s
+     *  (negative runs backwards, so pulses meet and flare). */
+    pulses: [0.105, 0.16, -0.074],
+    /** How brightly the thought lights the ink around it. */
+    light: 0.55,
+    pulseLight: 1.3,
+    /** The longer Mia thinks, the more focused the thought gets (s → full). */
+    focusAfterS: 1.5,
+    focusFullS: 6,
+    focusSpin: 0.35,
+    focusTighten: 0.25,
+    springs: {
+      alphaIn: { freq: 2.0, damping: 1 },
+      alphaOut: { freq: 1.2, damping: 1 },
+      alphaRelease: { freq: 0.9, damping: 1 },
+      radius: { freq: 0.85, damping: 0.6 },
+      radiusOut: { freq: 1.0, damping: 1 },
+      incline: { freq: 0.55, damping: 0.8 },
+      spin: { freq: 0.3, damping: 1 },
+    },
+  },
+
+  /** Hand-offs between states. */
+  choreography: {
+    /** A state change to idle shorter than this is treated as noise (s). */
+    idleGraceS: 0.25,
+    /** Listening → thinking: the words are drawn into the core first. */
+    absorbRiseS: 0.14,
+    absorbDecayS: 0.5,
+    absorbLean: 0.3,
+    absorbCore: 0.3,
+    absorbGlow: 2.0,
+    /** The medium dims as its light is drawn into the core. */
+    absorbDim: 0.25,
+  },
+
+  /** Frame pacing: full rate only while something is actually moving. */
+  pacing: {
+    activeFps: 60,
+    calmFps: 30,
+    /** Seconds of stillness before dropping to calmFps. */
+    calmAfterS: 0.8,
+    /** Activity level that counts as "moving". */
+    activityOn: 0.05,
+  },
+
   reducedMotion: {
     flow: 0.3,
     voice: 0.35,
@@ -160,23 +239,26 @@ export const ORB_CONFIG = {
   },
 
   quality: {
-    /** Adaptive tiers, best first. dpr is a cap on devicePixelRatio. */
+    /**
+     * Adaptive tiers, best first. `dpr` caps devicePixelRatio for the crisp
+     * pass (glass, the thought, sparkles); the soft interior volume renders at
+     * `inner` × that resolution and is upsampled — most of the look for a
+     * fraction of the cost.
+     */
     tiers: [
-      { dpr: 2.0, slices: 6 },
-      { dpr: 1.5, slices: 6 },
-      { dpr: 1.5, slices: 5 },
-      { dpr: 1.25, slices: 5 },
-      { dpr: 1.0, slices: 4 },
-      { dpr: 0.85, slices: 4 },
+      { dpr: 2.0, slices: 7, inner: 0.6 },
+      { dpr: 1.75, slices: 6, inner: 0.62 },
+      { dpr: 1.5, slices: 6, inner: 0.6 },
+      { dpr: 1.5, slices: 5, inner: 0.5 },
+      { dpr: 1.25, slices: 5, inner: 0.5 },
+      { dpr: 1.0, slices: 4, inner: 0.5 },
     ],
     startTier: 1,
-    /** Frame interval EMA above this (ms) for `downAfterS` → step down. */
-    downMs: 19.5,
+    /** Drawn frames slower than target × this, for `downAfterS` → step down. */
+    slowFactor: 1.2,
     downAfterS: 1.2,
-    /** Below this for `upAfterS` → step back up (at most `maxUpgrades`). */
-    upMs: 15.5,
+    /** On target for `upAfterS` → recover a tier (never above startTier). */
     upAfterS: 6,
-    maxUpgrades: 2,
   },
 };
 

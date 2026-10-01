@@ -59,7 +59,7 @@ export function OrbLab({ orbRef, labState, onLabState }: Props) {
       </View>
       <Text style={styles.perf}>
         {perf
-          ? `${perf.fps} fps · ${perf.ms} ms · tier ${perf.tier} (dpr ${perf.dpr}, ${perf.slices} slices) · ${perf.px}${perf.fallback ? ' · FALLBACK' : ''}`
+          ? `${perf.fps} fps${perf.calm ? ' (calm)' : ''} · ${perf.ms} ms · tier ${perf.tier} (dpr ${perf.dpr}, ${perf.slices} slices, interior ×${perf.inner}) · ${perf.px} / ${perf.ipx}${perf.fallback ? ' · FALLBACK' : ''}`
           : 'waiting for perf…'}
       </Text>
       <View style={styles.wrap}>

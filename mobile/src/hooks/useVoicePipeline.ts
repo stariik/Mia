@@ -102,6 +102,9 @@ export function useVoicePipeline() {
     // don't fight over it (no-op when the wake word isn't running).
     wakeWord.pauseDetection();
 
+    // Opening the mic takes a network check and a recorder start; show the orb
+    // waking now rather than idle until the mic is live. Cleared in finally.
+    useVoiceStore.getState().setArming(true);
     try {
       const abort = new AbortController();
       configAbort.current = abort;
@@ -173,6 +176,8 @@ export function useVoicePipeline() {
       conversationRef.current = false; // no mic, no session
       // Recording never started — let the wake word listen again.
       wakeWord.resumeDetection();
+    } finally {
+      useVoiceStore.getState().setArming(false);
     }
   }, [pcmRecorder, handleText]);
 
@@ -180,7 +185,10 @@ export function useVoicePipeline() {
     if (streamRef.current) { streamRef.current.finish(); return; }
     if (modeRef.current !== 'recording') return;
     modeRef.current = 'idle';
+    // Same tick: the orb goes straight from listening to thinking while the
+    // recording is transcribed, instead of dropping to idle for the STT wait.
     useVoiceStore.getState().setListening(false);
+    useVoiceStore.getState().setProcessing(true);
 
     // This send is stale once anything bumps the turn id (a new recording, an
     // interrupt) while we're waiting on STT below.
@@ -223,10 +231,13 @@ export function useVoicePipeline() {
         useVoiceStore.getState().setError('Empty transcription.');
         return;
       }
+      // Hand over to the turn, which sets "thinking" in this same tick.
+      useVoiceStore.getState().setProcessing(false);
       // Music paused/resumed: end hands-free rather than record the music.
       if ((await handleText(text)).endSession) conversationRef.current = false;
       answered = true;
     } finally {
+      useVoiceStore.getState().setProcessing(false);
       // Hands-free re-arm: Mia has finished speaking, so listen for the reply
       // without another tap. Skipped entirely once the session id has moved on
       // (the user tapped stop), so a turn that settles late can't reopen the mic.
@@ -263,6 +274,8 @@ export function useVoicePipeline() {
     }
     useVoiceStore.getState().setSpeaking(false);
     useVoiceStore.getState().setThinking(false);
+    useVoiceStore.getState().setProcessing(false);
+    useVoiceStore.getState().setArming(false);
     useVoiceStore.getState().setTranscript('');
 
     if (modeRef.current === 'recording') {

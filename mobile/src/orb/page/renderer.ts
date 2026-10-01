@@ -1,9 +1,15 @@
-// The orb page's renderer: physics, audio envelopes and drawing.
+// The orb page's renderer: physics, choreography, audio envelopes and drawing.
 //
-// One requestAnimationFrame loop does everything — state springs, mic/TTS band
-// envelopes, syllable ripples, tilt and press physics — then draws with WebGL
-// (or a Canvas2D fallback when WebGL is missing or the shader fails). No
-// allocations per frame: every buffer below is created once.
+// One requestAnimationFrame loop does everything — state hand-offs, springs,
+// mic/TTS band envelopes, syllable ripples, the thought-knot, tilt and press
+// physics — then draws with WebGL in two passes (a reduced-resolution interior
+// volume, then a full-resolution composite), or a Canvas2D fallback when WebGL
+// is missing or the shaders fail. No allocations per frame: every buffer below
+// is created once.
+//
+// Frame pacing: the loop steps physics every frame but only draws at 60 fps
+// while something is moving, 30 fps when the orb is calm, and never above 60
+// on high-refresh screens.
 //
 // Reads window.__orbCfg (serialized ORB_CONFIG + shaders) and window.__orbIn
 // (inputs written by api.ts). Reads Mia's voice through window.__miaTts.
@@ -24,6 +30,7 @@ export const ORB_RENDERER_JS = `
     // ── Physics primitives ──────────────────────────────────────────────────
     // Damped spring in designer units (freq Hz, damping ratio). Integrated with
     // semi-implicit Euler in ≤ 1/120 s substeps so stiff springs stay stable.
+    var SP = new Float32Array(2);
     function springStep(x, v, target, freq, damping, dt) {
       var w = TAU * freq;
       var k = w * w;
@@ -37,10 +44,12 @@ export const ORB_RENDERER_JS = `
       SP[0] = x;
       SP[1] = v;
     }
-    var SP = new Float32Array(2);
-
     function Spring(cfg, x0) {
       return { x: x0 || 0, v: 0, f: cfg.freq, d: cfg.damping };
+    }
+    function retune(s, cfg) {
+      s.f = cfg.freq;
+      s.d = cfg.damping;
     }
     function stepSpring(s, target, dt) {
       springStep(s.x, s.v, target, s.f, s.d, dt);
@@ -58,19 +67,24 @@ export const ORB_RENDERER_JS = `
       return v < 0 ? v + period : v;
     }
     function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
-
-    // ── State look: one spring per parameter ────────────────────────────────
-    var look = {};
-    var idleLook = C.states.idle;
-    for (var ki = 0; ki < NK; ki++) {
-      var key = KEYS[ki];
-      look[key] = Spring(C.springs[key], idleLook[key]);
+    function easeInOutCubic(x) {
+      return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
     }
 
     var A = C.audio;
     var V = C.voice;
     var IX = C.interaction;
     var RM = C.reducedMotion;
+    var K = C.knot;
+    var CH = C.choreography;
+    var PC = C.pacing;
+
+    // ── State look: one spring per parameter ────────────────────────────────
+    var look = {};
+    for (var ki = 0; ki < NK; ki++) {
+      var key = KEYS[ki];
+      look[key] = Spring(C.springs[key], C.states.idle[key]);
+    }
 
     var coreSwell = Spring(V.coreSpring);
     var twist = Spring(V.twistSpring);
@@ -104,9 +118,9 @@ export const ORB_RENDERER_JS = `
     var touchSeen = 0;
 
     // Phases (all wrapped so precision never degrades over a long session).
-    var layer = new Float32Array(8);   // 6 slice phases, warp, sparkle drift
-    var angles = new Float32Array(4);  // orbit, braid twist, pulse, stream
-    var breathPhase = 0, twinkle = 0, rayPhase = 0;
+    var layer = new Float32Array(8);   // 7 slice phases + warp (mod 256)
+    var angles = new Float32Array(4);  // medium turn, stream, twinkle, sparkle drift
+    var breathPhase = 0, rayPhase = 0;
 
     // Orientation tilt (best effort; Android WebView fires it without a prompt).
     var ori = { has: false, bx: 0, by: 0, x: 0, y: 0 };
@@ -164,7 +178,6 @@ export const ORB_RENDERER_JS = `
       var flux = 0;
       for (var b = 1; b < 4; b++) {
         // Byte spectra sit on a dB scale: map the speech range to 0..1, then a
-        // gentle AGC so quiet and loud voices both use the full motion range.
         // gentle AGC on the recent PEAK (not the current value — that would
         // flatten speech), so quiet and loud voices both reach full motion.
         var x = clamp01((ttsRaw[b] - 0.28) / 0.5);
@@ -180,19 +193,122 @@ export const ORB_RENDERER_JS = `
       return flux;
     }
 
+    // ── The thought (thinking) ──────────────────────────────────────────────
+    // A (3, q) torus knot drawn out of the core like a pen stroke, spun up with
+    // momentum, carrying pulses of light; on the way out it either releases
+    // outward into Mia's voice or dissolves back into the core.
+    var kAlpha = Spring(K.springs.alphaIn, 0);
+    var kRadius = Spring(K.springs.radius, K.birthRadius);
+    var kIncline = Spring(K.springs.incline, K.birthIncline);
+    var kSpin = Spring(K.springs.spin, 0);
+    var kSpinAngle = 0, kRoll = 0, kBreathPh = 0, kDriftT = 0, thinkingFor = 0;
+    var trace = 2, traceT = 0, tracing = false;
+    var pulseOn = 0, releaseFlash = 0;
+    var pulseU = new Float32Array([0.0, 0.37, 0.71]);
+    var exitMode = 'dissolve';
+    var absorbT = 1e9;
+    var KP = new Float32Array(3); // scratch: one knot point in view space
+
+    // Listening → thinking: the words are drawn into the core (quick rise,
+    // soft decay) before the thought is traced out of it.
+    function absorbCurve(t) {
+      if (t < 0 || t > 6) return 0;
+      if (t < CH.absorbRiseS) {
+        var x = t / CH.absorbRiseS;
+        return 1 - (1 - x) * (1 - x);
+      }
+      return Math.exp(-(t - CH.absorbRiseS) / CH.absorbDecayS);
+    }
+
+    // View-space position of the point a fraction u along the knot (matches
+    // drawThought() in the composite shader).
+    function knotPoint(u) {
+      var t = u * TAU;
+      var az = 3 * t + kSpinAngle;
+      var a = K.q * t + kRoll;
+      var R = U.knot[0], tr = U.knot[1];
+      var rho = R + tr * Math.cos(a);
+      var px = rho * Math.cos(az), py = rho * Math.sin(az), pz = tr * Math.sin(a);
+      var cI = Math.cos(U.knotF[0]), sI = Math.sin(U.knotF[0]);
+      var yv = py * cI + pz * sI, zv = -py * sI + pz * cI;
+      var cp = Math.cos(U.knotF[1]), sp = Math.sin(U.knotF[1]);
+      KP[0] = cp * px - sp * yv + U.shape[2] * zv;
+      KP[1] = sp * px + cp * yv + U.shape[3] * zv;
+      KP[2] = zv;
+    }
+
+    // ── State hand-offs ─────────────────────────────────────────────────────
+    // A drop to idle shorter than the grace period is noise between two real
+    // states (e.g. listening → transcribing → thinking): hold the current
+    // state through it so the hand-off happens once, directly.
+    var committed = 'idle', idleSince = -1;
+    function commitState() {
+      var want = I.state;
+      if (want === committed) { idleSince = -1; return; }
+      if (want === 'idle') {
+        if (idleSince < 0) idleSince = simT;
+        if (simT - idleSince < CH.idleGraceS) return;
+      }
+      idleSince = -1;
+      var from = committed;
+      committed = want;
+      handOff(from, want);
+    }
+    function handOff(from, to) {
+      if (to === 'thinking') {
+        retune(kAlpha, K.springs.alphaIn);
+        retune(kRadius, K.springs.radius);
+        if (kAlpha.x < 0.06) {
+          pulseOn = 0;
+          if (reduced()) {
+            // Reduced motion: no comet, no growth — the thought simply fades in.
+            retune(kAlpha, K.springs.alphaOut);
+            kRadius.x = K.radius; kRadius.v = 0;
+            kIncline.x = K.incline; kIncline.v = 0;
+            tracing = false;
+            trace = 2;
+          } else {
+            // Nothing of the thought is on screen: draw it fresh, out of the core.
+            kRadius.x = K.birthRadius; kRadius.v = 0;
+            kIncline.x = K.birthIncline; kIncline.v = 0;
+            tracing = true;
+            traceT = -(from === 'listening' ? K.traceDelayAfterListening : K.traceDelay);
+            trace = 0;
+          }
+        }
+        if (from === 'listening') absorbT = 0;
+      } else if (from === 'thinking') {
+        if (to === 'speaking') {
+          // The thought becomes speech: it opens outward and lets go.
+          exitMode = 'release';
+          retune(kAlpha, K.springs.alphaRelease);
+          retune(kRadius, K.springs.radiusOut);
+          releaseFlash = 1;
+          if (!reduced()) spawnRipple(1, V.rippleStrength);
+        } else {
+          exitMode = 'dissolve';
+          retune(kAlpha, K.springs.alphaOut);
+          retune(kRadius, K.springs.radiusOut);
+        }
+      }
+    }
+
     // ── Step: advance all physics by dt (also used by dev warp) ────────────
     var U = {
       shape: new Float32Array(4), layer0: new Float32Array(4), layer1: new Float32Array(4),
       angles: angles, look: new Float32Array(4), look2: new Float32Array(4),
       voice: new Float32Array(4), voice2: new Float32Array(4), rip: new Float32Array(16),
-      touch: touchRip
+      touch: touchRip, fx: new Float32Array(4), knot: new Float32Array(4),
+      knotF: new Float32Array(4), knotB: new Float32Array(4), pulse: new Float32Array(6),
+      pl: new Float32Array(16)
     };
     var simT = 0;
 
     function step(dt) {
       simT += dt;
+      commitState();
       var rm = reduced();
-      var target = C.states[I.state] || C.states.idle;
+      var target = C.states[committed] || C.states.idle;
       for (var i = 0; i < NK; i++) {
         var k = KEYS[i];
         stepSpring(look[k], target[k], dt);
@@ -201,7 +317,7 @@ export const ORB_RENDERER_JS = `
 
       // Mic: envelopes on the RN-side analysis; stale feed decays to silence.
       var now = performance.now();
-      var micLive = I.state === 'listening' && now - I.micT < (I.micHold || A.micStaleMs);
+      var micLive = committed === 'listening' && now - I.micT < (I.micHold || A.micStaleMs);
       var atk = A.attackMs / 1000, rel = A.releaseMs / 1000;
       for (var b = 0; b < 4; b++) {
         var mt = micLive ? I.mic[b] : 0;
@@ -281,9 +397,9 @@ export const ORB_RENDERER_JS = `
       if (!rm) {
         if (t.down) { tx = t.x * IX.touchTilt; ty = t.y * IX.touchTilt; }
         if (ori.has) {
-          var kb = 1 - Math.exp(-dt / IX.orientationBaselineS);
-          ori.bx += (ori.x - ori.bx) * kb;
-          ori.by += (ori.y - ori.by) * kb;
+          var kb0 = 1 - Math.exp(-dt / IX.orientationBaselineS);
+          ori.bx += (ori.x - ori.bx) * kb0;
+          ori.by += (ori.y - ori.by) * kb0;
           var rg = IX.orientationRangeDeg;
           tx += Math.max(-1, Math.min(1, (ori.x - ori.bx) / rg)) * IX.orientationTilt;
           ty += Math.max(-1, Math.min(1, (ori.y - ori.by) / rg)) * IX.orientationTilt;
@@ -303,23 +419,63 @@ export const ORB_RENDERER_JS = `
         touchRip[3] *= Math.exp(-dt * 2.4);
       } else touchRip[3] = 0;
 
+      // ── The thought ──
+      var thinking = committed === 'thinking';
+      var slow = rm ? RM.flow : 1;
+      kDriftT += dt;
+      kBreathPh = wrap(kBreathPh + dt * TAU / K.breathPeriod, TAU);
+      var kb = Math.sin(kBreathPh) * (rm ? 0.4 : 1);
+      // Deliberation deepens: tighter, a touch faster, brighter pulses.
+      thinkingFor = thinking ? thinkingFor + dt : 0;
+      var fx = clamp01((thinkingFor - K.focusAfterS) / (K.focusFullS - K.focusAfterS));
+      var focus = fx * fx * (3 - 2 * fx);
+      if (tracing) {
+        traceT += dt;
+        var tp = traceT / K.traceS;
+        trace = tp <= 0 ? 0 : tp >= 1 ? 2 : easeInOutCubic(tp);
+        if (tp >= 1) tracing = false;
+      }
+      var radiusT, inclineT, spinT;
+      if (thinking) {
+        radiusT = K.radius * (1 + 0.025 * kb);
+        inclineT = K.incline + K.inclineDrift * Math.sin(kDriftT * 0.23);
+        spinT = K.spin * (1 - 0.18 * kb) * (1 + K.focusSpin * focus);
+      } else if (exitMode === 'release') {
+        radiusT = K.releaseRadius;
+        inclineT = K.releaseIncline;
+        spinT = kAlpha.x > 0.03 ? K.spin * 1.4 : 0;
+      } else {
+        radiusT = K.birthRadius;
+        inclineT = K.birthIncline;
+        spinT = 0;
+      }
+      stepSpring(kAlpha, thinking ? 1 : 0, dt);
+      if (!thinking && kAlpha.x < 0.002) { kAlpha.x = 0; kAlpha.v = 0; }
+      stepSpring(kRadius, radiusT, dt);
+      stepSpring(kIncline, inclineT, dt);
+      stepSpring(kSpin, spinT * slow, dt);
+      kSpinAngle = wrap(kSpinAngle + dt * kSpin.x, TAU * 3);
+      kRoll = wrap(kRoll + dt * K.roll * slow, TAU);
+      // Pulses start once the thought is fully drawn.
+      pulseOn = env(pulseOn, thinking && !tracing ? 1 : 0, 0.6, 0.25, dt);
+      releaseFlash *= Math.exp(-dt / 0.3);
+      for (i = 0; i < 3; i++) pulseU[i] = wrap(pulseU[i] + dt * K.pulses[i] * slow, 1);
+      absorbT += dt;
+      var absorb = absorbCurve(absorbT) * (rm ? 0.4 : 1);
+
       // Clocks.
       var flowK = (rm ? RM.flow : 1) * (1 + mid * V.flowBoost + loud * 0.3);
       var flow = look.flow.x * flowK;
-      for (i = 0; i < 6; i++) {
-        layer[i] = wrap(layer[i] + dt * flow * (1 - 0.09 * i), 256);
+      for (i = 0; i < 7; i++) {
+        layer[i] = wrap(layer[i] + dt * flow * (1 - 0.08 * i), 256);
       }
-      layer[6] = wrap(layer[6] + dt * flow * 0.55, 256);
-      layer[7] = wrap(layer[7] + dt * (0.012 + flow * 0.12), 1000);
-      var vx = Math.max(0, look.vortex.x);
-      var thinkK = rm ? RM.flow : 1;
-      angles[0] = wrap(angles[0] + dt * 0.42 * vx * thinkK, TAU);
-      angles[1] = wrap(angles[1] + dt * 0.8 * vx * thinkK, TAU);
-      angles[2] = wrap(angles[2] + dt * 1.15 * thinkK, TAU);
-      angles[3] = wrap(angles[3] + dt * V.streamSpeed * (mw - uw) * (rm ? 0.3 : 1), TAU);
+      layer[7] = wrap(layer[7] + dt * flow * 0.55, 256);
+      angles[0] = wrap(angles[0] + dt * kSpin.x * K.mediumDrag, TAU);
+      angles[1] = wrap(angles[1] + dt * V.streamSpeed * (mw - uw) * (rm ? 0.3 : 1), TAU);
+      angles[2] = wrap(angles[2] + dt * (2.0 + high * 7) * (rm ? 0.4 : 1), TAU);
+      angles[3] = wrap(angles[3] + dt * (0.012 + flow * 0.12), 1000);
       rayPhase = wrap(rayPhase + dt * (mw * (0.7 + ttsEnv[0] * 1.6) - uw * (0.5 + micEnv[0] * 1.2)) * (rm ? 0.3 : 1), 256);
       breathPhase = wrap(breathPhase + dt * TAU / C.breathPeriod, TAU);
-      twinkle = wrap(twinkle + dt * (2.0 + high * 7) * (rm ? 0.4 : 1), TAU);
 
       // Pack uniforms.
       var breath = look.breath.x * Math.sin(breathPhase) * (rm ? RM.breath : 1);
@@ -328,13 +484,13 @@ export const ORB_RENDERER_JS = `
       U.shape[3] = tiltY.x;
       U.layer0[0] = layer[0]; U.layer0[1] = layer[1]; U.layer0[2] = layer[2]; U.layer0[3] = layer[3];
       U.layer1[0] = layer[4]; U.layer1[1] = layer[5]; U.layer1[2] = layer[6]; U.layer1[3] = layer[7];
-      U.look[0] = look.energy.x * (1 + loud * V.energyGain * 0.5);
+      U.look[0] = look.energy.x * (1 + loud * V.energyGain * 0.5) * (1 - CH.absorbDim * absorb);
       U.look[1] = look.warmth.x + mw * 0.08;
-      U.look[2] = vx;
+      U.look[2] = Math.max(0, look.vortex.x);
       U.look[3] = clamp01(look.dim.x);
       U.look2[0] = look.sparkle.x;
-      U.look2[1] = look.lean.x + pull.x;
-      U.look2[2] = look.core.x;
+      U.look2[1] = look.lean.x + pull.x + absorb * CH.absorbLean;
+      U.look2[2] = look.core.x * (1 - CH.absorbCore * absorb);
       U.look2[3] = look.warp.x;
       U.voice[0] = coreSwell.x;
       U.voice[1] = twist.x;
@@ -343,13 +499,45 @@ export const ORB_RENDERER_JS = `
       U.voice2[0] = uw;
       U.voice2[1] = mw;
       U.voice2[2] = uw * (0.35 + 0.65 * micEnv[0]) * 0.6;
-      U.voice2[3] = twinkle;
+      U.voice2[3] = rayPhase;
       for (i = 0; i < 4; i++) {
         U.rip[i * 4] = rip[i * 4];
         U.rip[i * 4 + 1] = rip[i * 4 + 1];
         U.rip[i * 4 + 2] = rip[i * 4 + 2];
         U.rip[i * 4 + 3] = 0;
       }
+      U.fx[0] = 1 + CH.absorbGlow * absorb;
+      U.fx[1] = K.light;
+      U.knot[0] = kRadius.x;
+      U.knot[1] = K.tube * (1 - 0.12 * kb) * (1 - K.focusTighten * focus) * (exitMode === 'release' && !thinking ? 0.7 : 1);
+      U.knot[2] = clamp01(kAlpha.x);
+      U.knot[3] = trace;
+      U.knotF[0] = kIncline.x;
+      U.knotF[1] = K.precess * Math.sin(kDriftT * 0.13) + tiltX.x * 1.2;
+      U.knotF[2] = kSpinAngle;
+      U.knotF[3] = kRoll;
+      U.knotB[0] = 1 - 0.08 * kb;
+      U.knotB[1] = (1 + 0.1 * kb) * (1 + 1.4 * releaseFlash);
+      U.knotB[2] = K.q;
+      U.knotB[3] = 0;
+      // Pulses (knot position, signed intensity) and the light they carry.
+      for (i = 0; i < 3; i++) {
+        var pi = pulseOn * U.knot[2] * (0.75 + 0.25 * Math.sin(kDriftT * (0.7 + 0.3 * i) + i * 2.1)) * (1 + 0.4 * focus) * (1 + 2 * releaseFlash);
+        U.pulse[i * 2] = pulseU[i];
+        U.pulse[i * 2 + 1] = K.pulses[i] < 0 ? -pi : pi;
+        if (pi > 0.002) {
+          knotPoint(pulseU[i]);
+          U.pl[i * 4] = KP[0]; U.pl[i * 4 + 1] = KP[1]; U.pl[i * 4 + 2] = KP[2];
+        }
+        U.pl[i * 4 + 3] = pi * K.pulseLight * K.light;
+      }
+      // The trace head carries its own light while the thought is drawn.
+      var headOn = tracing && trace > 0 && trace < 1 ? U.knot[2] : 0;
+      if (headOn > 0) {
+        knotPoint(trace);
+        U.pl[12] = KP[0]; U.pl[13] = KP[1]; U.pl[14] = KP[2];
+      }
+      U.pl[15] = headOn * 1.6 * K.light;
     }
     I.step = step;
     // Live envelope readout (dev HUD / tests): [mic l,lo,mid,hi, tts l,lo,mid,hi, userW, miaW].
@@ -357,10 +545,19 @@ export const ORB_RENDERER_JS = `
       return [micEnv[0], micEnv[1], micEnv[2], micEnv[3], ttsEnv[0], ttsEnv[1], ttsEnv[2], ttsEnv[3], userW, miaW];
     };
 
+    // How much is moving right now — decides 60 vs 30 fps.
+    function activity() {
+      var a = userW + miaW + kAlpha.x + (tracing ? 1 : 0) + absorbCurve(absorbT) +
+        touchRip[3] + Math.abs(press.x) * 30 + Math.abs(tiltX.v) + Math.abs(tiltY.v);
+      if (I.touch.down) a += 1;
+      for (var i = 0; i < 4; i++) a += rip[i * 4 + 1];
+      for (var k = 0; k < NK; k++) a += Math.abs(look[KEYS[k]].v) * 3;
+      return a;
+    }
+
     // ── Sizing and adaptive quality ─────────────────────────────────────────
     var Q = C.quality;
     var tier = Math.max(0, Math.min(Q.tiers.length - 1, Q.startTier));
-    var upgrades = 0;
     var cssW = 1, cssH = 1, pxW = 1, pxH = 1;
     function resize() {
       cssW = container.clientWidth || 1;
@@ -372,26 +569,27 @@ export const ORB_RENDERER_JS = `
         canvas.width = pxW;
         canvas.height = pxH;
       }
-      if (gl) gl.viewport(0, 0, pxW, pxH);
     }
     window.addEventListener('resize', resize);
 
-    var emaMs = 16.7, slowFor = 0, fastFor = 0, locked = false;
-    function adapt(frameMs, dt) {
+    // Judged on drawn frames while active: slower than the target for a while
+    // → step down; back on target for a while → recover (never above start).
+    var drawEma = 16.7, slowFor = 0, fastFor = 0, locked = false;
+    function adapt(drawMs, targetMs, dt) {
       if (locked) return;
-      emaMs += (frameMs - emaMs) * 0.06;
-      if (emaMs > Q.downMs) { slowFor += dt; fastFor = 0; }
-      else if (emaMs < Q.upMs) { fastFor += dt; slowFor = 0; }
-      else { slowFor = 0; fastFor = 0; }
+      drawEma += (drawMs - drawEma) * 0.1;
+      if (drawEma > targetMs * Q.slowFactor) { slowFor += dt; fastFor = 0; }
+      else { fastFor += dt; slowFor = Math.max(0, slowFor - dt * 0.5); }
       if (slowFor > Q.downAfterS && tier < Q.tiers.length - 1) {
-        tier++; slowFor = 0; emaMs = 16.7; resize();
-      } else if (fastFor > Q.upAfterS && tier > 0 && upgrades < Q.maxUpgrades) {
-        tier--; upgrades++; fastFor = 0; resize();
+        tier++; slowFor = 0; fastFor = 0; drawEma = targetMs; resize();
+      } else if (fastFor > Q.upAfterS && tier > Q.startTier) {
+        tier--; fastFor = 0; resize();
       }
     }
 
     // ── WebGL ───────────────────────────────────────────────────────────────
-    var gl = null, prog = null, loc = null, noiseTex = null;
+    var gl = null, progI = null, progC = null, locI = null, locC = null;
+    var noiseTex = null, target = null;
     var glAttrs = {
       alpha: true, depth: false, stencil: false, antialias: false,
       premultipliedAlpha: true, preserveDrawingBuffer: false,
@@ -416,6 +614,7 @@ export const ORB_RENDERER_JS = `
           px[o + 3] = 255;
         }
       }
+      gl.activeTexture(gl.TEXTURE0);
       var tex = gl.createTexture();
       gl.bindTexture(gl.TEXTURE_2D, tex);
       gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
@@ -436,37 +635,87 @@ export const ORB_RENDERER_JS = `
       }
       return sh;
     }
+    function link(fragSrc) {
+      var p = gl.createProgram();
+      gl.attachShader(p, compile(gl.VERTEX_SHADER, C.vert));
+      gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fragSrc));
+      gl.bindAttribLocation(p, 0, 'aPos');
+      gl.linkProgram(p);
+      if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+        throw new Error('link: ' + gl.getProgramInfoLog(p));
+      }
+      return p;
+    }
+    function locate(p) {
+      function u(n) { return gl.getUniformLocation(p, n); }
+      return {
+        res: u('uRes'), shape: u('uShape'), layer0: u('uLayer0'), layer1: u('uLayer1'),
+        angles: u('uAngles'), look: u('uLook'), look2: u('uLook2'), voice: u('uVoice'),
+        voice2: u('uVoice2'), rip: u('uRip[0]') || u('uRip'), touch: u('uTouch'),
+        fx: u('uFx'), knot: u('uKnot'), knotF: u('uKnotF'), knotB: u('uKnotB'),
+        pulse: u('uPulse[0]') || u('uPulse'), pl: u('uPL[0]') || u('uPL'),
+        slices: u('uSlices'), pal: u('uPal[0]') || u('uPal'),
+        noise: u('uNoise'), interior: u('uInterior')
+      };
+    }
 
     function initGL() {
-      prog = gl.createProgram();
-      gl.attachShader(prog, compile(gl.VERTEX_SHADER, C.vert));
-      gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, C.frag));
-      gl.bindAttribLocation(prog, 0, 'aPos');
-      gl.linkProgram(prog);
-      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
-        throw new Error('link: ' + gl.getProgramInfoLog(prog));
-      }
-      gl.useProgram(prog);
+      progI = link(C.fragInterior);
+      progC = link(C.fragComposite);
       var buf = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, buf);
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
       gl.enableVertexAttribArray(0);
       gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
       noiseTex = bakeNoise();
-      gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, noiseTex);
-      function u(n) { return gl.getUniformLocation(prog, n); }
-      loc = {
-        res: u('uRes'), shape: u('uShape'), layer0: u('uLayer0'), layer1: u('uLayer1'),
-        angles: u('uAngles'), look: u('uLook'), look2: u('uLook2'), voice: u('uVoice'),
-        voice2: u('uVoice2'), rip: u('uRip[0]') || u('uRip'), touch: u('uTouch'),
-        slices: u('uSlices'), ray: u('uRay'), pal: u('uPal[0]') || u('uPal'), noise: u('uNoise')
-      };
-      gl.uniform1i(loc.noise, 0);
-      gl.uniform3fv(loc.pal, new Float32Array(C.pal));
+      locI = locate(progI);
+      locC = locate(progC);
+      var pal = new Float32Array(C.pal);
+      gl.useProgram(progI);
+      gl.uniform1i(locI.noise, 0);
+      gl.uniform3fv(locI.pal, pal);
+      gl.useProgram(progC);
+      gl.uniform1i(locC.noise, 0);
+      gl.uniform1i(locC.interior, 1);
+      gl.uniform3fv(locC.pal, pal);
       gl.disable(gl.DEPTH_TEST);
       gl.disable(gl.BLEND);
       gl.clearColor(0, 0, 0, 0);
+      target = null;
+    }
+
+    // The interior renders into this (RGBA8, sqrt-encoded colour + transmittance).
+    function ensureTarget() {
+      var s = Q.tiers[tier].inner;
+      var w = Math.max(16, Math.round(pxW * s));
+      var h = Math.max(16, Math.round(pxH * s));
+      if (target && target.w === w && target.h === h) return true;
+      if (target) {
+        gl.deleteFramebuffer(target.fb);
+        gl.deleteTexture(target.tex);
+        target = null;
+      }
+      gl.activeTexture(gl.TEXTURE1);
+      var tex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.activeTexture(gl.TEXTURE0);
+      var fb = gl.createFramebuffer();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+      var ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      if (!ok) {
+        gl.deleteFramebuffer(fb);
+        gl.deleteTexture(tex);
+        return false;
+      }
+      target = { tex: tex, fb: fb, w: w, h: h };
+      return true;
     }
 
     var contextLost = false;
@@ -496,24 +745,54 @@ export const ORB_RENDERER_JS = `
       }
     });
 
+    function setCommon(L) {
+      gl.uniform4fv(L.shape, U.shape);
+      gl.uniform4fv(L.layer0, U.layer0);
+      gl.uniform4fv(L.layer1, U.layer1);
+      gl.uniform4fv(L.angles, U.angles);
+      gl.uniform4fv(L.look, U.look);
+      gl.uniform4fv(L.look2, U.look2);
+      gl.uniform4fv(L.voice, U.voice);
+      gl.uniform4fv(L.voice2, U.voice2);
+      gl.uniform4fv(L.rip, U.rip);
+      gl.uniform4fv(L.touch, U.touch);
+      gl.uniform4fv(L.fx, U.fx);
+      gl.uniform4fv(L.knot, U.knot);
+      gl.uniform4fv(L.knotF, U.knotF);
+      gl.uniform4fv(L.knotB, U.knotB);
+      gl.uniform2fv(L.pulse, U.pulse);
+      gl.uniform4fv(L.pl, U.pl);
+    }
+
     function drawGL() {
       if (contextLost) return;
-      var slices = Q.tiers[tier].slices;
+      if (!ensureTarget()) {
+        rnLog('fallback', 'interior render target unavailable');
+        swapToFallback();
+        drawFallback();
+        return;
+      }
       var halfMin = 0.5 * Math.min(pxW, pxH);
       U.shape[1] = 1.4 / (halfMin * U.shape[0]);
-      gl.uniform2f(loc.res, pxW, pxH);
-      gl.uniform4fv(loc.shape, U.shape);
-      gl.uniform4fv(loc.layer0, U.layer0);
-      gl.uniform4fv(loc.layer1, U.layer1);
-      gl.uniform4fv(loc.angles, U.angles);
-      gl.uniform4fv(loc.look, U.look);
-      gl.uniform4fv(loc.look2, U.look2);
-      gl.uniform4fv(loc.voice, U.voice);
-      gl.uniform4fv(loc.voice2, U.voice2);
-      gl.uniform4fv(loc.rip, U.rip);
-      gl.uniform4fv(loc.touch, U.touch);
-      gl.uniform1f(loc.slices, slices);
-      gl.uniform1f(loc.ray, rayPhase);
+
+      // Pass 1: the soft interior, at reduced resolution.
+      gl.bindFramebuffer(gl.FRAMEBUFFER, target.fb);
+      gl.viewport(0, 0, target.w, target.h);
+      gl.useProgram(progI);
+      gl.uniform2f(locI.res, target.w, target.h);
+      gl.uniform1f(locI.slices, Q.tiers[tier].slices);
+      setCommon(locI);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+      // Pass 2: glass, the thought and sparkles, crisp at full resolution.
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, pxW, pxH);
+      gl.useProgram(progC);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, target.tex);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.uniform2f(locC.res, pxW, pxH);
+      setCommon(locC);
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     }
@@ -573,14 +852,14 @@ export const ORB_RENDERER_JS = `
       cg.addColorStop(1, rgba(P.pink, 0));
       c2.fillStyle = cg;
       c2.fillRect(0, 0, w, h);
-      if (U.look[2] > 0.01) {
+      if (U.knot[2] > 0.01) {
         c2.save();
         c2.translate(cx, cy);
-        c2.scale(1, 0.52);
-        c2.strokeStyle = rgba(P.pink, 0.5 * U.look[2]);
+        c2.scale(1, Math.cos(U.knotF[0]));
+        c2.strokeStyle = rgba(P.pink, 0.5 * U.knot[2]);
         c2.lineWidth = Math.max(1, R * 0.03);
         c2.beginPath();
-        c2.arc(0, 0, R * 0.56, 0, TAU);
+        c2.arc(0, 0, R * U.knot[0], 0, TAU);
         c2.stroke();
         c2.restore();
       }
@@ -599,8 +878,15 @@ export const ORB_RENDERER_JS = `
       c2.restore();
     }
 
+    function draw() {
+      if (useFallback) drawFallback();
+      else drawGL();
+    }
+
     // ── Loop ────────────────────────────────────────────────────────────────
-    var running = false, lastT = 0, perfT = 0, perfFrames = 0, perfMs = 0;
+    var running = false, lastT = 0, lastDraw = 0, paceAcc = 0;
+    var calm = false, calmFor = 0;
+    var perfT = 0, perfDraws = 0, perfMs = 0;
     function frame(t) {
       if (!I.active || document.hidden) { running = false; return; }
       requestAnimationFrame(frame);
@@ -608,22 +894,35 @@ export const ORB_RENDERER_JS = `
       lastT = t;
       var dt = Math.min(Math.max(frameMs / 1000, 0), 0.05);
       step(dt);
-      if (useFallback) drawFallback();
-      else {
-        drawGL();
-        adapt(frameMs, dt);
-      }
+
+      // Pace: full rate while moving, half when calm; never above activeFps.
+      if (activity() > PC.activityOn) { calm = false; calmFor = 0; }
+      else { calmFor += dt; if (calmFor > PC.calmAfterS) calm = true; }
+      var targetMs = 1000 / (calm ? PC.calmFps : PC.activeFps);
+      paceAcc += frameMs;
+      if (paceAcc < targetMs - 2) return;
+      paceAcc -= targetMs;
+      if (paceAcc > targetMs) paceAcc = 0;
+
+      var drawMs = lastDraw ? t - lastDraw : targetMs;
+      lastDraw = t;
+      draw();
+      if (!useFallback && !calm) adapt(drawMs, targetMs, dt);
+
       if (C.dev) {
-        perfFrames++;
-        perfMs += frameMs;
+        perfDraws++;
+        perfMs += drawMs;
         if (t - perfT > 1000) {
+          var tierCfg = Q.tiers[tier];
           rnLog('perf', {
-            fps: Math.round((perfFrames * 1000) / (t - perfT)),
-            ms: +(perfMs / perfFrames).toFixed(1),
-            tier: tier, dpr: Q.tiers[tier].dpr, slices: Q.tiers[tier].slices,
-            px: pxW + 'x' + pxH, fallback: useFallback
+            fps: Math.round((perfDraws * 1000) / (t - perfT)),
+            ms: +(perfMs / perfDraws).toFixed(1),
+            tier: tier, dpr: tierCfg.dpr, slices: tierCfg.slices, inner: tierCfg.inner,
+            px: pxW + 'x' + pxH,
+            ipx: target ? target.w + 'x' + target.h : '-',
+            calm: calm, fallback: useFallback
           });
-          perfT = t; perfFrames = 0; perfMs = 0;
+          perfT = t; perfDraws = 0; perfMs = 0;
         }
       }
     }
@@ -631,10 +930,12 @@ export const ORB_RENDERER_JS = `
       if (running || !I.active || document.hidden) return;
       running = true;
       lastT = 0;
+      lastDraw = 0;
+      paceAcc = 1e3; // draw the first frame immediately
       requestAnimationFrame(frame);
     }
     I.wake = wake;
-    I.draw = function () { if (useFallback) drawFallback(); else drawGL(); };
+    I.draw = draw;
     // Pin a quality tier (dev/testing): disables adaptation.
     I.lockTier = function (n) {
       tier = Math.max(0, Math.min(Q.tiers.length - 1, n | 0));

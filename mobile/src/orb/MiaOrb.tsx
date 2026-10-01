@@ -31,12 +31,17 @@ const DEV_TOOLS_JS: string | null = __DEV__
   : null;
 
 export type OrbPerf = {
+  /** Frames actually drawn per second (60 active, 30 calm). */
   fps: number;
   ms: number;
   tier: number;
   dpr: number;
   slices: number;
+  /** Interior resolution scale, and both render sizes. */
+  inner: number;
   px: string;
+  ipx: string;
+  calm: boolean;
   fallback: boolean;
 };
 

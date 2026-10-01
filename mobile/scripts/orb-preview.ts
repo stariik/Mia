@@ -2,14 +2,15 @@
 // Dev-only: writes a standalone MiaOrb preview page for judging the animation
 // on a desktop browser (and for headless screenshots). Not part of the app.
 //
-//   ../web/node_modules/.bin/tsx scripts/orb-preview.ts [out.html]
+//   ../web/node_modules/.bin/tsx scripts/orb-preview.ts [out.html] [--fallback]
+//       [--config '{"knot":{"q":8}}']   (ORB_CONFIG overrides, for tuning)
 //
 // Open it with URL params to pin a look, e.g.
 //   orb-preview.html?state=listening&sim=mic&mode=procedural&t=2.5
 // Params: state (idle|listening|thinking|speaking|error), sim (mic|tts),
 // mode (speech|procedural), t (seconds to warp before showing), reduced=1,
 // fallback=1, size (css px), tier (quality tier index), touch=x,y, hud=0,
-// bar=0, seq=idle:2,thinking:0.6 (state changes mid-warp).
+// bar=0, seq=idle:2,thinking:0.6 (state changes mid-warp), bench=1 (uncapped).
 
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -17,7 +18,13 @@ import { resolve } from 'node:path';
 import { buildOrbPage } from '../src/orb/buildOrbPage';
 import { ORB_DEV_TOOLS_JS } from '../src/orb/page/devTools';
 
-const out = resolve(process.argv[2] ?? 'orb-preview.html');
+const args = process.argv.slice(2);
+const flag = (name: string) => {
+  const i = args.indexOf(name);
+  return i >= 0 ? args[i + 1] : undefined;
+};
+const out = resolve(args[0] && !args[0].startsWith('--') ? args[0] : 'orb-preview.html');
+const overrides = flag('--config');
 
 // Runs after the dev tools. Shims the RN bridge so perf reports show in a HUD,
 // lays the orb out on the app's navy, and wires mouse → touch + a control bar.
@@ -78,6 +85,8 @@ const HARNESS_JS = `
   if (q.get('bar') === '0') bar.style.display = 'none';
 
   if (q.get('tier')) __orbIn.lockTier(+q.get('tier'));
+  // bench=1: draw every frame (no calm pacing, no 60 fps cap) to measure cost.
+  if (q.get('bench') === '1') { __orbCfg.pacing.calmFps = 1000; __orbCfg.pacing.activeFps = 1000; }
   // A pinned time means a still: stop the live loop so nothing runs past it.
   if (q.get('t') || q.get('seq')) orb.setActive(false);
   if (q.get('state')) orb.state(q.get('state'));
@@ -101,7 +110,8 @@ const HARNESS_JS = `
 
 const html = buildOrbPage({
   devTools: ORB_DEV_TOOLS_JS + '\n' + HARNESS_JS,
-  forceFallback: process.argv.includes('--fallback'),
+  forceFallback: args.includes('--fallback'),
+  config: overrides ? JSON.parse(overrides) : undefined,
 });
 writeFileSync(out, html);
 console.log(out);
