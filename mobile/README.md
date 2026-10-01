@@ -83,23 +83,33 @@ End-to-end verification (needs AVD + backend + mic):
 
 ```
 src/
-  api/              client, /api/chat SSE, /api/transcribe upload, TTS
+  api/              client, /api/chat SSE, transcribe, translate, TTS
   config/env.ts     react-native-config glue
-  stores/           Zustand (conversation, voice, tools)
+  stores/           Zustand (conversation, voice, tools, translator prefs +
+                    translatorSession)
   lib/tools/
-    types.ts                  ClientToolCall type
-    runClientCalls.ts         dispatches set_timer / set_alarm
-    platform/
-      index.ts                ToolPlatform interface
-      native.ts               notifee + setTimeout adapter
-  theme/            colors/typography/spacing/radius tokens from DESIGN.md
-  components/       GlassCard, VoiceOrb, ChatBubble, ChipTag, GlowButton,
-                    AppTextInput, ActiveTimers, ActiveAlarms
-  hooks/            useVoicePipeline, usePcmRecorder, useAudioRecorder,
-                    useSilenceAutoStop, usePermissions
-  navigation/       RootNavigator (single Home screen, stack-ready)
-  screens/          HomeScreen
+    runClientCalls.ts         dispatches the assistant's client tools
+                              (timers, alarms, music, SMS, maps,
+                              start_translation)
+    platform/native.ts        notifee + setTimeout adapter (timers/alarms)
+  lib/translator/   translator mode as a screen-less service (session.ts)
+                    and the assistant's start_translation queue
+  lib/translatorCommands.ts   on-device "translate to…/stop translating"
+  lib/orbMarks.ts   geometry for the timer/alarm marks around the orb
+  orb/              MiaOrb (WebGL page in a WebView) + its config
+  theme/            colour, type (FiraGO), spacing, radius, motion tokens
+  components/       OrbMarks, OrbCaption, ConversationDrawer, MiaWordmark,
+                    ui/ (Icon, IconButton), chat/ (ChatView, TranslatorView,
+                    Composer, LanguageSheet…)
+  hooks/            useVoicePipeline, usePcmRecorder, useSilenceAutoStop,
+                    useWakeWord, usePermissions
+  navigation/       RootNavigator: Auth | Home, Settings, AlarmRing
+  screens/          Home, Settings, AlarmRing, Auth
 ```
+
+Timers, alarms and the translator have no screens: they are started and
+controlled by voice. Active timers and alarms show as marks around the orb;
+translator mode takes over the chat area and tints the orb.
 
 ## Alarms & timers
 

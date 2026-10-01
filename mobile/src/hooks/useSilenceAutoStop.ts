@@ -46,90 +46,99 @@ const SILENCE_MS = 900;
 const PRE_SPEECH_GRACE_MS = 7000;
 const POLL_MS = 80;
 
+/**
+ * Starts watching `audioLevel` and calls `onStop` once when the turn is over
+ * (see the phases above). Returns a disposer. Plain function so services with
+ * no screen (the translator) share the exact same VAD as the chat.
+ */
+export function startSilenceWatch(onStop: (spoke: boolean) => void): () => void {
+  const startedAt = Date.now();
+  let noiseFloor = 0;
+  let startThreshold = MIN_START_THRESHOLD;
+  let continueThreshold = startThreshold * CONTINUE_RATIO;
+  let calibrated = false;
+  let voiceRunStart = 0; // continuous voice tick chain start; 0 = not in chain
+  let lastVoiceAt = 0;
+  let hasSpoken = false;
+  let stopped = false;
+  let peak = 0; // loudest level this turn (for peak-relative silence)
+
+  const stop = (spoke: boolean) => {
+    if (stopped) return;
+    stopped = true;
+    onStop(spoke);
+  };
+
+  const id = setInterval(() => {
+    if (stopped) return;
+    const level = audioLevel.value;
+    const now = Date.now();
+    const elapsed = now - startedAt;
+
+    // Phase 1: calibrate noise floor.
+    if (elapsed < CAL_MS) {
+      if (level > noiseFloor) noiseFloor = level;
+      return;
+    }
+
+    // Lock thresholds once.
+    if (!calibrated) {
+      calibrated = true;
+      startThreshold = Math.min(
+        MAX_START_THRESHOLD,
+        Math.max(MIN_START_THRESHOLD, noiseFloor * NOISE_FLOOR_MULTIPLIER),
+      );
+      continueThreshold = startThreshold * CONTINUE_RATIO;
+    }
+
+    // Track the loudest sample so the "still talking" threshold scales to
+    // how loud THIS user actually speaks (room noise is often near the
+    // calibrated floor, so a fixed low threshold never clears it).
+    if (level > peak) peak = level;
+
+    // Phase 2: detect with hysteresis. Continuation threshold is the higher
+    // of the calibrated floor and a fraction of the speech peak.
+    const effContinue = Math.max(
+      continueThreshold,
+      peak * CONTINUE_PEAK_RATIO,
+    );
+    const threshold = hasSpoken ? effContinue : startThreshold;
+
+    if (level >= threshold) {
+      if (voiceRunStart === 0) voiceRunStart = now;
+      const runMs = now - voiceRunStart;
+      // Latch: only mark "has spoken" after MIN_VOICE_LATCH_MS continuous.
+      if (!hasSpoken && runMs >= MIN_VOICE_LATCH_MS) {
+        hasSpoken = true;
+      }
+      // Only treat as ongoing speech (resetting the silence timer) once the
+      // run is sustained — a lone noise spike shouldn't keep recording alive.
+      if (!hasSpoken || runMs >= CONTINUE_DEBOUNCE_MS) {
+        lastVoiceAt = now;
+      }
+      return;
+    }
+
+    // Drop below threshold → break the run.
+    voiceRunStart = 0;
+
+    if (!hasSpoken) {
+      if (elapsed > PRE_SPEECH_GRACE_MS) stop(false);
+      return;
+    }
+
+    if (now - lastVoiceAt > SILENCE_MS) stop(true);
+  }, POLL_MS);
+
+  return () => clearInterval(id);
+}
+
 export function useSilenceAutoStop(
   active: boolean,
   onStop: (spoke: boolean) => void,
 ) {
   useEffect(() => {
     if (!active) return;
-    const startedAt = Date.now();
-    let noiseFloor = 0;
-    let startThreshold = MIN_START_THRESHOLD;
-    let continueThreshold = startThreshold * CONTINUE_RATIO;
-    let calibrated = false;
-    let voiceRunStart = 0; // continuous voice tick chain start; 0 = not in chain
-    let lastVoiceAt = 0;
-    let hasSpoken = false;
-    let stopped = false;
-    let peak = 0; // loudest level this turn (for peak-relative silence)
-
-    const stop = (spoke: boolean) => {
-      if (stopped) return;
-      stopped = true;
-      onStop(spoke);
-    };
-
-    const id = setInterval(() => {
-      if (stopped) return;
-      const level = audioLevel.value;
-      const now = Date.now();
-      const elapsed = now - startedAt;
-
-      // Phase 1: calibrate noise floor.
-      if (elapsed < CAL_MS) {
-        if (level > noiseFloor) noiseFloor = level;
-        return;
-      }
-
-      // Lock thresholds once.
-      if (!calibrated) {
-        calibrated = true;
-        startThreshold = Math.min(
-          MAX_START_THRESHOLD,
-          Math.max(MIN_START_THRESHOLD, noiseFloor * NOISE_FLOOR_MULTIPLIER),
-        );
-        continueThreshold = startThreshold * CONTINUE_RATIO;
-      }
-
-      // Track the loudest sample so the "still talking" threshold scales to
-      // how loud THIS user actually speaks (room noise is often near the
-      // calibrated floor, so a fixed low threshold never clears it).
-      if (level > peak) peak = level;
-
-      // Phase 2: detect with hysteresis. Continuation threshold is the higher
-      // of the calibrated floor and a fraction of the speech peak.
-      const effContinue = Math.max(
-        continueThreshold,
-        peak * CONTINUE_PEAK_RATIO,
-      );
-      const threshold = hasSpoken ? effContinue : startThreshold;
-
-      if (level >= threshold) {
-        if (voiceRunStart === 0) voiceRunStart = now;
-        const runMs = now - voiceRunStart;
-        // Latch: only mark "has spoken" after MIN_VOICE_LATCH_MS continuous.
-        if (!hasSpoken && runMs >= MIN_VOICE_LATCH_MS) {
-          hasSpoken = true;
-        }
-        // Only treat as ongoing speech (resetting the silence timer) once the
-        // run is sustained — a lone noise spike shouldn't keep recording alive.
-        if (!hasSpoken || runMs >= CONTINUE_DEBOUNCE_MS) {
-          lastVoiceAt = now;
-        }
-        return;
-      }
-
-      // Drop below threshold → break the run.
-      voiceRunStart = 0;
-
-      if (!hasSpoken) {
-        if (elapsed > PRE_SPEECH_GRACE_MS) stop(false);
-        return;
-      }
-
-      if (now - lastVoiceAt > SILENCE_MS) stop(true);
-    }, POLL_MS);
-
-    return () => clearInterval(id);
+    return startSilenceWatch(onStop);
   }, [active, onStop]);
 }

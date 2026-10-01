@@ -3,7 +3,9 @@ import { AppState } from 'react-native';
 
 import { expireSessionIf401 } from '@/api/client';
 import { transcribeGooglePcm } from '@/api/transcribeGoogle';
-import { runAssistantTurn } from '@/lib/assistantTurn';
+import { runAssistantTurn, type TurnResult } from '@/lib/assistantTurn';
+import { translator } from '@/lib/translator/session';
+import { matchTranslatorCommand } from '@/lib/translatorCommands';
 import { orbPlayback } from '@/lib/orbPlayback';
 import { wakeWord } from '@/lib/wakeWord';
 import { useVoiceStore } from '@/stores/voiceStore';
@@ -60,7 +62,7 @@ export function useVoicePipeline() {
   }, []);
 
   const handleText = useCallback(
-    async (text: string) => {
+    async (text: string): Promise<TurnResult> => {
       const trimmed = text.trim();
       if (!trimmed) return { endSession: false };
 
@@ -68,14 +70,36 @@ export function useVoicePipeline() {
       cancelActiveTurn();
       const myTurn = ++turnIdRef.current;
 
-      return runAssistantTurn({
-        text: trimmed,
-        playback: orbPlayback,
-        isCurrent: () => turnIdRef.current === myTurn,
-        onChatAbort: (abort) => {
-          chatAbortRef.current = abort;
-        },
-      });
+      // "Translate to English" / "თარგმნე ინგლისურად": switch modes on the
+      // phone at once, no chat round trip. Ending the session keeps the
+      // hands-free loop from re-arming the chat mic under the translator's.
+      const command = matchTranslatorCommand(trimmed, { inSession: false });
+      let result: TurnResult;
+      if (command?.kind === 'start') {
+        result = {
+          endSession: true,
+          translator: {
+            ...(command.from && { from: command.from }),
+            ...(command.to && { to: command.to }),
+          },
+        };
+      } else {
+        result = await runAssistantTurn({
+          text: trimmed,
+          playback: orbPlayback,
+          isCurrent: () => turnIdRef.current === myTurn,
+          onChatAbort: (abort) => {
+            chatAbortRef.current = abort;
+          },
+        });
+      }
+      // Every caller has released the mic by now (the STT finished, or
+      // sendText stopped the conversation), so the translator can take it.
+      if (result.translator && turnIdRef.current === myTurn) {
+        conversationRef.current = false;
+        void translator.start(result.translator);
+      }
+      return result;
     },
     [cancelActiveTurn],
   );

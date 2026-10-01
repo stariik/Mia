@@ -4,9 +4,6 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import { AuthScreen } from '@/screens/AuthScreen';
 import { HomeScreen } from '@/screens/HomeScreen';
-import { AlarmsScreen } from '@/screens/AlarmsScreen';
-import { TimersScreen } from '@/screens/TimersScreen';
-import { TranslatorScreen } from '@/screens/TranslatorScreen';
 import { SettingsScreen } from '@/screens/SettingsScreen';
 import { AlarmRingScreen } from '@/screens/AlarmRingScreen';
 import { useAuthStore } from '@/stores/authStore';
@@ -55,20 +52,9 @@ export function RootNavigator({ onReady }: { onReady?: () => void }) {
         ) : (
           <>
             <Stack.Screen name="Home" component={HomeScreen} />
-            {/* Each tool enters from the side its toolbar button sits on:
-                Translator and Timers from the left, Alarms and Settings from
-                the right. */}
-            <Stack.Screen name="Alarms" component={AlarmsScreen} />
-            <Stack.Screen
-              name="Timers"
-              component={TimersScreen}
-              options={{ animation: 'ios_from_left' }}
-            />
-            <Stack.Screen
-              name="Translator"
-              component={TranslatorScreen}
-              options={{ animation: 'ios_from_left' }}
-            />
+            {/* Settings slides in from the right, where its button sits.
+                Timers, alarms and the translator have no screens: they are
+                voice-only and live around the orb / in the chat area. */}
             <Stack.Screen name="Settings" component={SettingsScreen} />
             <Stack.Screen
               name="AlarmRing"

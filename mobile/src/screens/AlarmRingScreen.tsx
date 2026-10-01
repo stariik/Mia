@@ -8,11 +8,12 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
 import Animated, {
   Easing,
   cancelAnimation,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withRepeat,
   withSequence,
@@ -56,30 +57,34 @@ export function AlarmRingScreen({ route, navigation }: Props) {
   const display = alarm ?? snapshot;
 
   const pulse = useSharedValue(0);
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     // Keep the alarm visible over the keyguard while ringing; cleared on
     // unmount so the flags don't linger and break keyboard focus elsewhere.
     setLockScreenFlags(true);
     Vibration.vibrate(VIBRATE_PATTERN, true);
-    pulse.value = withRepeat(
-      withSequence(
-        withTiming(1, { duration: 700, easing: Easing.out(Easing.cubic) }),
-        withTiming(0, { duration: 700, easing: Easing.in(Easing.cubic) }),
-      ),
-      -1,
-      false,
-    );
+    // A slow swell, not a flash: the vibration and the sound do the waking.
+    pulse.value = reduceMotion
+      ? 0.6
+      : withRepeat(
+          withSequence(
+            withTiming(1, { duration: 1400, easing: Easing.inOut(Easing.sin) }),
+            withTiming(0, { duration: 1400, easing: Easing.inOut(Easing.sin) }),
+          ),
+          -1,
+          false,
+        );
     return () => {
       setLockScreenFlags(false);
       Vibration.cancel();
       cancelAnimation(pulse);
     };
-  }, [pulse]);
+  }, [pulse, reduceMotion]);
 
   const pulseStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: 1 + pulse.value * 0.08 }],
-    opacity: 0.35 + pulse.value * 0.4,
+    transform: [{ scale: 0.92 + pulse.value * 0.1 }],
+    opacity: 0.55 + pulse.value * 0.45,
   }));
 
   const onSnooze = async () => {
@@ -102,62 +107,60 @@ export function AlarmRingScreen({ route, navigation }: Props) {
   );
 
   return (
-    <LinearGradient
-      colors={['#1a0410', colors.bgDeep]}
-      start={{ x: 0.5, y: 0 }}
-      end={{ x: 0.5, y: 1 }}
-      style={styles.root}
-    >
+    <View style={styles.root}>
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
         <StatusBar barStyle="light-content" backgroundColor={colors.bgDeep} />
 
         <View style={styles.center}>
-          <Animated.View style={[styles.glow, pulseStyle]} />
+          <Animated.View style={[styles.glow, pulseStyle]} pointerEvents="none">
+            <Svg width={GLOW} height={GLOW}>
+              <Defs>
+                <RadialGradient id="ringGlow">
+                  <Stop offset="0" stopColor={colors.gradientMid} stopOpacity={0.32} />
+                  <Stop offset="0.55" stopColor={colors.gradientStart} stopOpacity={0.12} />
+                  <Stop offset="1" stopColor={colors.gradientStart} stopOpacity={0} />
+                </RadialGradient>
+              </Defs>
+              <Circle cx={GLOW / 2} cy={GLOW / 2} r={GLOW / 2} fill="url(#ringGlow)" />
+            </Svg>
+          </Animated.View>
           <Text style={styles.label}>მაღვიძარა</Text>
-          <Text style={styles.time}>{timeText}</Text>
-          {display?.label ? (
-            <Text style={styles.title}>{display.label}</Text>
-          ) : (
-            <Text style={styles.title}>გაღვიძების დროა</Text>
-          )}
+          <Text style={styles.time} accessibilityRole="header">
+            {timeText}
+          </Text>
+          <Text style={styles.title}>
+            {display?.label ? display.label : 'გაღვიძების დროა'}
+          </Text>
         </View>
 
         <View style={styles.actions}>
           <Pressable
-            onPress={onSnooze}
-            style={({ pressed }) => [
-              styles.btn,
-              styles.snooze,
-              pressed && styles.btnPressed,
-            ]}
-          >
-            <Text style={[typography.title, styles.btnText]}>გადავადება</Text>
-            <Text style={[typography.bodySmall, styles.btnSub]}>9 წუთით</Text>
-          </Pressable>
-
-          <Pressable
             onPress={onDismiss}
-            style={({ pressed }) => [
-              styles.btn,
-              styles.dismiss,
-              pressed && styles.btnPressed,
-            ]}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.btn, styles.dismiss, pressed && styles.btnPressed]}
           >
-            <Text style={[typography.title, styles.btnDismissText]}>
-              გაჩერება
-            </Text>
+            <Text style={styles.dismissText}>გაჩერება</Text>
+          </Pressable>
+          <Pressable
+            onPress={onSnooze}
+            accessibilityRole="button"
+            accessibilityHint="9 წუთით"
+            style={({ pressed }) => [styles.btn, styles.snooze, pressed && styles.btnPressed]}
+          >
+            <Text style={styles.snoozeText}>გადადება · 9 წუთი</Text>
           </Pressable>
         </View>
       </SafeAreaView>
-    </LinearGradient>
+    </View>
   );
 }
 
+const GLOW = 380;
+
 const styles = StyleSheet.create({
-  root: { flex: 1 },
+  root: { flex: 1, backgroundColor: colors.bgDeep },
   safe: {
     flex: 1,
-    backgroundColor: 'transparent',
     paddingHorizontal: spacing.xl,
     justifyContent: 'space-between',
   },
@@ -165,31 +168,29 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    position: 'relative',
   },
   glow: {
     position: 'absolute',
-    width: 360,
-    height: 360,
-    borderRadius: 180,
-    backgroundColor: colors.dangerBg,
+    width: GLOW,
+    height: GLOW,
   },
   label: {
-    ...typography.labelSm,
-    color: colors.warning,
-    marginBottom: spacing.lg,
+    ...typography.label,
+    color: colors.textFaint,
+    marginBottom: spacing.md,
   },
   time: {
-    fontFamily: fonts.numeric,
-    fontSize: 96,
+    ...typography.numeric,
+    fontFamily: fonts.body,
+    fontSize: 88,
     lineHeight: 100,
     letterSpacing: -2,
     color: colors.text,
   },
   title: {
-    ...typography.bodyLg,
+    ...typography.reading,
     color: colors.textMuted,
-    marginTop: spacing.lg,
+    marginTop: spacing.md,
     textAlign: 'center',
   },
   actions: {
@@ -197,28 +198,25 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xl,
   },
   btn: {
-    paddingVertical: spacing.xl,
+    minHeight: 60,
     borderRadius: radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
   },
   btnPressed: { opacity: 0.85 },
+  dismiss: { backgroundColor: colors.primary },
+  dismissText: {
+    ...typography.title,
+    fontSize: 18,
+    color: colors.primaryOn,
+  },
   snooze: {
-    backgroundColor: 'rgba(255,210,138,0.14)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,210,138,0.45)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.strokeStrong,
   },
-  dismiss: {
-    backgroundColor: colors.danger,
-  },
-  btnText: {
-    color: colors.warning,
-  },
-  btnSub: {
-    color: colors.textMuted,
-    marginTop: 2,
-  },
-  btnDismissText: {
-    color: '#fff',
+  snoozeText: {
+    ...typography.bodyMedium,
+    fontSize: 16,
+    color: colors.text,
   },
 });

@@ -4,9 +4,8 @@
 // (typography.ts) so every `fontFamily` resolves on both platforms.
 
 export const fontFiles = {
-  'MarkGEO-Regular': require('../../assets/fonts/MarkGEO-Regular.ttf'),
-  'MarkGEO-Bold': require('../../assets/fonts/MarkGEO-Bold.ttf'),
-  'MarkGEO-CAPS': require('../../assets/fonts/MarkGEO-CAPS.ttf'),
-  'SpaceGrotesk-Bold': require('../../assets/fonts/SpaceGrotesk-Bold.ttf'),
+  'FiraGO-Regular': require('../../assets/fonts/FiraGO-Regular.ttf'),
+  'FiraGO-Medium': require('../../assets/fonts/FiraGO-Medium.ttf'),
+  'FiraGO-SemiBold': require('../../assets/fonts/FiraGO-SemiBold.ttf'),
   'MarckScript-Regular': require('../../assets/fonts/MarckScript-Regular.ttf'),
 };

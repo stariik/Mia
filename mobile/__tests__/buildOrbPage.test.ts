@@ -50,6 +50,23 @@ describe('buildOrbPage', () => {
     expect(pal.slice(0, 3)).toEqual(['#6d3bf5', '#ff4d8b', '#ff6b3d']);
   });
 
+  // Translator mode is the one sanctioned colour change: a separate, slightly
+  // cooler palette the page cross-fades to on orb.setTint(1). The default
+  // palette must be untouched by it.
+  it('ships the translator palette separately, leaving the theme palette as is', () => {
+    const cfgLine = page.split('\n').find((l) => l.includes('window.__orbCfg ='))!;
+    const cfg = JSON.parse(cfgLine.replace(/^\s*window\.__orbCfg = /, '').replace(/;\s*$/, ''));
+    expect(cfg.palTint).toHaveLength(cfg.pal.length);
+    expect(cfg.palTint).not.toEqual(cfg.pal);
+    // Glass white and navy depth are shared; only the hues move.
+    expect(cfg.palTint.slice(15)).toEqual(cfg.pal.slice(15));
+    expect(cfg.tintMs).toBe(500);
+    expect(page).toContain('setTint: setTint');
+    // Starts untinted, and nothing re-uploads until the tint moves.
+    expect(page).toContain('tint: 0,');
+    expect(page).toContain('if (tintX === I.tint) return;');
+  });
+
   it('applies config overrides', () => {
     const custom = buildOrbPage({ config: { radius: 0.7 } });
     expect(custom).toContain('"radius":0.7');

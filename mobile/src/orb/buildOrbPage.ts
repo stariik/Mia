@@ -42,6 +42,8 @@ function pageConfig(opts: BuildOrbPageOpts): string {
   // Order must match the shader's uPal[]: violet, pink, coral, pinkSoft,
   // violetSoft, white, navy.
   const order = [pal.violet, pal.pink, pal.coral, pal.pinkSoft, pal.violetSoft, pal.white, pal.navy];
+  const tp = cfg.translatorPalette;
+  const tintOrder = [tp.violet, tp.pink, tp.coral, tp.pinkSoft, tp.violetSoft, tp.white, tp.navy];
   const palRgb = Object.fromEntries(
     Object.entries(pal).map(([k, v]) => [k, hexToRgb(v)]),
   );
@@ -61,6 +63,11 @@ function pageConfig(opts: BuildOrbPageOpts): string {
     quality: cfg.quality,
     pal: order.flatMap(hexToRgb),
     palRgb,
+    palTint: tintOrder.flatMap(hexToRgb),
+    palTintRgb: Object.fromEntries(
+      Object.entries(tp).map(([k, v]) => [k, hexToRgb(v)]),
+    ),
+    tintMs: cfg.tintMs,
     vert: ORB_VERT,
     fragInterior: ORB_INTERIOR_FRAG,
     fragComposite: ORB_COMPOSITE_FRAG,

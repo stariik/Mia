@@ -33,6 +33,7 @@ jest.mock('@/stores/toolsStore', () => ({
 }));
 
 import { runClientToolCalls } from '@/lib/tools/runClientCalls';
+import { takeQueuedTranslator } from '@/lib/translator/queue';
 import { nativePlatform } from '@/lib/tools/platform/native';
 import { music } from '@/lib/tools/music';
 
@@ -177,5 +178,16 @@ describe('runClientToolCalls', () => {
     await expect(
       runClientToolCalls([{ id: 't', name: 'pause_music', args: {} }]),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe('start_translation', () => {
+  it('queues translator mode with only valid languages', async () => {
+    await runClientToolCalls([
+      { id: 'c1', name: 'start_translation', args: { to: 'fr', from: 'xx' } },
+    ]);
+    expect(takeQueuedTranslator()).toEqual({ to: 'fr' });
+    // Taken once: a later turn doesn't reopen it.
+    expect(takeQueuedTranslator()).toBeNull();
   });
 });
