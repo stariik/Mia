@@ -1,5 +1,6 @@
 import { AudioModule, setAudioModeAsync } from 'expo-audio';
 import { audioLevel } from '@/lib/audioLevel';
+import { analyzeMicFrame } from '@/orb/micAnalysis';
 import type { Capture } from './controller';
 
 export function expoCapture(): Capture {
@@ -42,6 +43,7 @@ export function expoCapture(): Capture {
                   60,
               )
             : 0;
+          analyzeMicFrame(values); // the orb's bands + syllable onsets
           frame(buffer.data, buffer.sampleRate, buffer.channels);
         }),
         own.addListener('audioStreamStatus', status => {

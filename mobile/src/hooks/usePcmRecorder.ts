@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { withTiming } from 'react-native-reanimated';
 
 import { audioLevel } from '@/lib/audioLevel';
+import { analyzeMicFrame } from '@/orb/micAnalysis';
 import {
   pcmCapture,
   rmsLevel,
@@ -31,6 +32,7 @@ export function usePcmRecorder() {
     // visually on its own; the VAD wants the raw, responsive value.
     await pcmCapture.start((frame) => {
       audioLevel.value = rmsLevel(frame);
+      analyzeMicFrame(frame); // the orb's bands + syllable onsets
     });
   }, []);
 

@@ -3,15 +3,15 @@ import { DeviceEventEmitter, NativeModules, Platform } from 'react-native';
 import { authHeaders } from '@/api/client';
 import { env } from '@/config/env';
 
-import { buildOrbHtml } from './orbHtml';
+import { buildOrbPage } from '@/orb/buildOrbPage';
 
 // Thin JS wrapper over the native Android OrbOverlayModule — the floating "Hey
 // Mia" orb shown during a screen-on, app-not-foreground turn. No-ops gracefully
 // when the native module is absent (iOS, or before the native code is linked).
 //
-// The orb is the SAME WebGL HTML the in-app orb uses; we hand the built HTML to
-// native, which hosts it in an overlay WebView and drives it with the identical
-// JS API (setOrbState / setHover / playTTSAudio).
+// The orb is the SAME MiaOrb page the in-app orb uses; we hand the built HTML
+// to native, which hosts it in an overlay WebView and drives it with the
+// identical JS API (setOrbState / setHover / playTTSAudio).
 
 type OrbOverlayNative = {
   hasPermission(): Promise<boolean>;
@@ -79,18 +79,9 @@ export const orbOverlay = {
    */
   async show(): Promise<boolean> {
     if (!Native) return false;
-    // Match the in-app orb exactly: hoverIntensity 2 (the AIAssistantOrb default
-    // — the screen-off orb used buildOrbHtml's 0.2, which is why it barely
-    // reacted to voice). edgeFade trims the square's transparent residual so it
-    // floats cleanly over other apps.
-    const ok = await Native.show(
-      buildOrbHtml({
-        backgroundColor: '#000000',
-        hoverIntensity: 2,
-        edgeFade: true,
-        floatIn: true,
-      }),
-    );
+    // The same MiaOrb page the app uses, with the float-in entrance. Nothing
+    // is drawn outside the glass, so it floats cleanly over other apps.
+    const ok = await Native.show(buildOrbPage({ floatIn: true }));
     shown = ok;
     return ok;
   },

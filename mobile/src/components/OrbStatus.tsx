@@ -13,7 +13,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import type { OrbState } from '@/components/AIAssistantOrb';
+import type { OrbState } from '@/orb';
 import { colors, fonts, radius, spacing } from '@/theme';
 
 // ── Tiny animated indicators ─────────────────────────────────────────────
@@ -107,7 +107,7 @@ function EqBars() {
 // ── Status chip ──────────────────────────────────────────────────────────
 
 type Props = {
-  state: OrbState;
+  state: Exclude<OrbState, 'error'>;
   transcript: string;
 };
 
