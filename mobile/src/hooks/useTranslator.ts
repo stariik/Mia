@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { expireSessionIf401 } from '@/api/client';
 import { transcribeGooglePcm } from '@/api/transcribeGoogle';
@@ -6,10 +6,17 @@ import { translateText } from '@/api/translate';
 import { synthesizeWithElevenLabs } from '@/api/synthesize';
 import { fs } from '@/lib/fs';
 import { nativeAudio } from '@/lib/nativeAudio';
+import { wakeWord } from '@/lib/wakeWord';
 import { bcp47, type Direction, type Lang } from '@/lib/translateLanguages';
+import { useAuthStore } from '@/stores/authStore';
 import { useTranslatorStore } from '@/stores/translatorStore';
+import { mutedCapture } from '@/stt/audio';
+import { streamingEnabled, streamUrl } from '@/stt/client';
+import { SttController, type Socket } from '@/stt/controller';
+import { expoCapture } from '@/stt/expoCapture';
 
 import { usePcmRecorder } from './usePcmRecorder';
+import { ensureMicrophonePermission } from './usePermissions';
 
 export type { Direction, Lang } from '@/lib/translateLanguages';
 
@@ -21,7 +28,22 @@ export type Turn = {
   translated: string;
 };
 
-export type TranslatorStatus = 'idle' | 'listening' | 'working';
+// 'live' = streaming interpreter session (sentence-by-sentence, see startLive).
+export type TranslatorStatus = 'idle' | 'listening' | 'working' | 'live';
+
+type LiveSession = {
+  direction: Direction;
+  stopped: boolean;
+  speaking: boolean;
+  controller: SttController | null;
+  muted: ReturnType<typeof mutedCapture> | null;
+  // Sentences translate in parallel but land and speak in spoken order.
+  chain: Promise<void>;
+};
+
+// The gateway rejects an utterance with no speech after 8 s; in a live
+// session silence is normal, so these just start the next utterance.
+const NO_SPEECH = /^No (complete )?speech/;
 
 function newId() {
   return `t_${Date.now()}_${Math.round(Math.random() * 1e6)}`;
@@ -73,25 +95,36 @@ export function useTranslator() {
   // Direction captured when recording starts, so a change mid-recording can't
   // mismatch the STT language and the translation pair.
   const directionRef = useRef<Direction>(direction);
+  const liveRef = useRef<LiveSession | null>(null);
+  // The live speaker's unfinished sentence (finished ones become turns).
+  const [liveText, setLiveText] = useState('');
 
-  const finishTurn = useCallback(
+  const addTurn = useCallback(
     (source: Lang, target: Lang, heard: string, translated: string) => {
       setTurns((prev) => [
         ...prev,
         { id: newId(), source, target, heard, translated },
       ]);
-      setStatus('idle');
-      // Read the latest pref, not the one captured when the turn started.
-      if (useTranslatorStore.getState().autoSpeak) void speak(translated);
     },
     [],
   );
 
-  const fail = useCallback((e: unknown) => {
+  const finishTurn = useCallback(
+    (source: Lang, target: Lang, heard: string, translated: string) => {
+      addTurn(source, target, heard, translated);
+      setStatus('idle');
+      // Read the latest pref, not the one captured when the turn started.
+      if (useTranslatorStore.getState().autoSpeak) void speak(translated);
+    },
+    [addTurn],
+  );
+
+  // `resetStatus` false: a live session reports the error and keeps going.
+  const fail = useCallback((e: unknown, resetStatus = true) => {
     const msg = e instanceof Error ? e.message : 'თარგმნა ვერ მოხერხდა';
     expireSessionIf401(msg);
     setError(msg);
-    setStatus('idle');
+    if (resetStatus) setStatus('idle');
   }, []);
 
   const startListening = useCallback(async () => {
@@ -135,14 +168,168 @@ export function useTranslator() {
     }
   }, [recorder, finishTurn, fail]);
 
-  // Mic tap: start if idle, stop+translate if recording.
-  const toggleListen = useCallback(() => {
-    if (status === 'listening') {
-      void stopAndTranslate();
-    } else if (status === 'idle') {
-      void startListening();
+  // ── Live interpreter ─────────────────────────────────────────────────────
+  // One session = a chain of streaming utterances (the gateway caps each at
+  // 60 s). Every committed sentence (Scribe VAD pause) is translated at once,
+  // appended as a turn and spoken; the mic is fed silence while it speaks so
+  // the session never translates its own voice.
+
+  const endLive = useCallback(async (live: LiveSession) => {
+    await live.chain;
+    if (liveRef.current !== live) return;
+    liveRef.current = null;
+    setLiveText('');
+    setStatus('idle');
+    wakeWord.resumeDetection();
+  }, []);
+
+  const onSentence = useCallback(
+    (live: LiveSession, heard: string) => {
+      const { from, to } = live.direction;
+      const translation = translateText(heard, from, to);
+      live.chain = live.chain.then(async () => {
+        let translated: string;
+        try {
+          translated = (await translation).trim();
+        } catch (e) {
+          if (liveRef.current === live) fail(e, false);
+          return;
+        }
+        if (liveRef.current !== live) return;
+        addTurn(from, to, heard, translated);
+        if (!translated || !useTranslatorStore.getState().autoSpeak) return;
+        live.speaking = true;
+        live.muted?.setMuted(true);
+        try {
+          await speak(translated);
+        } finally {
+          live.speaking = false;
+          live.muted?.setMuted(false);
+        }
+      });
+    },
+    [addTurn, fail],
+  );
+
+  const startUtterance = useCallback(
+    (live: LiveSession) => {
+      if (live.stopped || liveRef.current !== live) return;
+      const muted = mutedCapture(expoCapture());
+      muted.setMuted(live.speaking);
+      live.muted = muted;
+      const committed: string[] = [];
+      const controller: SttController = new SttController({
+        capture: muted,
+        socket: () => new WebSocket(streamUrl()) as unknown as Socket,
+        token: useAuthStore.getState().token ?? '',
+        identity: { sessionId: `tr_${Date.now()}`, utteranceId: newId() },
+        language: live.direction.from,
+        // Pauses are sentence boundaries, not the end of the turn.
+        state: (s) => {
+          if (s === 'listening') controller.keepListening();
+        },
+        partial: (text) => {
+          if (liveRef.current !== live) return;
+          // Partials repeat this utterance's committed sentences; show only the
+          // unfinished one.
+          const done = committed.join(' ');
+          setLiveText(
+            (done && text.startsWith(done) ? text.slice(done.length) : text).trim(),
+          );
+        },
+        segment: (text) => {
+          committed.push(text);
+          onSentence(live, text);
+        },
+        elapsed: () => {},
+      });
+      live.controller = controller;
+      controller
+        .start()
+        .then(() => (live.stopped ? endLive(live) : startUtterance(live)))
+        .catch((e: Error) => {
+          if (live.stopped) return endLive(live);
+          if (NO_SPEECH.test(e.message)) return startUtterance(live);
+          live.stopped = true;
+          if (liveRef.current === live) fail(e, false);
+          return endLive(live);
+        });
+    },
+    [onSentence, endLive, fail],
+  );
+
+  const startLive = useCallback(async () => {
+    const live: LiveSession = {
+      direction,
+      stopped: false,
+      speaking: false,
+      controller: null,
+      muted: null,
+      chain: Promise.resolve(),
+    };
+    liveRef.current = live;
+    setLiveText('');
+    setStatus('live');
+    // Hand the mic off from the "Hey Mia" service (no-op when it isn't running).
+    wakeWord.pauseDetection();
+    if (!(await ensureMicrophonePermission())) {
+      live.stopped = true;
+      setError('მიკროფონის ნებართვა არ არის');
+      return endLive(live);
     }
-  }, [status, startListening, stopAndTranslate]);
+    startUtterance(live);
+  }, [direction, startUtterance, endLive]);
+
+  const stopLive = useCallback(() => {
+    const live = liveRef.current;
+    if (!live || live.stopped) return;
+    live.stopped = true;
+    setStatus('working');
+    const c = live.controller;
+    // Finish flushes the unfinished sentence as a last segment; anything not
+    // yet listening has nothing to flush.
+    if (c?.state === 'listening') c.finish();
+    else if (c) c.cancel();
+    else void endLive(live);
+  }, [endLive]);
+
+  // Leaving the screen ends the session without speaking queued lines.
+  useEffect(
+    () => () => {
+      const live = liveRef.current;
+      liveRef.current = null;
+      if (!live) return;
+      live.stopped = true;
+      live.controller?.cancel();
+      nativeAudio.stop();
+      wakeWord.resumeDetection();
+    },
+    [],
+  );
+
+  // Mic tap: live session when the streaming gateway is on, else the legacy
+  // record → stop → translate turn. Tapping again stops either.
+  const toggleListen = useCallback(async () => {
+    if (status === 'live') return stopLive();
+    if (status === 'listening') return void stopAndTranslate();
+    if (status !== 'idle') return;
+    setError(null);
+    nativeAudio.stop();
+    setStatus('working');
+    const abort = new AbortController();
+    const timeout = setTimeout(() => abort.abort(), 5000);
+    let live = false;
+    try {
+      live = await streamingEnabled(abort.signal);
+    } catch {
+      // Config check failed: the legacy path still works.
+    } finally {
+      clearTimeout(timeout);
+    }
+    setStatus('idle');
+    if (live) await startLive();
+    else await startListening();
+  }, [status, stopLive, stopAndTranslate, startLive, startListening]);
 
   // Translate typed text in the current direction. Resolves true on success so
   // the caller can clear its input.
@@ -196,6 +383,7 @@ export function useTranslator() {
     setAutoSpeak,
     turns,
     status,
+    liveText,
     error,
     toggleListen,
     stopAndTranslate,

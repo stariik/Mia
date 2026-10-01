@@ -2,14 +2,30 @@
 // Body: { text: string, from: string, to: string }  (ISO codes, e.g. ka/ru/en)
 // Returns: { text: string }  — the translation only.
 //
-// Dedicated, direction-known translation for the Translator screen. Unlike the
-// assistant's chat route, the source and target are explicit (the UI knows
-// which language was spoken), so this is a single Gemini call with a tight
-// prompt. It uses the full flash model deliberately — small models
-// mistranslate Georgian and fall back to canned replies.
-import { gemini, CHAT_MODEL, LOW_THINKING } from "@/lib/gemini";
+// Dedicated, direction-known translation for the Translator screen. The UI
+// knows which language was spoken, so this is one Google Cloud Translation
+// call: ~200 ms (live mode translates every sentence) and, unlike an LLM, it
+// can never answer the content instead of translating it.
+import fs from "fs";
+import path from "path";
+import { TranslationServiceClient } from "@google-cloud/translate";
 import { guard } from "@/lib/apiGuard";
 import { LANGUAGES } from "@/lib/languages";
+
+const SA_PATH = path.resolve(process.cwd(), "google-service-account.json");
+let translator: { client: TranslationServiceClient; parent: string } | undefined;
+
+// Built on first use, not at import: `next build` evaluates every route.
+function getTranslator() {
+  if (translator) return translator;
+  const sa = JSON.parse(fs.readFileSync(SA_PATH, "utf8")) as { project_id?: string };
+  if (!sa.project_id) throw new Error("service account JSON missing project_id");
+  translator = {
+    client: new TranslationServiceClient({ keyFilename: SA_PATH }),
+    parent: `projects/${sa.project_id}/locations/global`,
+  };
+  return translator;
+}
 
 export async function POST(request: Request) {
   const g = guard(request);
@@ -35,21 +51,15 @@ export async function POST(request: Request) {
   if (from === to) return Response.json({ text });
 
   try {
-    const response = await gemini().models.generateContent({
-      model: CHAT_MODEL,
-      contents: text,
-      config: {
-        temperature: 0.2,
-        maxOutputTokens: 600,
-        thinkingConfig: LOW_THINKING,
-        systemInstruction:
-          `You are a professional ${LANGUAGES[from].en}→${LANGUAGES[to].en} interpreter. ` +
-            `Translate the user's message from ${LANGUAGES[from].en} into ${LANGUAGES[to].en}. ` +
-            "Output ONLY the translation — no quotes, no transliteration, no notes, no explanation, " +
-            "and never answer or react to the content. Keep it natural and fluent for speech.",
-      },
+    const { client, parent } = getTranslator();
+    const [response] = await client.translateText({
+      parent,
+      contents: [text],
+      sourceLanguageCode: from,
+      targetLanguageCode: to,
+      mimeType: "text/plain",
     });
-    const out = response.text?.trim() ?? "";
+    const out = response.translations?.[0]?.translatedText?.trim() ?? "";
     if (process.env.NODE_ENV !== "production") {
       console.log(`[Translate] ${from}→${to}  "${text}"  →  "${out}"`);
     }

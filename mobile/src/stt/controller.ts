@@ -1,6 +1,7 @@
 import type {
   ClientMessage,
   Identity,
+  Language,
   ServerMessage,
 } from '../../../web/src/stt/protocol';
 import { PcmPacketizer } from './audio';
@@ -35,6 +36,10 @@ type Options = {
   token: string;
   state: (state: ListeningState) => void;
   partial: (text: string) => void;
+  /** A committed sentence (provider VAD pause), before the utterance ends. */
+  segment?: (text: string) => void;
+  /** Spoken language; the gateway defaults to Georgian. */
+  language?: Language;
   elapsed: (seconds: number) => void;
 };
 
@@ -90,6 +95,7 @@ export class SttController {
           sampleRate: 16000,
           channels: 1,
           encoding: 'pcm16',
+          ...(this.options.language && { language: this.options.language }),
         });
       };
       ws.onmessage = event => {
@@ -134,6 +140,9 @@ export class SttController {
       void this.beginCapture();
     } else if (event.type === 'partial' && typeof event.text === 'string')
       this.options.partial(event.text);
+    else if (event.type === 'segment' && typeof event.text === 'string') {
+      if (event.text.trim()) this.options.segment?.(event.text.trim());
+    }
     else if (event.type === 'endpoint' && this.auto) this.finish();
     else if (event.type === 'final') {
       if (

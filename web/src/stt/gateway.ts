@@ -11,7 +11,13 @@ import {
   type ProviderFactory,
 } from './providers';
 import type { Lease, Quotas } from './quota';
-import type { ErrorCode, Identity, ServerMessage, Start } from './protocol';
+import {
+  LANGUAGES,
+  type ErrorCode,
+  type Identity,
+  type ServerMessage,
+  type Start,
+} from './protocol';
 
 const idValid = (s: unknown): s is string =>
   typeof s === 'string' && /^[a-zA-Z0-9_-]{1,80}$/.test(s);
@@ -328,7 +334,7 @@ export function createGateway(
           cleanup('success');
         } else if (event.type === 'error')
           fail('provider', 'Speech service unavailable. Please try again.');
-      });
+      }, msg.language ?? 'ka');
       if ((phase as string) === 'closed') upstream.cancel();
     }
     ws.on('message', (data, binary) => {
@@ -366,7 +372,8 @@ export function createGateway(
             msg.token.length > 4096 ||
             msg.sampleRate !== 16000 ||
             msg.channels !== 1 ||
-            msg.encoding !== 'pcm16'
+            msg.encoding !== 'pcm16' ||
+            (msg.language !== undefined && !LANGUAGES.includes(msg.language))
           )
             throw new Error();
           phase = 'opening';

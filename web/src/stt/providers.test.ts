@@ -125,3 +125,18 @@ test('Google keeps results separate from speech events and waits for stream end 
   assert.equal(closed, true);
   assert.equal(wire.destroyed, true);
 });
+
+test('ElevenLabs asks Scribe for the requested spoken language', () => {
+  process.env.ELEVENLABS_API_KEY = 'fake';
+  let code: string | null = null;
+  const adapter = elevenlabs(
+    () => {},
+    (url) => {
+      code = url.searchParams.get('language_code');
+      return new Wire() as unknown as WebSocket;
+    },
+    'ru',
+  );
+  adapter.cancel();
+  assert.equal(code, 'ru');
+});
