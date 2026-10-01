@@ -7,9 +7,23 @@ const MAX_FACTS = 50;
 const MAX_FACT_CHARS = 200;
 const MAX_ACTIONS = 8;
 const MAX_ACTION_CHARS = 300;
+const MAX_HISTORY = 20; // the phone sends the same (HISTORY_MESSAGES)
+export const MAX_HISTORY_CHARS = 2000;
 
 const str = (v: unknown, max: number) =>
   typeof v === "string" ? v.slice(0, max) : "";
+
+export type HistoryMessage = { role: "user" | "assistant"; content: string };
+
+/** The client's earlier turns, capped so a bad client can't bloat every call. */
+export function sanitizeHistory(history: unknown): HistoryMessage[] {
+  if (!Array.isArray(history)) return [];
+  return history
+    .slice(-MAX_HISTORY)
+    .filter((m) => m?.role === "user" || m?.role === "assistant")
+    .map((m) => ({ role: m.role, content: str(m.content, MAX_HISTORY_CHARS) }))
+    .filter((m) => m.content);
+}
 
 /** Long-term facts about the user, with ids for update/forget. */
 export function formatProfile(profile: unknown): string | null {

@@ -3,7 +3,11 @@ import type { Content, Part } from "@google/genai";
 import { gemini, CHAT_MODEL, LOW_THINKING } from "@/lib/gemini";
 import { guard } from "@/lib/apiGuard";
 import { clientIp } from "@/lib/ipLocation";
-import { actionLine } from "@/lib/chatMemory";
+import {
+  actionLine,
+  sanitizeHistory,
+  MAX_HISTORY_CHARS,
+} from "@/lib/chatMemory";
 import {
   buildSystemInstruction,
   resolveTimeZone,
@@ -17,11 +21,9 @@ import {
 } from "@/lib/tools/registry";
 import type { ToolContext, ClientToolCall } from "@/lib/tools/types";
 
-type ChatRequestMessage = { role: "user" | "assistant"; content: string };
-
 type ChatRequestBody = {
   message: string;
-  history: ChatRequestMessage[];
+  history: unknown;
   // Mobile sends a flat shape ({ city, lat, lon, timezone }); the older nested
   // { coords } shape is still accepted for backward-compatibility.
   userContext?: ChatUserContext;
@@ -39,7 +41,7 @@ export async function POST(request: Request) {
     const { message, history, userContext } =
       (await request.json()) as ChatRequestBody;
 
-    if (!message) {
+    if (typeof message !== "string" || !message) {
       return Response.json({ error: "Message is required" }, { status: 400 });
     }
 
@@ -63,14 +65,12 @@ export async function POST(request: Request) {
 
     const systemInstruction = buildSystemInstruction(userContext);
     const contents: Content[] = [
-      // Gemini rejects empty parts, so skip blank turns.
-      ...history
-        .filter((m) => m.content)
-        .map((m) => ({
-          role: m.role === "assistant" ? "model" : "user",
-          parts: [{ text: m.content }],
-        })),
-      { role: "user", parts: [{ text: message }] },
+      // Capped and blank turns dropped (Gemini rejects empty parts).
+      ...sanitizeHistory(history).map((m) => ({
+        role: m.role === "assistant" ? "model" : "user",
+        parts: [{ text: m.content }],
+      })),
+      { role: "user", parts: [{ text: message.slice(0, MAX_HISTORY_CHARS) }] },
     ];
 
     const encoder = new TextEncoder();
