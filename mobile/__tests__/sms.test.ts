@@ -77,4 +77,27 @@ describe('matchContacts', () => {
     expect(matchContacts('ნინო ბერიძე', book)).toEqual([book[0]]);
     expect(matchContacts('ნინო', book)).toEqual(book);
   });
+
+  test('a letter or two off is suggested when nothing matches better', () => {
+    const names = (q: string, book: Contact[]) =>
+      matchContacts(q, book).map((c) => c.name);
+    const book: Contact[] = [
+      { name: 'Bacco', number: '1' },
+      { name: 'Nino Beridze', number: '2' },
+      { name: 'Gelashvila', number: '3' },
+      { name: 'Gelashvala', number: '4' },
+      { name: 'Ira', number: '5' },
+    ];
+    expect(names('ბაცო', book)).toEqual(['Bacco']);
+    expect(names('ნინო ბერიძა', book)).toEqual(['Nino Beridze']);
+    // distance 1 beats distance 2
+    expect(names('გელაშვილი', book)).toEqual(['Gelashvila']);
+    // too short to guess, and unrelated names still find nothing
+    expect(names('ია', book)).toEqual([]);
+    expect(names('გიორგი', book)).toEqual([]);
+    // an exact match wins over near misses
+    expect(names('ბაცო', [...book, { name: 'Baco', number: '6' }])).toEqual([
+      'Baco',
+    ]);
+  });
 });

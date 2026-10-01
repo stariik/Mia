@@ -94,7 +94,27 @@ function nameKeys(s: string): string[] {
   return [...new Set(keys.map((k) => k.replace(/\s+/g, ' ').trim()))].filter(Boolean);
 }
 
-/** Best-matching contacts for a spoken name: exact > a word matches > substring.
+/** Levenshtein distance (keys are ASCII, so code units are letters). */
+function editDistance(a: string, b: string): number {
+  const row = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    let diag = row[0];
+    row[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const up = row[j];
+      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, diag + (a[i - 1] === b[j - 1] ? 0 : 1));
+      diag = up;
+    }
+  }
+  return row[b.length];
+}
+
+/** Letters a name may be off by — none for short ones, they'd match anything. */
+const allowedTypos = (q: string) => (q.length <= 3 ? 0 : q.length <= 6 ? 1 : 2);
+
+/** Best-matching contacts for a spoken name: exact > a word matches > substring
+ *  > a letter or two off (misheard, or saved as "Bacco"). Mia reads a single
+ *  hit back and lists several, so a near miss is only ever a suggestion.
  *  One entry per contact name (first number wins). */
 export function matchContacts(query: string, contacts: Contact[]): Contact[] {
   const qs = nameKeys(query);
@@ -102,7 +122,9 @@ export function matchContacts(query: string, contacts: Contact[]): Contact[] {
   const scoreKey = (n: string, q: string) => {
     if (n === q) return 3;
     if (n.split(' ').includes(q) || n.startsWith(q + ' ')) return 2;
-    return n.includes(q) ? 1 : 0;
+    if (n.includes(q)) return 1;
+    const d = Math.min(...[n, ...n.split(' ')].map((w) => editDistance(w, q)));
+    return d <= allowedTypos(q) ? 1 - d / 10 : 0;
   };
   const score = (name: string) =>
     Math.max(0, ...nameKeys(name).flatMap((n) => qs.map((q) => scoreKey(n, q))));
