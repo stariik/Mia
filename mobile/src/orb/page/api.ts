@@ -1,7 +1,8 @@
 // The orb page's public window API. Installed in its own <script> BEFORE the
 // renderer, so every entry point exists even if WebGL never comes up.
 //
-// New API (MiaOrb):    window.orb.{state, mic, touch, setActive, setReducedMotion}
+// New API (MiaOrb):    window.orb.{state, mic, touch, setActive, setReducedMotion,
+//                      setTint}
 // Native contract:     setOrbState, setHover, setOrbVisible — injected by
 //                      OrbOverlayModule.kt and must keep these exact names.
 //                      (The TTS functions come from ttsEngine.ts.)
@@ -24,6 +25,8 @@ export const ORB_API_JS = `
       touch: { down: false, x: 0, y: 0, n: 0 },
       active: true,
       reduced: false,
+      // Translator-mode palette target, 0 (the theme) .. 1 (translatorPalette).
+      tint: 0,
       // Set by the renderer: restarts its loop after a pause.
       wake: null
     };
@@ -91,12 +94,18 @@ export const ORB_API_JS = `
       I.reduced = !!on;
     }
 
+    function setTint(v) {
+      I.tint = clamp01(v);
+      if (I.wake) I.wake();
+    }
+
     window.orb = {
       state: setState,
       mic: mic,
       touch: touch,
       setActive: setActive,
-      setReducedMotion: setReducedMotion
+      setReducedMotion: setReducedMotion,
+      setTint: setTint
     };
     window.setOrbState = setState;
     window.setHover = setHover;

@@ -45,11 +45,12 @@ export function bcp47(code: string): string {
 export type Lang = 'ka' | 'ru' | 'en' | 'de' | 'fr' | 'es';
 export type Direction = { from: Lang; to: Lang };
 
-// Order shown in the language picker — Georgian always first.
-export const TRANSLATOR_LANGS: Lang[] = ['ka', 'ru', 'en', 'de', 'fr', 'es'];
-export const DEFAULT_DIRECTION: Direction = { from: 'ka', to: 'ru' };
+// Order shown in the language picker: the app's two languages lead (English,
+// then Georgian), then the rest.
+export const TRANSLATOR_LANGS: Lang[] = ['en', 'ka', 'ru', 'de', 'fr', 'es'];
+export const DEFAULT_DIRECTION: Direction = { from: 'ka', to: 'en' };
 
-function isLang(x: unknown): x is Lang {
+export function isLang(x: unknown): x is Lang {
   return (TRANSLATOR_LANGS as unknown[]).includes(x);
 }
 

@@ -3,6 +3,11 @@ import { expireSessionIf401 } from '@/api/client';
 import { dlog } from '@/lib/log';
 import { matchMusicCommand } from '@/lib/musicCommands';
 import { clearQueuedApp, openQueuedApp } from '@/lib/tools/maps';
+import {
+  clearQueuedTranslator,
+  takeQueuedTranslator,
+  type TranslatorRequest,
+} from '@/lib/translator/queue';
 import { runClientToolCalls } from '@/lib/tools/runClientCalls';
 import { getPendingSmsContext } from '@/lib/tools/sms';
 import {
@@ -56,6 +61,9 @@ export interface TurnResult {
    *  paused/resumed music silently (listening on would record the music), or
    *  handed the user off to Maps (no mic over navigation). */
   endSession: boolean;
+  /** The assistant asked to open translator mode (start_translation). Only
+   *  the foreground can show it; the headless wake turn ignores this. */
+  translator?: TranslatorRequest;
 }
 
 // Silent server tools; must match SILENT_TOOLS in web/src/app/api/chat/route.ts.
@@ -80,7 +88,8 @@ export function calendarDaysFrom(from: number, to: number): number {
  * STT happens upstream; this takes the final transcript.
  *
  * Apps a tool asked for (Maps) open only after Mia finished speaking; that
- * hand-off ends the session like a music command does.
+ * hand-off ends the session like a music command does. Translator mode is
+ * handed back the same way, for the foreground to open.
  */
 export async function runAssistantTurn(
   opts: RunTurnOptions,
@@ -88,7 +97,13 @@ export async function runAssistantTurn(
   const result = await runTurn(opts);
   if (opts.isCurrent && !opts.isCurrent()) {
     clearQueuedApp();
+    clearQueuedTranslator();
     return result;
+  }
+  const translator = takeQueuedTranslator();
+  if (translator) {
+    clearQueuedApp();
+    return { endSession: true, translator };
   }
   return (await openQueuedApp()) ? { endSession: true } : result;
 }

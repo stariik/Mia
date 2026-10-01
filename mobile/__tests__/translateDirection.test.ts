@@ -12,8 +12,12 @@ import {
 // that would send STT/translate a no-op direction the screen can't explain.
 
 describe('translator direction', () => {
-  it('lists Georgian first', () => {
-    expect(TRANSLATOR_LANGS[0]).toBe('ka');
+  it('lists English and Georgian first', () => {
+    expect(TRANSLATOR_LANGS.slice(0, 2)).toEqual(['en', 'ka']);
+  });
+
+  it('defaults to Georgian → English', () => {
+    expect(DEFAULT_DIRECTION).toEqual({ from: 'ka', to: 'en' });
   });
 
   it('swap flips from and to', () => {

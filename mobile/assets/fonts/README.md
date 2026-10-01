@@ -1,26 +1,21 @@
 # Font assets
 
 React Native uses the `.ttf` filename stem (no extension) as the `fontFamily`
-value on Android. These four files must exist in this folder:
+value on Android. Every file here must also be copied to
+`android/app/src/main/assets/fonts/` and registered in `src/theme/fontFiles.ts`
+(Expo Go / iOS load them at runtime from there).
 
-- `SpaceGrotesk-Medium.ttf`   ✅ included (from floriankarsten/space-grotesk)
-- `SpaceGrotesk-Bold.ttf`     ✅ included (from floriankarsten/space-grotesk)
-- `Manrope-Regular.ttf`       ⚠️ download manually — see below
-- `Manrope-SemiBold.ttf`      ⚠️ download manually — see below
+- `FiraGO-Regular.ttf`, `FiraGO-Medium.ttf`, `FiraGO-SemiBold.ttf` — the text
+  family (Georgian, Latin, Cyrillic). From bBoxType/FiraGO 1.001, subset with
+  fontTools to Latin + Latin Extended + Cyrillic + Georgian + punctuation,
+  arrows and currency (≈295 KB each instead of ≈800 KB). License: `OFL-FiraGO.txt`.
+- `MarckScript-Regular.ttf` — the "Mia" wordmark only. License: `OFL.txt`.
 
-## Getting Manrope
+To re-subset after adding a script:
 
-Until a Manrope TTF is dropped in here, the app falls back to the system font
-(Roboto on Android). To fix:
-
-1. Visit https://fonts.google.com/specimen/Manrope and click "Download family".
-2. Unzip. Copy `static/Manrope-Regular.ttf` and `static/Manrope-SemiBold.ttf`
-   into this folder, keeping the exact filenames.
-3. From the `mobile/` directory, run:
-   ```
-   npx react-native-asset
-   npx react-native run-android
-   ```
-
-The `react-native-asset` step copies the TTFs into
-`android/app/src/main/assets/fonts/` so Android can find them at runtime.
+```
+python3 -m fontTools.subset FiraGO-Regular.ttf \
+  --unicodes="U+0000-024F,U+0300-036F,U+0400-04FF,U+10A0-10FF,U+2000-206F,U+20A0-20CF,U+2100-214F,U+2190-21FF,U+2212,U+2215,U+25CF,U+2713,U+FEFF,U+FFFD" \
+  --layout-features='*' --glyph-names --notdef-outline --name-IDs='*' \
+  --name-languages='*' --drop-tables+=DSIG --output-file=FiraGO-Regular.ttf
+```

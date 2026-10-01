@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  Platform,
   Pressable,
   ScrollView,
   StatusBar,
@@ -9,24 +10,101 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Path } from 'react-native-svg';
-
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
+import Animated, {
+  useAnimatedKeyboard,
+  useAnimatedStyle,
+} from 'react-native-reanimated';
 
 import { authApi } from '@/api/auth';
-import { AuroraBackdrop } from '@/components/AuroraBackdrop';
+import { IconButton } from '@/components/ui/IconButton';
 import { useWakeWordToggle } from '@/hooks/useWakeWord';
 import { refreshLocation } from '@/lib/location';
+import { translator } from '@/lib/translator/session';
 import type { RootNav } from '@/navigation/navigationRef';
 import { useAuthStore } from '@/stores/authStore';
 import { useLocationStore } from '@/stores/locationStore';
 import { useProfileStore } from '@/stores/profileStore';
-import { colors, radius, spacing, typography } from '@/theme';
+import { useTranslatorStore } from '@/stores/translatorStore';
+import { HIT, colors, spacing, typography } from '@/theme';
+
+// Settings as a quiet, grouped list: a large title, sentence-case group
+// labels, rows divided by hairlines — no cards, no boxes. Destructive
+// actions sit last and stay text-only until confirmed.
+
+function Group({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <View style={styles.group}>
+      <Text style={styles.groupLabel} accessibilityRole="header">
+        {label}
+      </Text>
+      <View style={styles.groupBody}>{children}</View>
+    </View>
+  );
+}
+
+function Row({
+  title,
+  hint,
+  note,
+  children,
+  last,
+}: {
+  title: string;
+  hint?: string;
+  note?: string | null;
+  children?: React.ReactNode;
+  last?: boolean;
+}) {
+  return (
+    <View style={[styles.row, !last && styles.rowRule]}>
+      <View style={styles.flex}>
+        <Text style={styles.rowTitle}>{title}</Text>
+        {hint ? <Text style={styles.rowHint}>{hint}</Text> : null}
+        {note ? <Text style={styles.rowNote}>{note}</Text> : null}
+      </View>
+      {children}
+    </View>
+  );
+}
+
+function TextButton({
+  label,
+  onPress,
+  tone = 'accent',
+  disabled,
+}: {
+  label: string;
+  onPress: () => void;
+  tone?: 'accent' | 'danger' | 'muted';
+  disabled?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: !!disabled }}
+      hitSlop={4}
+      style={({ pressed }) => [
+        styles.textBtn,
+        pressed && styles.pressed,
+        disabled && styles.disabled,
+      ]}
+    >
+      <Text style={[styles.textBtnLabel, styles[tone]]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+const switchColors = {
+  trackColor: { false: colors.outlineVariant, true: colors.primary },
+  thumbColor: '#ffffff',
+};
 
 export function SettingsScreen() {
   const navigation = useNavigation<RootNav>();
-  const onBack = () => navigation.goBack();
   const { user, logout } = useAuthStore();
 
   const detectedCity = useLocationStore((s) => s.city);
@@ -38,15 +116,26 @@ export function SettingsScreen() {
   const removeFact = useProfileStore((s) => s.removeFact);
   const clearFacts = useProfileStore((s) => s.clear);
 
+  const autoSpeak = useTranslatorStore((s) => s.autoSpeak);
+
   const wake = useWakeWordToggle();
   const [wakeNote, setWakeNote] = useState<string | null>(null);
 
-  // Account deletion (Play requirement): collapsed danger link → inline
-  // password confirm. Deleting logs the user out (back to AuthScreen).
+  // Account deletion (Play requirement): a text link → inline password
+  // confirm. Deleting logs the user out (back to AuthScreen).
   const [deleteMode, setDeleteMode] = useState(false);
   const [deletePw, setDeletePw] = useState('');
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteErr, setDeleteErr] = useState<string | null>(null);
+
+  // The keyboard height counts from the screen edge; on iOS the safe area
+  // already holds the home-indicator strip, so don't pad it twice.
+  const insets = useSafeAreaInsets();
+  const bottomInset = Platform.OS === 'ios' ? insets.bottom : 0;
+  const keyboard = useAnimatedKeyboard();
+  const keyboardPad = useAnimatedStyle(() => ({
+    paddingBottom: Math.max(0, keyboard.height.value - bottomInset),
+  }));
 
   const onDeleteAccount = async () => {
     if (deleteBusy || !user?.email || !deletePw) return;
@@ -68,349 +157,282 @@ export function SettingsScreen() {
 
   const onToggleWake = async (next: boolean) => {
     const res = await wake.set(next);
-    if (res.ok) {
-      setWakeNote(null);
-    } else if (res.reason === 'no-mic') {
-      setWakeNote('მიკროფონის ნებართვა საჭიროა');
-    } else {
-      setWakeNote('ჩართვა ვერ მოხერხდა');
-    }
+    if (res.ok) setWakeNote(null);
+    else if (res.reason === 'no-mic') setWakeNote('მიკროფონის ნებართვა საჭიროა');
+    else setWakeNote('ჩართვა ვერ მოხერხდა');
   };
 
   const commitCity = () => {
-    const trimmed = cityDraft.trim();
-    setManualCity(trimmed || undefined);
+    setManualCity(cityDraft.trim() || undefined);
   };
 
   return (
     <View style={styles.root}>
-      <AuroraBackdrop />
-      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-        <StatusBar barStyle="light-content" backgroundColor={colors.bgDeep} />
-
-        <View style={styles.header}>
-          <Pressable onPress={onBack} style={styles.iconBtn} hitSlop={8}>
-            <Svg
-              width="22"
-              height="22"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke={colors.text}
-              strokeWidth={2}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <Path d="M19 12H5" />
-              <Path d="M12 19l-7-7 7-7" />
-            </Svg>
-          </Pressable>
-          <Text style={[typography.title, styles.title]}>პარამეტრები</Text>
-          <View style={styles.iconBtn} />
+      <StatusBar barStyle="light-content" backgroundColor={colors.bgDeep} />
+      <SafeAreaView style={styles.flex} edges={['top', 'bottom']}>
+        <View style={styles.nav}>
+          <IconButton
+            icon="chevronLeft"
+            label="უკან"
+            color={colors.text}
+            onPress={() => navigation.goBack()}
+          />
         </View>
 
-        <ScrollView
-          contentContainerStyle={styles.body}
-          keyboardShouldPersistTaps="handled"
-        >
-          {wake.available ? (
-            <>
-              <Text
-                style={[typography.labelSm, styles.section, styles.sectionTop]}
+        <Animated.View style={[styles.flex, keyboardPad]}>
+          <ScrollView
+            contentContainerStyle={styles.body}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <Text style={styles.title} accessibilityRole="header">
+              პარამეტრები
+            </Text>
+
+            <Group label="ხმა">
+              {wake.available ? (
+                <Row
+                  title="„Mia“-ს გამოძახება"
+                  hint="თქვი „Mia“ — აპის გახსნის გარეშეც"
+                  note={wakeNote}
+                >
+                  <Switch
+                    value={wake.enabled}
+                    disabled={wake.busy}
+                    onValueChange={onToggleWake}
+                    accessibilityLabel="„Mia“-ს გამოძახება"
+                    {...switchColors}
+                  />
+                </Row>
+              ) : null}
+              <Row
+                title="თარგმანის ხმამაღლა წაკითხვა"
+                hint="თარჯიმანი ყოველ თარგმანს წაიკითხავს"
+                last
               >
-                ხმოვანი გამოძახება
-              </Text>
-              <View style={[styles.row, { justifyContent: 'space-between' }]}>
-                <View style={styles.flex}>
-                  <Text style={[typography.body, styles.rowLabel]}>
-                    „Mia“-ს გამოძახება
-                  </Text>
-                  <Text style={[typography.bodySmall, styles.rowHint]}>
-                    თქვი „Mia“ აპის გახსნის გარეშე
-                  </Text>
-                  {wakeNote ? (
-                    <Text style={[typography.bodySmall, styles.wakeNote]}>
-                      {wakeNote}
-                    </Text>
-                  ) : null}
-                </View>
                 <Switch
-                  value={wake.enabled}
-                  disabled={wake.busy}
-                  onValueChange={onToggleWake}
-                  trackColor={{ false: colors.outlineVariant, true: colors.primary }}
-                  thumbColor="#ffffff"
+                  value={autoSpeak}
+                  onValueChange={(on) => translator.setAutoSpeak(on)}
+                  accessibilityLabel="თარგმანის ხმამაღლა წაკითხვა"
+                  {...switchColors}
+                />
+              </Row>
+            </Group>
+
+            <Group label="მდებარეობა">
+              <View style={styles.row}>
+                <View style={styles.flex}>
+                  <Text style={styles.rowTitle}>ქალაქი</Text>
+                  <TextInput
+                    value={cityDraft}
+                    onChangeText={setCityDraft}
+                    onBlur={commitCity}
+                    onSubmitEditing={commitCity}
+                    placeholder={detectedCity ?? 'მაგ. თბილისი'}
+                    placeholderTextColor={colors.textFaint}
+                    cursorColor={colors.primary}
+                    selectionColor={colors.primaryGlow}
+                    returnKeyType="done"
+                    accessibilityLabel="ქალაქი"
+                    style={styles.input}
+                  />
+                  <Text style={styles.rowHint}>
+                    {manualCity
+                      ? 'ხელით მითითებული — ამინდისთვის'
+                      : detectedCity
+                      ? `ავტომატურად: ${detectedCity}`
+                      : 'ამინდისთვის; ცარიელი — ავტომატურად'}
+                  </Text>
+                </View>
+                <TextButton
+                  label="განახლება"
+                  onPress={() => {
+                    refreshLocation({ force: true }).catch(() => {});
+                  }}
                 />
               </View>
-            </>
-          ) : null}
+            </Group>
 
-          <Text style={[typography.labelSm, styles.section, styles.sectionTop]}>
-            ქალაქი
-          </Text>
-          <View style={styles.row}>
-            <View style={styles.flex}>
-              <TextInput
-                value={cityDraft}
-                onChangeText={setCityDraft}
-                onBlur={commitCity}
-                onSubmitEditing={commitCity}
-                placeholder={detectedCity ?? 'მაგ. თბილისი'}
-                placeholderTextColor={colors.textMuted}
-                style={[typography.body, styles.cityInput]}
-                returnKeyType="done"
-              />
-              <Text style={[typography.bodySmall, styles.rowHint]}>
-                {manualCity
-                  ? 'ხელით მითითებული'
-                  : detectedCity
-                  ? `ავტომატური: ${detectedCity}`
-                  : 'მდებარეობა ამინდისთვის'}
-              </Text>
-            </View>
-            <Pressable
-              onPress={() => {
-                refreshLocation({ force: true }).catch(() => {});
-              }}
-              style={styles.linkBtn}
-              hitSlop={6}
-            >
-              <Text style={[typography.labelSm, styles.linkBtnText]}>
-                განახლება
-              </Text>
-            </Pressable>
-          </View>
+            <Group label="რა იცის Mia-მ შენზე">
+              {facts.length === 0 ? (
+                <Text style={styles.empty}>
+                  თქვი, მაგალითად, „დავითი მქვია“ — Mia დაიმახსოვრებს.
+                </Text>
+              ) : (
+                <>
+                  {facts.map((f, i) => (
+                    <View
+                      key={f.id}
+                      style={[styles.row, i < facts.length - 1 && styles.rowRule]}
+                    >
+                      <Text style={[styles.fact, styles.flex]}>{f.text}</Text>
+                      <IconButton
+                        icon="close"
+                        size={18}
+                        color={colors.textFaint}
+                        label={`დავიწყება: ${f.text}`}
+                        onPress={() => removeFact(f.id)}
+                      />
+                    </View>
+                  ))}
+                  <TextButton label="ყველაფრის დავიწყება" tone="muted" onPress={clearFacts} />
+                </>
+              )}
+            </Group>
 
-          {/* Long-term memory — facts Mia saved via remember_fact */}
-          <Text style={[typography.labelSm, styles.section, styles.sectionTop]}>
-            რა იცის Mia-მ შენზე
-          </Text>
-          {facts.length === 0 ? (
-            <Text style={[typography.bodySmall, styles.rowHint]}>
-              თქვი, მაგ. „დავითი მქვია“ და Mia დაიმახსოვრებს
-            </Text>
-          ) : (
-            <>
-              {facts.map((f) => (
-                <View key={f.id} style={[styles.row, { marginBottom: spacing.sm }]}>
-                  <Text style={[typography.body, styles.rowLabel, styles.flex]}>
-                    {f.text}
+            <Group label="ანგარიში">
+              <Row title={user?.email ?? ''} last>
+                <TextButton label="გასვლა" onPress={logout} />
+              </Row>
+              {!deleteMode ? (
+                <TextButton
+                  label="ანგარიშის წაშლა"
+                  tone="danger"
+                  onPress={() => {
+                    setDeleteMode(true);
+                    setDeleteErr(null);
+                    setDeletePw('');
+                  }}
+                />
+              ) : (
+                <View style={styles.confirm}>
+                  <Text style={styles.confirmText}>
+                    ანგარიშის წაშლა საბოლოოა. დასადასტურებლად შეიყვანე პაროლი.
                   </Text>
-                  <Pressable
-                    onPress={() => removeFact(f.id)}
-                    style={styles.linkBtn}
-                    hitSlop={6}
-                  >
-                    <Text style={[typography.labelSm, styles.linkBtnText]}>
-                      წაშლა
-                    </Text>
-                  </Pressable>
+                  <TextInput
+                    value={deletePw}
+                    onChangeText={setDeletePw}
+                    placeholder="პაროლი"
+                    placeholderTextColor={colors.textFaint}
+                    cursorColor={colors.primary}
+                    secureTextEntry
+                    autoCapitalize="none"
+                    autoFocus
+                    accessibilityLabel="პაროლი"
+                    style={[styles.input, styles.inputBoxed]}
+                  />
+                  {deleteErr ? <Text style={styles.rowNote}>{deleteErr}</Text> : null}
+                  <View style={styles.confirmActions}>
+                    <TextButton
+                      label="გაუქმება"
+                      tone="muted"
+                      onPress={() => setDeleteMode(false)}
+                    />
+                    <TextButton
+                      label={deleteBusy ? 'იშლება…' : 'სამუდამოდ წაშლა'}
+                      tone="danger"
+                      disabled={deleteBusy || !deletePw}
+                      onPress={onDeleteAccount}
+                    />
+                  </View>
                 </View>
-              ))}
-              <Pressable onPress={clearFacts} hitSlop={6}>
-                <Text style={[typography.bodySmall, styles.deleteLinkText]}>
-                  ყველაფრის დავიწყება
-                </Text>
-              </Pressable>
-            </>
-          )}
-
-          {/* Account */}
-          <Text style={[typography.labelSm, styles.section, styles.sectionTop]}>
-            ანგარიში
-          </Text>
-          <View style={[styles.row, { justifyContent: 'space-between' }]}>
-            <Text style={[typography.bodySmall, { color: colors.textMuted }]}>
-              {user?.email ?? ''}
-            </Text>
-            <Pressable onPress={logout} style={styles.signOutBtn} hitSlop={6}>
-              <Text style={styles.signOutText}>გასვლა</Text>
-            </Pressable>
-          </View>
-
-          {!deleteMode ? (
-            <Pressable
-              onPress={() => {
-                setDeleteMode(true);
-                setDeleteErr(null);
-                setDeletePw('');
-              }}
-              hitSlop={6}
-              style={styles.deleteLink}
-            >
-              <Text style={[typography.bodySmall, styles.deleteLinkText]}>
-                ანგარიშის წაშლა
-              </Text>
-            </Pressable>
-          ) : (
-            <View style={styles.deleteBox}>
-              <Text style={[typography.bodySmall, styles.deleteWarn]}>
-                ანგარიშის წაშლა საბოლოოა. დაადასტურეთ პაროლით:
-              </Text>
-              <TextInput
-                value={deletePw}
-                onChangeText={setDeletePw}
-                placeholder="პაროლი"
-                placeholderTextColor={colors.textMuted}
-                secureTextEntry
-                autoCapitalize="none"
-                style={[typography.body, styles.deleteInput]}
-              />
-              {deleteErr ? (
-                <Text style={[typography.bodySmall, styles.deleteErr]}>
-                  {deleteErr}
-                </Text>
-              ) : null}
-              <View style={styles.deleteActions}>
-                <Pressable
-                  onPress={() => setDeleteMode(false)}
-                  style={styles.linkBtn}
-                  hitSlop={6}
-                >
-                  <Text style={[typography.labelSm, styles.linkBtnText]}>
-                    გაუქმება
-                  </Text>
-                </Pressable>
-                <Pressable
-                  onPress={onDeleteAccount}
-                  disabled={deleteBusy || !deletePw}
-                  style={[
-                    styles.signOutBtn,
-                    (deleteBusy || !deletePw) && { opacity: 0.4 },
-                  ]}
-                  hitSlop={6}
-                >
-                  <Text style={styles.signOutText}>
-                    {deleteBusy ? 'იშლება…' : 'სამუდამოდ წაშლა'}
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-          )}
-        </ScrollView>
+              )}
+            </Group>
+          </ScrollView>
+        </Animated.View>
       </SafeAreaView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
   root: { flex: 1, backgroundColor: colors.bgDeep },
-  safe: { flex: 1, backgroundColor: 'transparent' },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
-  },
-  title: { color: colors.text },
-  iconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.lg,
-    alignItems: 'center',
+  flex: { flex: 1 },
+  nav: {
+    height: 64,
     justifyContent: 'center',
+    // The chevron's glyph lines up with the 24pt gutter.
+    paddingLeft: spacing.xl - 14,
   },
   body: {
     paddingHorizontal: spacing.xl,
-    paddingBottom: spacing.xxl,
+    paddingBottom: spacing.xxxl,
   },
-  section: {
-    color: colors.outline,
+  title: {
+    ...typography.display,
+    color: colors.text,
     marginBottom: spacing.sm,
-    textTransform: 'none',
-    letterSpacing: 0.2,
-    fontSize: 12,
   },
-  sectionTop: {
-    marginTop: spacing.lg,
+  group: { marginTop: spacing.xxl },
+  groupLabel: {
+    ...typography.label,
+    color: colors.textFaint,
+    marginBottom: spacing.xs,
+  },
+  groupBody: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.stroke,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: spacing.md,
+    minHeight: 56,
     paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.stroke,
-    backgroundColor: 'rgba(2,4,16,0.4)',
-    marginBottom: spacing.sm,
   },
-  rowLabel: {
+  rowRule: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.stroke,
+  },
+  rowTitle: {
+    ...typography.bodyMedium,
     color: colors.text,
   },
   rowHint: {
-    color: colors.textMuted,
-    marginTop: 2,
+    ...typography.caption,
+    color: colors.textFaint,
+    marginTop: spacing.xxs,
   },
-  wakeNote: {
-    color: colors.danger,
-    marginTop: 4,
-  },
-  cityInput: {
-    color: colors.text,
-    paddingVertical: 0,
-  },
-  linkBtn: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.strokeBrandSoft,
-  },
-  linkBtnText: {
-    color: colors.primary,
-    textTransform: 'none',
-    letterSpacing: 0.2,
-    fontSize: 12,
-  },
-  signOutBtn: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.dangerStroke,
-  },
-  signOutText: {
-    color: colors.danger,
-    textTransform: 'none',
-    letterSpacing: 0.2,
-    fontSize: 12,
-  },
-  deleteLink: {
-    alignSelf: 'flex-start',
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.md,
-  },
-  deleteLinkText: {
-    color: colors.textMuted,
-    textDecorationLine: 'underline',
-  },
-  deleteBox: {
-    borderWidth: 1,
-    borderColor: colors.dangerStroke,
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  deleteWarn: {
-    color: colors.danger,
-  },
-  deleteInput: {
-    color: colors.text,
-    borderBottomWidth: 1,
-    borderColor: colors.stroke,
-    paddingVertical: spacing.xs,
-    marginTop: spacing.sm,
-  },
-  deleteErr: {
+  rowNote: {
+    ...typography.caption,
     color: colors.danger,
     marginTop: spacing.xs,
   },
-  deleteActions: {
+  input: {
+    ...typography.body,
+    color: colors.text,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: 0,
+    minHeight: HIT - 8,
+  },
+  inputBoxed: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.strokeStrong,
+    marginTop: spacing.sm,
+  },
+  fact: {
+    ...typography.body,
+    color: colors.text,
+  },
+  empty: {
+    ...typography.body,
+    color: colors.textMuted,
+    paddingVertical: spacing.md,
+  },
+  textBtn: {
+    minHeight: HIT,
+    justifyContent: 'center',
+    alignSelf: 'flex-start',
+  },
+  textBtnLabel: {
+    ...typography.bodyMedium,
+  },
+  accent: { color: colors.primary },
+  danger: { color: colors.danger },
+  muted: { color: colors.textMuted },
+  pressed: { opacity: 0.6 },
+  disabled: { opacity: 0.4 },
+  confirm: {
+    paddingVertical: spacing.md,
+  },
+  confirmText: {
+    ...typography.body,
+    color: colors.textMuted,
+  },
+  confirmActions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    gap: spacing.sm,
-    marginTop: spacing.md,
+    gap: spacing.xl,
+    marginTop: spacing.sm,
   },
 });

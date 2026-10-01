@@ -2,6 +2,9 @@
 //
 // Colours come straight from the theme and are LOCKED: the shader only mixes
 // these, scales their brightness and blends them. It never rotates hue.
+// The one sanctioned exception is translator mode: `translatorPalette` is a
+// slightly cooler sibling the page cross-fades the palette uniforms to (see
+// `tint`). At tint 0 the page uploads exactly `palette`, untouched.
 //
 // Springs are specified like a designer would: `freq` (Hz — how fast it moves)
 // and `damping` (1 = critically damped / no overshoot, <1 = settles with a
@@ -63,6 +66,25 @@ export const ORB_CONFIG = {
     // Navy the light is absorbed into (the glass body's depth).
     navy: colors.surfaceSolid, // #1a1b2c
   },
+
+  /**
+   * Translator mode: the same seven roles, each nudged a few degrees cooler —
+   * violet toward indigo, pink toward orchid, coral toward rose — so the orb
+   * reads as "listening differently" without becoming a different object.
+   * Glass white and the navy depth stay put.
+   */
+  translatorPalette: {
+    violet: '#5b45f2',
+    pink: '#e252b4',
+    coral: '#ff5a86',
+    pinkSoft: '#f6dcf6',
+    violetSoft: '#d0cdff',
+    white: colors.text,
+    navy: colors.surfaceSolid,
+  },
+
+  /** Palette cross-fade into / out of translator mode (ms, smoothstep). */
+  tintMs: 500,
 
   /** Sphere radius as a fraction of half the canvas (room for the edge AA). */
   radius: 0.86,

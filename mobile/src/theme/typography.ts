@@ -1,74 +1,89 @@
-// On Android, `fontFamily` matches the TTF filename stem (not the PostScript name).
-// iOS and Expo Go get the same names from fontFiles.ts, loaded at startup in
-// App.tsx — a new font must be added there too.
-// Filenames under assets/fonts/ (the ONLY families that exist in the app):
-//   MarkGEO-Regular.ttf / MarkGEO-Bold.ttf / MarkGEO-CAPS.ttf
-//   SpaceGrotesk-Bold.ttf   (numeric/clock displays — Latin+digits only)
-//   MarckScript-Regular.ttf (the "Mia" wordmark — connected script)
+// On Android, `fontFamily` matches the TTF filename stem (not the PostScript
+// name). iOS and Expo Go get the same names from fontFiles.ts, loaded at
+// startup in App.tsx — a new font must be added there too, and copied into
+// android/app/src/main/assets/fonts.
 //
-// MarkGEO is the primary font — proper Georgian glyphs; Latin renders fine in
-// it too. Every fontFamily in the app MUST come from `fonts` below: a literal
-// naming a family that isn't bundled silently falls back to Roboto.
+// FiraGO is the one text family: a humanist sans drawn for Georgian
+// (Mkhedruli), Latin and Cyrillic alike, so a Georgian reply, an English
+// quote and a Russian translation sit on the same line with matching colour
+// and x-height. Bundled subset: Latin, Cyrillic, Georgian, punctuation.
+// Every fontFamily in the app MUST come from `fonts` below: a literal naming a
+// family that isn't bundled silently falls back to Roboto.
 
 import type { TextStyle } from 'react-native';
 
 export const fonts = {
-  displayBold: 'MarkGEO-Bold',
-  headlineMedium: 'MarkGEO-Bold',
-  body: 'MarkGEO-Regular',
-  bodyBold: 'MarkGEO-Bold',
-  caps: 'MarkGEO-CAPS',
-  /** Big clock/countdown numerals (Latin digits only — no Georgian glyphs). */
-  numeric: 'SpaceGrotesk-Bold',
+  body: 'FiraGO-Regular',
+  medium: 'FiraGO-Medium',
+  bodyBold: 'FiraGO-SemiBold',
+  /** Kept for screens that ask for a display weight by name. */
+  displayBold: 'FiraGO-SemiBold',
+  headlineMedium: 'FiraGO-Medium',
   /** The "Mia" brand wordmark only. */
   brand: 'MarckScript-Regular',
 };
 
-export const typography: Record<string, TextStyle> = {
+// Georgian has tall ascenders AND deep descenders on most letters (ბ, ფ, ყ,
+// ჰ…), so every size gets ~1.5× leading — tighter clips or crowds them.
+//
+// The scale (size / line):
+//   display 30/40 · title 20/28 · reading 17/27 · body 15/23 · caption 13/19
+//   · micro 12/16
+export const typography = {
   display: {
-    fontFamily: fonts.displayBold,
-    fontSize: 48,
-    lineHeight: 53,
-    letterSpacing: -0.96,
-  },
-  headline: {
-    fontFamily: fonts.headlineMedium,
-    fontSize: 32,
-    lineHeight: 38,
-    letterSpacing: -0.32,
+    fontFamily: fonts.medium,
+    fontSize: 30,
+    lineHeight: 40,
+    letterSpacing: -0.4,
   },
   title: {
-    fontFamily: fonts.headlineMedium,
+    fontFamily: fonts.medium,
     fontSize: 20,
-    lineHeight: 26,
+    lineHeight: 28,
     letterSpacing: -0.2,
   },
-  bodyLg: {
+  /** Mia's replies and translations — the text people actually read. */
+  reading: {
     fontFamily: fonts.body,
-    fontSize: 18,
-    lineHeight: 29,
+    fontSize: 17,
+    lineHeight: 27,
   },
   body: {
     fontFamily: fonts.body,
-    fontSize: 16,
-    lineHeight: 24,
+    fontSize: 15,
+    lineHeight: 23,
+  },
+  bodyMedium: {
+    fontFamily: fonts.medium,
+    fontSize: 15,
+    lineHeight: 23,
+  },
+  caption: {
+    fontFamily: fonts.body,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  /** Small labels above groups. Sentence case — Georgian has no caps. */
+  label: {
+    fontFamily: fonts.medium,
+    fontSize: 12,
+    lineHeight: 16,
+    letterSpacing: 0.3,
+  },
+  /** Tabular figures for times and countdowns. */
+  numeric: {
+    fontFamily: fonts.body,
+    fontVariant: ['tabular-nums'],
+  },
+  // ── Legacy names (the auth flow) ─────────────────────────────────────────
+  bodyLg: {
+    fontFamily: fonts.body,
+    fontSize: 17,
+    lineHeight: 27,
   },
   bodySmall: {
     fontFamily: fonts.body,
     fontSize: 13,
-    lineHeight: 18,
+    lineHeight: 19,
   },
-  labelSm: {
-    fontFamily: fonts.caps,
-    fontSize: 12,
-    lineHeight: 14,
-    letterSpacing: 0.6,
-    // MarkGEO-CAPS already renders all-caps glyphs; no textTransform needed.
-  },
-  mono: {
-    fontFamily: fonts.bodyBold,
-    fontSize: 11,
-    lineHeight: 14,
-    letterSpacing: 0.4,
-  },
-};
+} satisfies Record<string, TextStyle>;

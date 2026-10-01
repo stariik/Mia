@@ -550,6 +550,7 @@ export const ORB_RENDERER_JS = `
       var a = userW + miaW + kAlpha.x + (tracing ? 1 : 0) + absorbCurve(absorbT) +
         touchRip[3] + Math.abs(press.x) * 30 + Math.abs(tiltX.v) + Math.abs(tiltY.v);
       if (I.touch.down) a += 1;
+      if (tintX !== I.tint) a += 1; // palette cross-fade runs at full rate
       for (var i = 0; i < 4; i++) a += rip[i * 4 + 1];
       for (var k = 0; k < NK; k++) a += Math.abs(look[KEYS[k]].v) * 3;
       return a;
@@ -584,6 +585,34 @@ export const ORB_RENDERER_JS = `
         tier++; slowFor = 0; fastFor = 0; drawEma = targetMs; resize();
       } else if (fastFor > Q.upAfterS && tier > Q.startTier) {
         tier--; fastFor = 0; resize();
+      }
+    }
+
+    // ── Translator tint ─────────────────────────────────────────────────────
+    // The palette uniforms cross-fade between C.pal and C.palTint. tintX walks
+    // linearly toward I.tint over C.tintMs and the blend is smoothstepped.
+    // Nothing is re-uploaded unless tintX actually moves, so outside
+    // translator mode the shaders see exactly the original palette buffer.
+    var palBuf = new Float32Array(C.pal);
+    var tintX = 0;
+    function stepTint(dt) {
+      if (tintX === I.tint) return;
+      var stepBy = C.tintMs > 0 ? dt / (C.tintMs / 1000) : 1;
+      tintX = I.tint > tintX ? Math.min(I.tint, tintX + stepBy) : Math.max(I.tint, tintX - stepBy);
+      var e = tintX * tintX * (3 - 2 * tintX);
+      for (var i = 0; i < palBuf.length; i++) {
+        palBuf[i] = tintX === 0 ? C.pal[i] : C.pal[i] + (C.palTint[i] - C.pal[i]) * e;
+      }
+      var keys = Object.keys(P0);
+      for (var k = 0; k < keys.length; k++) {
+        var a = P0[keys[k]], b = C.palTintRgb[keys[k]], o = P[keys[k]];
+        for (var j = 0; j < 3; j++) o[j] = a[j] + (b[j] - a[j]) * e;
+      }
+      if (gl && progI && progC) {
+        gl.useProgram(progI);
+        gl.uniform3fv(locI.pal, palBuf);
+        gl.useProgram(progC);
+        gl.uniform3fv(locC.pal, palBuf);
       }
     }
 
@@ -670,7 +699,7 @@ export const ORB_RENDERER_JS = `
       noiseTex = bakeNoise();
       locI = locate(progI);
       locC = locate(progC);
-      var pal = new Float32Array(C.pal);
+      var pal = palBuf;
       gl.useProgram(progI);
       gl.uniform1i(locI.noise, 0);
       gl.uniform3fv(locI.pal, pal);
@@ -802,7 +831,10 @@ export const ORB_RENDERER_JS = `
     function rgba(rgb, a) {
       return 'rgba(' + Math.round(rgb[0] * 255) + ',' + Math.round(rgb[1] * 255) + ',' + Math.round(rgb[2] * 255) + ',' + a + ')';
     }
-    var P = C.palRgb;
+    // Fallback colours: a private copy, blended in place by stepTint.
+    var P0 = C.palRgb;
+    var P = {};
+    Object.keys(P0).forEach(function (k) { P[k] = P0[k].slice(); });
     function swapToFallback() {
       // A canvas that ever had a WebGL context can't give a 2D one: replace it.
       var fresh = document.createElement('canvas');
@@ -894,6 +926,7 @@ export const ORB_RENDERER_JS = `
       lastT = t;
       var dt = Math.min(Math.max(frameMs / 1000, 0), 0.05);
       step(dt);
+      stepTint(dt);
 
       // Pace: full rate while moving, half when calm; never above activeFps.
       if (activity() > PC.activityOn) { calm = false; calmFor = 0; }
@@ -936,6 +969,7 @@ export const ORB_RENDERER_JS = `
     }
     I.wake = wake;
     I.draw = draw;
+    I.stepTint = stepTint;
     // Pin a quality tier (dev/testing): disables adaptation.
     I.lockTier = function (n) {
       tier = Math.max(0, Math.min(Q.tiers.length - 1, n | 0));

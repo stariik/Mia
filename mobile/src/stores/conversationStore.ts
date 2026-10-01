@@ -227,7 +227,8 @@ export const useConversationStore = create<ConversationState>()(
       deleteConversation: (id) =>
         set((s) => {
           if (!s.conversations[id]) return s;
-          const { [id]: _removed, ...rest } = s.conversations;
+          const rest = { ...s.conversations };
+          delete rest[id];
           const order = s.order.filter((x) => x !== id);
           const activeId = s.activeId === id ? order[0] ?? null : s.activeId;
           return { conversations: rest, order, activeId };

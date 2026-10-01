@@ -158,7 +158,10 @@ export const ORB_DEV_TOOLS_JS = `
       },
       warp: function (seconds) {
         var n = Math.round(seconds * 60);
-        for (var i = 0; i < n; i++) I.step(1 / 60);
+        for (var i = 0; i < n; i++) {
+          I.step(1 / 60);
+          if (I.stepTint) I.stepTint(1 / 60);
+        }
         if (I.draw) I.draw();
       }
     };

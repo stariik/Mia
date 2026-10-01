@@ -10,7 +10,8 @@
 // Params: state (idle|listening|thinking|speaking|error), sim (mic|tts),
 // mode (speech|procedural), t (seconds to warp before showing), reduced=1,
 // fallback=1, size (css px), tier (quality tier index), touch=x,y, hud=0,
-// bar=0, seq=idle:2,thinking:0.6 (state changes mid-warp), bench=1 (uncapped).
+// bar=0, seq=idle:2,thinking:0.6 (state changes mid-warp), bench=1 (uncapped),
+// tint=1 (translator-mode palette).
 
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -82,6 +83,7 @@ const HARNESS_JS = `
   btn('🔊 Mia voice', function () { orb.state('speaking'); __orbDev.sim('tts', 'speech', true); });
   btn('sim off', function () { __orbDev.sim(null); });
   btn('reduced', function () { orb.setReducedMotion(!__orbIn.reduced); });
+  btn('translator tint', function () { orb.setTint(__orbIn.tint ? 0 : 1); });
   if (q.get('bar') === '0') bar.style.display = 'none';
 
   if (q.get('tier')) __orbIn.lockTier(+q.get('tier'));
@@ -91,6 +93,7 @@ const HARNESS_JS = `
   if (q.get('t') || q.get('seq')) orb.setActive(false);
   if (q.get('state')) orb.state(q.get('state'));
   if (q.get('reduced') === '1') orb.setReducedMotion(true);
+  if (q.get('tint')) orb.setTint(+q.get('tint'));
   if (q.get('sim')) __orbDev.sim(q.get('sim'), q.get('mode') || 'procedural', false);
   if (q.get('touch')) {
     var tp = q.get('touch').split(',');

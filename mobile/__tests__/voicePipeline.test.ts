@@ -32,6 +32,9 @@ jest.mock('@/lib/wakeWord', () => ({
 }));
 
 jest.mock('@/api/client', () => ({ expireSessionIf401: jest.fn() }));
+jest.mock('@/lib/translator/session', () => ({
+  translator: { start: jest.fn().mockResolvedValue(undefined) },
+}));
 jest.mock('@/stt/client', () => ({ streamingEnabled: jest.fn().mockResolvedValue(false), streamUrl: () => 'ws://test/api/stt/stream' }));
 jest.mock('@/stt/expoCapture', () => ({ expoCapture: jest.fn() }));
 jest.mock('@/hooks/usePermissions', () => ({ ensureMicrophonePermission: jest.fn().mockResolvedValue(true) }));
@@ -318,6 +321,62 @@ describe('hands-free conversation loop', () => {
 // The orb maps these flags so it never falls back to idle mid-conversation:
 // processing → thinking (while the recording is transcribed), arming →
 // listening (while the mic opens).
+describe('translator hand-off', () => {
+  const { translator } = jest.requireMock('@/lib/translator/session') as {
+    translator: { start: jest.Mock };
+  };
+
+  test('a spoken "translate to English" opens translator mode, not a chat turn', async () => {
+    mockTranscribe.mockResolvedValue('თარგმნე ინგლისურად');
+    const p = await mountPipeline();
+    await act(async () => {
+      await p.startListening();
+    });
+    await act(async () => {
+      await p.stopListeningAndSend();
+    });
+
+    expect(mockTurn).not.toHaveBeenCalled();
+    expect(translator.start).toHaveBeenCalledWith({ to: 'en' });
+    // The chat mic must not re-arm under the translator's.
+    expect(mockRecorder.start).toHaveBeenCalledTimes(1);
+    expect(p.isConversationActive()).toBe(false);
+  });
+
+  test('the assistant\'s start_translation opens it after the reply', async () => {
+    mockTurn.mockResolvedValue({ endSession: true, translator: { to: 'fr' } });
+    const p = await mountPipeline();
+    await act(async () => {
+      await p.startListening();
+    });
+    await act(async () => {
+      await p.stopListeningAndSend();
+    });
+
+    expect(mockTurn).toHaveBeenCalledTimes(1);
+    expect(translator.start).toHaveBeenCalledWith({ to: 'fr' });
+    expect(mockRecorder.start).toHaveBeenCalledTimes(1);
+  });
+
+  test('typed text goes through the same command handling', async () => {
+    const p = await mountPipeline();
+    await act(async () => {
+      await p.sendText('translate from English to Georgian');
+    });
+    expect(mockTurn).not.toHaveBeenCalled();
+    expect(translator.start).toHaveBeenCalledWith({ from: 'en', to: 'ka' });
+  });
+
+  test('an ordinary sentence still goes to the assistant', async () => {
+    const p = await mountPipeline();
+    await act(async () => {
+      await p.sendText('როგორ არის ინგლისურად მადლობა?');
+    });
+    expect(mockTurn).toHaveBeenCalledTimes(1);
+    expect(translator.start).not.toHaveBeenCalled();
+  });
+});
+
 describe('orb continuity flags', () => {
   test('keeps "processing" from the end of recording until the reply takes over', async () => {
     const p = await mountPipeline();

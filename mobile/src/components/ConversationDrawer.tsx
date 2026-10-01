@@ -1,28 +1,24 @@
 import React, { useEffect } from 'react';
 import {
-  Dimensions,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Line, Path } from 'react-native-svg';
 import Animated, {
-  Easing,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
 
-import { BrandMark } from '@/components/BrandMark';
+import { Icon } from '@/components/ui/Icon';
+import { IconButton } from '@/components/ui/IconButton';
 import { useConversationStore } from '@/stores/conversationStore';
-import { brandGradient, colors, fonts, radius, spacing, typography } from '@/theme';
-
-const { width: SCREEN_W } = Dimensions.get('window');
-const DRAWER_W = Math.min(330, Math.round(SCREEN_W * 0.84));
+import { HIT, colors, duration, easeOut, spacing, typography } from '@/theme';
 
 type Props = {
   visible: boolean;
@@ -31,13 +27,17 @@ type Props = {
 
 function timeAgoGe(ts: number) {
   const diff = Date.now() - ts;
-  if (diff < 60_000) return 'ახლა';
+  if (diff < 60_000) return 'ახლახან';
   if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} წთ წინ`;
   if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} სთ წინ`;
-  return `${Math.floor(diff / 86_400_000)} დღ წინ`;
+  return `${Math.floor(diff / 86_400_000)} დღის წინ`;
 }
 
+/** Past conversations, sliding in from the left over a dimmed screen. */
 export function ConversationDrawer({ visible, onClose }: Props) {
+  const { width } = useWindowDimensions();
+  const drawerW = Math.min(340, Math.round(width * 0.86));
+  const reduceMotion = useReducedMotion();
   const conversations = useConversationStore((s) => s.conversations);
   const order = useConversationStore((s) => s.order);
   const activeId = useConversationStore((s) => s.activeId);
@@ -45,162 +45,111 @@ export function ConversationDrawer({ visible, onClose }: Props) {
   const selectConversation = useConversationStore((s) => s.selectConversation);
   const deleteConversation = useConversationStore((s) => s.deleteConversation);
 
-  const tx = useSharedValue(-DRAWER_W);
-  const overlay = useSharedValue(0);
-
+  const open = useSharedValue(0);
   useEffect(() => {
-    tx.value = withTiming(visible ? 0 : -DRAWER_W, {
-      duration: 280,
-      easing: Easing.out(Easing.cubic),
+    open.value = withTiming(visible ? 1 : 0, {
+      duration: reduceMotion ? 0 : duration.slow,
+      easing: easeOut,
     });
-    overlay.value = withTiming(visible ? 1 : 0, { duration: 280 });
-  }, [visible, tx, overlay]);
+  }, [visible, open, reduceMotion]);
 
   const drawerStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: tx.value }],
+    transform: [{ translateX: (open.value - 1) * drawerW }],
   }));
-  const overlayStyle = useAnimatedStyle(() => ({
-    opacity: overlay.value * 0.7,
-  }));
+  const scrimStyle = useAnimatedStyle(() => ({ opacity: open.value }));
+
+  const startNew = () => {
+    newConversation();
+    onClose();
+  };
+
+  const visibleIds = order.filter((id) => conversations[id]);
 
   return (
     <View
       pointerEvents={visible ? 'auto' : 'none'}
       style={[StyleSheet.absoluteFill, styles.root]}
+      accessibilityElementsHidden={!visible}
+      importantForAccessibility={visible ? 'auto' : 'no-hide-descendants'}
     >
-      <Animated.View style={[StyleSheet.absoluteFill, styles.overlay, overlayStyle]}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+      <Animated.View style={[StyleSheet.absoluteFill, styles.scrim, scrimStyle]}>
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
+          accessibilityLabel="ისტორიის დახურვა"
+        />
       </Animated.View>
 
-      <Animated.View style={[styles.drawer, { width: DRAWER_W }, drawerStyle]}>
+      <Animated.View
+        style={[styles.drawer, { width: drawerW }, drawerStyle]}
+        accessibilityViewIsModal
+      >
         <SafeAreaView edges={['top', 'bottom']} style={styles.flex}>
           <View style={styles.header}>
-            <Text style={[typography.title, styles.headerTitle]}>
+            <Text style={styles.title} accessibilityRole="header">
               საუბრები
             </Text>
             <Pressable
-              onPress={() => {
-                newConversation();
-                onClose();
-              }}
-              style={styles.newBtn}
-              hitSlop={6}
+              onPress={startNew}
+              accessibilityRole="button"
+              accessibilityLabel="ახალი საუბარი"
+              style={({ pressed }) => [styles.newBtn, pressed && styles.pressed]}
             >
-              <Svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke={colors.primary}
-                strokeWidth={2.2}
-                strokeLinecap="round"
-              >
-                <Line x1="12" y1="5" x2="12" y2="19" />
-                <Line x1="5" y1="12" x2="19" y2="12" />
-              </Svg>
-              <Text style={styles.newBtnLabel}>ახალი</Text>
+              <Icon name="plus" size={18} color={colors.primary} strokeWidth={1.8} />
+              <Text style={styles.newLabel}>ახალი</Text>
             </Pressable>
           </View>
 
           <ScrollView
             style={styles.flex}
             contentContainerStyle={styles.list}
-            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
           >
-            {order.length === 0 ? (
-              <View style={styles.emptyState}>
-                <BrandMark size={72} />
-                <Text style={styles.emptyTitle}>საუბრები ჯერ არ გაქვს</Text>
+            {visibleIds.length === 0 ? (
+              <View style={styles.empty}>
+                <Text style={styles.emptyTitle}>ჯერ ცარიელია</Text>
                 <Text style={styles.emptyHint}>
-                  დაიწყე ახალი საუბარი ქვევით
+                  ყოველი საუბარი აქ შეინახება — დაუბრუნდი ნებისმიერ დროს.
                 </Text>
-                <Pressable
-                  onPress={() => {
-                    newConversation();
-                    onClose();
-                  }}
-                  style={({ pressed }) => [
-                    styles.emptyCta,
-                    pressed && { opacity: 0.92, transform: [{ scale: 0.99 }] },
-                  ]}
-                >
-                  <LinearGradient
-                    colors={[...brandGradient]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={StyleSheet.absoluteFill}
-                  />
-                  <Text style={styles.emptyCtaText}>+ ახალი საუბარი</Text>
-                </Pressable>
               </View>
             ) : (
-              order.map((id) => {
-                const c = conversations[id];
-                if (!c) return null;
+              visibleIds.map((id) => {
+                const c = conversations[id]!;
                 const isActive = id === activeId;
                 return (
-                  <View
-                    key={id}
-                    style={[styles.item, isActive && styles.itemActive]}
-                  >
+                  <View key={id} style={styles.item}>
+                    {isActive ? <View style={styles.activeMark} /> : null}
                     <Pressable
                       onPress={() => {
                         selectConversation(id);
                         onClose();
                       }}
-                      style={styles.flex}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: isActive }}
+                      style={({ pressed }) => [styles.itemMain, pressed && styles.pressed]}
                     >
                       <Text
                         numberOfLines={1}
-                        style={[
-                          typography.body,
-                          {
-                            color: isActive ? colors.primary : colors.text,
-                          },
-                        ]}
+                        style={[styles.itemTitle, isActive && styles.itemTitleOn]}
                       >
-                        {c.title}
+                        {c.title === 'New chat' ? 'ახალი საუბარი' : c.title}
                       </Text>
-                      <Text
-                        style={[
-                          typography.bodySmall,
-                          { color: colors.outline, marginTop: 2 },
-                        ]}
-                      >
+                      <Text style={styles.itemMeta}>
                         {timeAgoGe(c.updatedAt)} · {c.messages.length} შეტყობინება
                       </Text>
                     </Pressable>
-                    <Pressable
+                    <IconButton
+                      icon="trash"
+                      size={18}
+                      color={colors.textFaint}
+                      label={`წაშლა: ${c.title}`}
                       onPress={() => deleteConversation(id)}
-                      hitSlop={8}
-                      style={styles.delBtn}
-                    >
-                      <Svg
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke={colors.outline}
-                        strokeWidth={1.6}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <Path d="M3 6h18" />
-                        <Path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-                        <Path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" />
-                      </Svg>
-                    </Pressable>
+                    />
                   </View>
                 );
               })
             )}
           </ScrollView>
-
-          <View style={styles.footer}>
-            <Text style={[typography.mono, { color: colors.outline }]}>
-              {order.length} საუბარი
-            </Text>
-          </View>
         </SafeAreaView>
       </Animated.View>
     </View>
@@ -210,114 +159,90 @@ export function ConversationDrawer({ visible, onClose }: Props) {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   root: {
-    // Above the top bar (zIndex 10 in HomeScreen) so the Mia wordmark and
-    // history button never draw over the open drawer.
+    // Above the top bar (zIndex 10 in HomeScreen).
     zIndex: 100,
   },
-  overlay: {
-    backgroundColor: '#000',
+  scrim: {
+    backgroundColor: colors.scrim,
   },
   drawer: {
     position: 'absolute',
     top: 0,
     bottom: 0,
     left: 0,
-    backgroundColor: colors.surfaceSolid,
-    borderRightWidth: 1,
-    borderColor: colors.strokeBrandSoft,
+    backgroundColor: colors.sheet,
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.strokeStrong,
   },
   header: {
+    height: 64,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderColor: colors.stroke,
+    paddingLeft: spacing.xl,
+    paddingRight: spacing.md,
   },
-  headerTitle: {
+  title: {
+    ...typography.title,
     color: colors.text,
   },
   newBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.full,
-    borderWidth: 1,
-    borderColor: colors.strokeBrand,
-    backgroundColor: 'rgba(255,77,139,0.06)',
+    minHeight: HIT,
+    paddingHorizontal: spacing.sm,
   },
-  newBtnLabel: {
-    fontFamily: fonts.bodyBold,
-    fontSize: 12,
+  newLabel: {
+    ...typography.bodyMedium,
     color: colors.primary,
-    letterSpacing: 0.2,
   },
+  pressed: { opacity: 0.6 },
   list: {
-    paddingVertical: spacing.sm,
+    paddingBottom: spacing.xl,
   },
-  emptyState: {
-    flexGrow: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+  empty: {
     paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.xxl,
-    gap: spacing.md,
+    paddingTop: spacing.xl,
   },
   emptyTitle: {
-    fontFamily: fonts.body,
-    fontSize: 18,
+    ...typography.bodyMedium,
     color: colors.text,
-    marginTop: spacing.sm,
   },
   emptyHint: {
-    fontFamily: fonts.body,
-    fontSize: 13,
+    ...typography.body,
     color: colors.textMuted,
-    textAlign: 'center',
-  },
-  emptyCta: {
-    width: '100%',
-    height: 48,
-    borderRadius: radius.xl,
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: spacing.sm,
-    shadowColor: colors.primary,
-    shadowOpacity: 0.45,
-    shadowOffset: { width: 0, height: 0 },
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  emptyCtaText: {
-    color: '#ffffff',
-    fontFamily: fonts.bodyBold,
-    fontSize: 15,
-    letterSpacing: 0.2,
+    marginTop: spacing.xs,
   },
   item: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.xl,
+    paddingLeft: spacing.xl,
+    paddingRight: spacing.sm,
+  },
+  activeMark: {
+    position: 'absolute',
+    left: 0,
+    top: spacing.md,
+    bottom: spacing.md,
+    width: 2,
+    borderRadius: 1,
+    backgroundColor: colors.primary,
+  },
+  itemMain: {
+    flex: 1,
     paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderColor: colors.stroke,
   },
-  itemActive: {
-    backgroundColor: 'rgba(255,77,139,0.06)',
+  itemTitle: {
+    ...typography.body,
+    color: colors.text,
   },
-  delBtn: {
-    padding: spacing.xs,
+  itemTitleOn: {
+    fontFamily: typography.bodyMedium.fontFamily,
   },
-  footer: {
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.sm,
-    borderTopWidth: 1,
-    borderColor: colors.stroke,
-    alignItems: 'center',
+  itemMeta: {
+    ...typography.caption,
+    color: colors.textFaint,
+    marginTop: spacing.xxs,
   },
 });

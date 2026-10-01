@@ -4,9 +4,6 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 export type RootStackParamList = {
   Auth: undefined;
   Home: undefined;
-  Alarms: undefined;
-  Timers: undefined;
-  Translator: undefined;
   Settings: undefined;
   AlarmRing: { alarmId: string };
 };

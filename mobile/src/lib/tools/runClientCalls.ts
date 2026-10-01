@@ -1,6 +1,8 @@
 import { useProfileStore } from '@/stores/profileStore';
 import { useToolsStore } from '@/stores/toolsStore';
 
+import { queueTranslator } from '@/lib/translator/queue';
+
 import { queueDirections } from './maps';
 import { music } from './music';
 import { cancelSms, confirmSms, prepareSms } from './sms';
@@ -121,6 +123,8 @@ export async function runClientToolCalls(
         say = await confirmSms();
       } else if (call.name === 'cancel_sms') {
         say = cancelSms();
+      } else if (call.name === 'start_translation') {
+        queueTranslator(call.args);
       } else if (call.name === 'open_directions') {
         queueDirections(
           String(call.args.destination ?? ''),

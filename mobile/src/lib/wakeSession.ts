@@ -1,4 +1,4 @@
-import { AppState } from 'react-native';
+import { AppState, Linking } from 'react-native';
 
 import { transcribeGooglePcm } from '@/api/transcribeGoogle';
 import { runAssistantTurn, type TtsPlayback } from '@/lib/assistantTurn';
@@ -9,6 +9,7 @@ import { afterWakeWord } from '@/lib/musicCommands';
 import { dlog } from '@/lib/log';
 import { nativePlayback } from '@/lib/nativePlayback';
 import { orbOverlay } from '@/lib/orbOverlay';
+import { parkTranslatorForForeground } from '@/lib/translator/queue';
 import { wakeWord, type WakeEvent } from '@/lib/wakeWord';
 import { useAuthStore } from '@/stores/authStore';
 import { useConversationStore } from '@/stores/conversationStore';
@@ -277,7 +278,7 @@ export async function runWakeSession(): Promise<void> {
 
       wakeWord.heartbeat();
       orbOverlay.setState('speaking');
-      const { endSession } = await runAssistantTurn({
+      const { endSession, translator } = await runAssistantTurn({
         text,
         playback,
         isCurrent: () => !cancelled,
@@ -287,6 +288,16 @@ export async function runWakeSession(): Promise<void> {
       });
       abortChat = null;
       turns += 1;
+      // Translator mode needs the screen. With the floating orb up (screen on,
+      // "display over other apps" granted — which also permits starting our
+      // activity from the background) open the app and let it take over.
+      // Screen off / no overlay: nothing to show it on; the session just ends.
+      if (translator && orbShown && !cancelled) {
+        parkTranslatorForForeground(translator);
+        Linking.openURL('exp+mobile://translator').catch((e) =>
+          mlog('open app for translator failed:', String(e)),
+        );
+      }
       // Music paused/resumed, or Maps took over: done. Listening on would
       // record the music / talk over navigation.
       if (endSession) break;

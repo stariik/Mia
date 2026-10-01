@@ -70,6 +70,12 @@ export type MiaOrbProps = {
   paused?: boolean;
   /** Per-instance overrides of ORB_CONFIG. */
   config?: OrbConfigOverrides;
+  /**
+   * Translator mode: 1 cross-fades the palette to ORB_CONFIG.translatorPalette
+   * (over ORB_CONFIG.tintMs), 0 fades back. Nothing else about the orb
+   * changes. Default 0 — the theme palette, exactly.
+   */
+  tint?: number;
   ref?: React.Ref<MiaOrbHandle>;
 };
 
@@ -87,11 +93,14 @@ export function MiaOrb({
   mic = takeMicFrame,
   paused = false,
   config,
+  tint = 0,
   ref,
 }: MiaOrbProps) {
   const webRef = useRef<WebView | null>(null);
   const stateRef = useRef(state);
   stateRef.current = state;
+  const tintRef = useRef(tint);
+  tintRef.current = tint;
   const perfSubs = useRef(new Set<(p: OrbPerf) => void>());
 
   const configKey = config ? JSON.stringify(config) : '';
@@ -109,6 +118,10 @@ export function MiaOrb({
   useEffect(() => {
     inject(`window.orb && orb.state(${JSON.stringify(state)})`);
   }, [state, inject]);
+
+  useEffect(() => {
+    inject(`window.orb && orb.setTint && orb.setTint(${tint})`);
+  }, [tint, inject]);
 
   // ── Pause when nobody can see it ───────────────────────────────────────
   const navigation = useContext(NavigationContext);
@@ -264,7 +277,8 @@ export function MiaOrb({
           inject(
             `window.orb && (orb.state(${JSON.stringify(stateRef.current)}),` +
               `orb.setActive(${activeRef.current}),` +
-              `orb.setReducedMotion(${reducedRef.current}))`,
+              `orb.setReducedMotion(${reducedRef.current}),` +
+              `orb.setTint && orb.setTint(${tintRef.current}))`,
           );
         }}
         onRenderProcessGone={(e) => {
