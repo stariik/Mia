@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  AppState,
   Keyboard,
   Platform,
   Pressable,
@@ -33,6 +34,7 @@ import { userErrorMessage } from '@/lib/errorMessages';
 import { haptics } from '@/lib/haptics';
 import { refreshLocation } from '@/lib/location';
 import { languageNameKaAdverb } from '@/lib/translateLanguages';
+import { takeTranslatorFromBackground } from '@/lib/translator/queue';
 import { translator } from '@/lib/translator/session';
 import { useSilenceAutoStop } from '@/hooks/useSilenceAutoStop';
 import { useVoicePipeline } from '@/hooks/useVoicePipeline';
@@ -253,6 +255,20 @@ export function HomeScreen() {
       .catch(() => {})
       .then(() => refreshLocation())
       .catch(() => {});
+  }, []);
+
+  // "Hey Mia, translate…" said while the app was closed: that session parked
+  // the request and brought the app forward — open the translator here.
+  useEffect(() => {
+    const pickUp = () => {
+      const req = takeTranslatorFromBackground();
+      if (req) void translator.start(req);
+    };
+    pickUp();
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') pickUp();
+    });
+    return () => sub.remove();
   }, []);
 
   // Saying "Mia" starts a turn, exactly like tapping the orb (interrupting
