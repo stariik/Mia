@@ -85,6 +85,7 @@ export const ORB_RENDERER_JS = `
     var ttsRaw = new Float32Array(4);
     var ttsPrev = new Float32Array(4);
     var ttsGain = new Float32Array([1, 1, 1, 1]);
+    var ttsPeak = new Float32Array([0.5, 0.5, 0.5, 0.5]);
     var userW = 0, miaW = 0, talking = false;
     var lastOnsetT = -1e9;
 
@@ -105,7 +106,7 @@ export const ORB_RENDERER_JS = `
     // Phases (all wrapped so precision never degrades over a long session).
     var layer = new Float32Array(8);   // 6 slice phases, warp, sparkle drift
     var angles = new Float32Array(4);  // orbit, braid twist, pulse, stream
-    var breathPhase = 0, twinkle = 0;
+    var breathPhase = 0, twinkle = 0, rayPhase = 0;
 
     // Orientation tilt (best effort; Android WebView fires it without a prompt).
     var ori = { has: false, bx: 0, by: 0, x: 0, y: 0 };
@@ -124,6 +125,9 @@ export const ORB_RENDERER_JS = `
     var freqBuf = null, timeBuf = null;
     var bandBins = null, bandRate = 0, bandSize = 0;
     function prepBands(an, rate) {
+      // The analyser's default byte range (-100..-30 dB) clips speech; widen it.
+      // This only scales getByte*Data — the audio itself is untouched.
+      if (an.maxDecibels !== -12) { an.minDecibels = -92; an.maxDecibels = -12; }
       if (freqBuf && freqBuf.length === an.frequencyBinCount && bandRate === rate && bandSize === an.fftSize) return;
       freqBuf = new Uint8Array(an.frequencyBinCount);
       timeBuf = new Uint8Array(an.fftSize);
@@ -161,9 +165,12 @@ export const ORB_RENDERER_JS = `
       for (var b = 1; b < 4; b++) {
         // Byte spectra sit on a dB scale: map the speech range to 0..1, then a
         // gentle AGC so quiet and loud voices both use the full motion range.
-        var x = clamp01((ttsRaw[b] - 0.18) / 0.5);
-        var peak = Math.max(x, 0.25);
-        ttsGain[b] += (Math.min(2.2, Math.max(0.8, 0.85 / peak)) - ttsGain[b]) * (1 - Math.exp(-dt / 1.5));
+        // gentle AGC on the recent PEAK (not the current value — that would
+        // flatten speech), so quiet and loud voices both reach full motion.
+        var x = clamp01((ttsRaw[b] - 0.28) / 0.5);
+        ttsPeak[b] = Math.max(x, ttsPeak[b] * Math.exp(-dt / 2.5));
+        var want = Math.min(2.0, Math.max(0.5, 0.85 / Math.max(ttsPeak[b], 0.2)));
+        ttsGain[b] += (want - ttsGain[b]) * (1 - Math.exp(-dt / 1.2));
         x = clamp01(x * ttsGain[b]);
         var d = x - ttsPrev[b];
         if (d > 0) flux += d;
@@ -310,6 +317,7 @@ export const ORB_RENDERER_JS = `
       angles[1] = wrap(angles[1] + dt * 0.8 * vx * thinkK, TAU);
       angles[2] = wrap(angles[2] + dt * 1.15 * thinkK, TAU);
       angles[3] = wrap(angles[3] + dt * V.streamSpeed * (mw - uw) * (rm ? 0.3 : 1), TAU);
+      rayPhase = wrap(rayPhase + dt * (mw * (0.7 + ttsEnv[0] * 1.6) - uw * (0.5 + micEnv[0] * 1.2)) * (rm ? 0.3 : 1), 256);
       breathPhase = wrap(breathPhase + dt * TAU / C.breathPeriod, TAU);
       twinkle = wrap(twinkle + dt * (2.0 + high * 7) * (rm ? 0.4 : 1), TAU);
 
@@ -344,6 +352,10 @@ export const ORB_RENDERER_JS = `
       }
     }
     I.step = step;
+    // Live envelope readout (dev HUD / tests): [mic l,lo,mid,hi, tts l,lo,mid,hi, userW, miaW].
+    I.levels = function () {
+      return [micEnv[0], micEnv[1], micEnv[2], micEnv[3], ttsEnv[0], ttsEnv[1], ttsEnv[2], ttsEnv[3], userW, miaW];
+    };
 
     // ── Sizing and adaptive quality ─────────────────────────────────────────
     var Q = C.quality;
@@ -448,7 +460,7 @@ export const ORB_RENDERER_JS = `
         res: u('uRes'), shape: u('uShape'), layer0: u('uLayer0'), layer1: u('uLayer1'),
         angles: u('uAngles'), look: u('uLook'), look2: u('uLook2'), voice: u('uVoice'),
         voice2: u('uVoice2'), rip: u('uRip[0]') || u('uRip'), touch: u('uTouch'),
-        slices: u('uSlices'), pal: u('uPal[0]') || u('uPal'), noise: u('uNoise')
+        slices: u('uSlices'), ray: u('uRay'), pal: u('uPal[0]') || u('uPal'), noise: u('uNoise')
       };
       gl.uniform1i(loc.noise, 0);
       gl.uniform3fv(loc.pal, new Float32Array(C.pal));
@@ -501,6 +513,7 @@ export const ORB_RENDERER_JS = `
       gl.uniform4fv(loc.rip, U.rip);
       gl.uniform4fv(loc.touch, U.touch);
       gl.uniform1f(loc.slices, slices);
+      gl.uniform1f(loc.ray, rayPhase);
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     }

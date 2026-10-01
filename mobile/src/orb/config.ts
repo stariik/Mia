@@ -71,7 +71,7 @@ export const ORB_CONFIG = {
     idle: { energy: 0.86, flow: 0.07, warmth: 0.42, vortex: 0, sparkle: 0.1, lean: 0, dim: 0, core: 0.3, warp: 0.55, breath: 0.015 },
     listening: { energy: 1.0, flow: 0.12, warmth: 0.48, vortex: 0, sparkle: 0.3, lean: 0.14, dim: 0, core: 0.31, warp: 0.65, breath: 0.01 },
     thinking: { energy: 0.94, flow: 0.08, warmth: 0.3, vortex: 1, sparkle: 0.2, lean: 0.05, dim: 0, core: 0.24, warp: 0.4, breath: 0.006 },
-    speaking: { energy: 1.06, flow: 0.13, warmth: 0.6, vortex: 0, sparkle: 0.24, lean: -0.08, dim: 0, core: 0.34, warp: 0.68, breath: 0.006 },
+    speaking: { energy: 1.0, flow: 0.13, warmth: 0.56, vortex: 0, sparkle: 0.24, lean: 0, dim: 0, core: 0.29, warp: 0.68, breath: 0.006 },
     error: { energy: 0.6, flow: 0.025, warmth: 0.22, vortex: 0, sparkle: 0.02, lean: 0, dim: 1, core: 0.26, warp: 0.4, breath: 0.008 },
   } satisfies Record<OrbState, StateLook>,
 
@@ -125,7 +125,7 @@ export const ORB_CONFIG = {
     /** User voice pulls the medium in and toward the viewer. */
     pull: 0.75,
     /** Mia's voice pushes it out from the core. */
-    push: 0.55,
+    push: 0.3,
     pullSpring: { freq: 1.2, damping: 0.65 },
     /** Brightness lift from loudness. */
     energyGain: 0.42,

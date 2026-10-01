@@ -48,6 +48,7 @@ uniform vec4 uVoice2;  // x user pull weight, y Mia push weight, z front bias, w
 uniform vec4 uRip[4];  // x radius, y strength, z direction (+1 out, −1 in)
 uniform vec4 uTouch;   // xy point (sphere units), z radius, w strength
 uniform float uSlices;
+uniform float uRay;    // radial streak phase (mod 256): rises for Mia (out), falls for the user (in)
 uniform vec3 uPal[7];  // violet, pink, coral, pinkSoft, violetSoft, white, navy
 uniform sampler2D uNoise;
 
@@ -140,7 +141,7 @@ void main() {
   vec2 warp = (vec2(wx, wy) - 0.5) * 2.0 * uLook2.w;
 
   float lean = uLook2.y;
-  float coreR = uLook2.z * (1.0 + uVoice.x);
+  float coreR = uLook2.z * (1.0 + 0.55 * uVoice.x);
   float twist = uVoice.y;
   float stream = (uVoice2.x + uVoice2.y) * (0.35 + 0.65 * uVoice.w);
 
@@ -173,6 +174,7 @@ void main() {
     vec3 pdir = pt / max(pl, 1e-3);
     for (int k = 0; k < 4; k++) {
       vec4 rp = uRip[k];
+      if (rp.y < 0.002) continue;
       float d = pl - rp.x;
       float w = exp(-d * d * 55.0) * rp.y;
       pt += pdir * w * 0.1 * rp.z;
@@ -232,7 +234,7 @@ void main() {
     float t = warm + 0.5 * core + 0.22 * scatter - 0.24 * fi - 0.12 * pl + (nv - 0.5) * 0.35;
     vec3 inkCol = ramp(t - 0.12) * ink * (0.1 + 0.95 * scatter);
     vec3 silkCol = ramp(t + 0.1) * silk * (0.95 + 1.5 * scatter + rip * 1.8);
-    vec3 coreCol = mix(uPal[1], uPal[2], 0.55 + 0.3 * uVoice.x) * core * 2.2;
+    vec3 coreCol = mix(uPal[1], uPal[2], 0.55 + 0.3 * uVoice.x) * core * (2.0 + 1.6 * uVoice.x);
 
     float front = 1.0 + uVoice2.z * (0.9 - 1.8 * fi);
     vec3 emit = (inkCol + silkCol * 1.15 + coreCol) * front;
@@ -274,6 +276,15 @@ void main() {
     float s2 = sparkleLayer(sp * 1.37 - tilt * 0.1 + 7.7, spDensity * 0.8, 9.4) * 0.6;
     float spk = (s1 * Tspark + s2 * mix(Tspark, T, 0.5)) * smoothstep(1.0, 0.78, r);
     col += mix(uPal[1], uPal[3], 0.55) * spk * (0.6 + uVoice.z * 1.6);
+  }
+
+  // ── Voice streaks: light streaming out of the core (Mia) or in (user) ────
+  float rayAmt = uVoice2.y * (0.45 + uVoice.w * 1.3) + uVoice2.x * (0.2 + uVoice.w * 0.7);
+  if (rayAmt > 0.01) {
+    vec2 dq = q / max(r, 1e-3);
+    float rn = vnoise(vec3(dq * 4.2 + 11.0, r * 2.4 - uRay));
+    float rays = smoothstep(0.56, 0.96, rn) * smoothstep(0.1, 0.34, r) * smoothstep(1.0, 0.62, r);
+    col += ramp(warm + 0.22 - uVoice2.x * 0.2) * rays * rayAmt * mix(Tspark, T, 0.5) * 0.9;
   }
 
   // ── Glass ────────────────────────────────────────────────────────────────
