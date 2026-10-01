@@ -115,10 +115,11 @@ export function formatActiveState(ctx: ChatUserContext | undefined): string | nu
 
 export function buildSystemInstruction(ctx: ChatUserContext | undefined, now = new Date()): string {
   return [
+    // Stable blocks first, per-turn ones last: Gemini caches the shared prefix.
     GEORGIAN_ASSISTANT_SYSTEM_PROMPT,
+    formatProfile(ctx?.profile),
     formatNow(resolveTimeZone(ctx?.timezone), now),
     formatActiveState(ctx),
-    formatProfile(ctx?.profile),
     formatRecentActions(ctx?.recentActions),
     formatPendingSms(ctx?.pendingSms),
   ]
