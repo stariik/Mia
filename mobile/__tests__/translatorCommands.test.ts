@@ -92,3 +92,28 @@ describe('inside a session', () => {
     expect(inn(text)).toBeNull();
   });
 });
+
+// The chat listens in Georgian, so English speech is transcribed in Georgian
+// script — the commands have to survive that.
+describe('English heard through Georgian speech recognition', () => {
+  it.each([
+    ['ტრანსლეიტ ტუ ინგლიშ', { to: 'en' }],
+    ['მია, სტარტ ტრანსლეიტინგ', {}],
+    ['ტრანსლეიტ ფრომ ინგლიშ ტუ ჯორჯიან', { from: 'en', to: 'ka' }],
+  ])('starts on "%s"', (text, langs) => {
+    expect(out(text)).toEqual({ kind: 'start', ...langs });
+  });
+
+  it.each([
+    ['ფრენჩ', { to: 'fr' }],
+    ['ტუ ჯერმან', { to: 'de' }],
+    ['სპანიშ', { to: 'es' }],
+  ])('switches on "%s" mid-session', (text, langs) => {
+    expect(inn(text)).toEqual({ kind: 'set', ...langs });
+  });
+
+  it('stops and swaps', () => {
+    expect(inn('სტოპ ტრანსლეიშენ')).toEqual({ kind: 'stop' });
+    expect(inn('სვაპ')).toEqual({ kind: 'swap' });
+  });
+});

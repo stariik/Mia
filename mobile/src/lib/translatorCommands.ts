@@ -26,8 +26,10 @@ const TRANSLATE = new Set([
   'თარგმნე', 'მითარგმნე', 'გადათარგმნე', 'გადამითარგმნე', 'მათარგმნინე',
   'თარგმნა', 'თარგმნის', 'თარგმნას', 'თარგმანი', 'თარგმნო', 'ითარგმნე',
   'თარჯიმანი', 'თარჯიმანს', 'თარჯიმნის', 'თარჯიმნად', 'თარჯიმნი',
-  // English as Georgian speech recognition spells it.
-  'ტრანსლეიტ', 'ტრანსლეიტინგ', 'ტრანსლეიშენ', 'ტრანსლეითინგ',
+  // English as Georgian speech recognition spells it — the chat listens in
+  // Georgian, so spoken English commands arrive in Mkhedruli.
+  'ტრანსლეიტ', 'ტრანსლეიტინგ', 'ტრანსლეიშენ', 'ტრანსლეითინგ', 'ტრანსლეით',
+  'ტრანსლეითი', 'ტრანსლეიტორ', 'ტრანსლეითორ', 'ინტერპრეტერ', 'ინტერპრეტ',
   'переводи', 'переведи', 'перевод', 'перевода', 'переводчик', 'переводчика',
   'переводить',
 ]);
@@ -36,12 +38,13 @@ const STOP = new Set([
   'stop', 'end', 'exit', 'close', 'quit', 'leave', 'disable', 'off', 'cancel',
   'finish', 'enough',
   'შეწყვიტე', 'შეაჩერე', 'გააჩერე', 'გაჩერდი', 'დახურე', 'გამორთე', 'დაასრულე',
-  'გამოდი', 'გათიშე', 'მორჩა', 'კმარა', 'სტოპ',
+  'გამოდი', 'გათიშე', 'მორჩა', 'კმარა', 'სტოპ', 'ექსიტ', 'ქლოუზ',
   'стоп', 'останови', 'хватит', 'выключи', 'закрой', 'закончи',
 ]);
 
 const START = new Set([
   'start', 'begin', 'open', 'on', 'enable', 'use', 'be', 'my', 'mode', 'turn',
+  'სტარტ', 'მოუდ',
   'ჩართე', 'ჩამირთე', 'დაიწყე', 'გახსენი', 'იყავი', 'ჩემი', 'რეჟიმი', 'რეჟიმში',
   'включи', 'начни', 'будь', 'моим', 'режим',
 ]);
@@ -50,6 +53,7 @@ const START = new Set([
 // "languages" ("switch languages") — alone they introduce a language.
 const SWAP = new Set([
   'swap', 'reverse', 'flip', 'შეაბრუნე', 'გაცვალე', 'გადაცვალე', 'поменяй',
+  'სვაპ',
 ]);
 const CHANGE = new Set([
   'switch', 'change', 'set', 'make', 'go', 'შეცვალე', 'გადართე', 'გადადი',
@@ -59,8 +63,8 @@ const LANGUAGES_WORD = new Set([
   'language', 'languages', 'around', 'ენა', 'ენები', 'ენებს', 'языки', 'язык',
 ]);
 
-const MARK_TO = new Set(['to', 'into', 'in', 'на']);
-const MARK_FROM = new Set(['from', 'с', 'со']);
+const MARK_TO = new Set(['to', 'into', 'in', 'на', 'ტუ', 'ინტუ']);
+const MARK_FROM = new Set(['from', 'с', 'со', 'ფრომ']);
 
 const FILLER = new Set([
   'the', 'a', 'an', 'please', 'can', 'could', 'would', 'you', 'i', 'want',
@@ -74,8 +78,16 @@ type Role = 'to' | 'from' | 'neutral';
 // Language words → (language, the role their own form implies). Georgian marks
 // direction with case endings: -ად / -ზე "into", -იდან "from".
 const LANG_WORDS = new Map<string, { lang: Lang; role: Role }>();
-function addLang(lang: Lang, english: string, kaStem: string, ruStem: string) {
+function addLang(
+  lang: Lang,
+  english: string,
+  kaStem: string,
+  ruStem: string,
+  /** The English name as Georgian STT writes it. */
+  heard: string[],
+) {
   LANG_WORDS.set(english, { lang, role: 'neutral' });
+  for (const w of heard) LANG_WORDS.set(w, { lang, role: 'neutral' });
   for (const [suffix, role] of [
     ['ი', 'neutral'],
     ['ს', 'neutral'],
@@ -90,12 +102,12 @@ function addLang(lang: Lang, english: string, kaStem: string, ruStem: string) {
     LANG_WORDS.set(ruStem + ending, { lang, role: 'neutral' });
   }
 }
-addLang('en', 'english', 'ინგლისურ', 'английск');
-addLang('ka', 'georgian', 'ქართულ', 'грузинск');
-addLang('ru', 'russian', 'რუსულ', 'русск');
-addLang('de', 'german', 'გერმანულ', 'немецк');
-addLang('fr', 'french', 'ფრანგულ', 'французск');
-addLang('es', 'spanish', 'ესპანურ', 'испанск');
+addLang('en', 'english', 'ინგლისურ', 'английск', ['ინგლიშ', 'ინგლიში']);
+addLang('ka', 'georgian', 'ქართულ', 'грузинск', ['ჯორჯიან', 'ჯორჯიენ']);
+addLang('ru', 'russian', 'რუსულ', 'русск', ['რაშან', 'რაშენ']);
+addLang('de', 'german', 'გერმანულ', 'немецк', ['ჯერმან', 'ჯერმენ']);
+addLang('fr', 'french', 'ფრანგულ', 'французск', ['ფრენჩ']);
+addLang('es', 'spanish', 'ესპანურ', 'испанск', ['სპანიშ', 'სპენიშ']);
 
 const MAX_WORDS = 9;
 
