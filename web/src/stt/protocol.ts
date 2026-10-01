@@ -1,4 +1,7 @@
 /** Wire protocol v1. One socket owns exactly one utterance; audio is binary PCM16LE. */
+/** Spoken languages the gateway accepts; `start.language` defaults to 'ka'. */
+export const LANGUAGES = ['ka', 'ru', 'en', 'de', 'fr', 'es'] as const;
+export type Language = (typeof LANGUAGES)[number];
 export type Identity = { sessionId: string; utteranceId: string };
 export type Start = Identity & {
   type: 'start';
@@ -7,6 +10,7 @@ export type Start = Identity & {
   sampleRate: 16000;
   channels: 1;
   encoding: 'pcm16';
+  language?: Language;
 };
 export type ClientMessage =
   | Start

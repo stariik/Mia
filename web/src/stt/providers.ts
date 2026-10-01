@@ -1,5 +1,6 @@
 import WebSocket from 'ws';
 import { v2 } from '@google-cloud/speech';
+import type { Language } from './protocol';
 
 export type ProviderEvent =
   | { type: 'ready' | 'endpoint' | 'speech' | 'done' }
@@ -13,12 +14,14 @@ export interface Provider {
 export type ProviderFactory = (
   name: 'google' | 'elevenlabs',
   emit: (event: ProviderEvent) => void,
+  language?: Language,
 ) => Provider;
 
 export function elevenlabs(
   emit: (event: ProviderEvent) => void,
   connect = (url: URL, options: WebSocket.ClientOptions) =>
     new WebSocket(url, options),
+  language: Language = 'ka',
 ): Provider {
   const key = process.env.ELEVENLABS_API_KEY;
   if (!key) throw new Error('Missing ElevenLabs credentials');
@@ -26,7 +29,7 @@ export function elevenlabs(
   Object.entries({
     model_id: 'scribe_v2_realtime',
     audio_format: 'pcm_16000',
-    language_code: 'ka',
+    language_code: language,
     commit_strategy: 'vad',
     vad_silence_threshold_secs: '1.2',
     no_verbatim: 'false',
@@ -140,10 +143,19 @@ export function elevenlabs(
   };
 }
 
+const BCP47: Record<Language, string> = {
+  ka: 'ka-GE',
+  ru: 'ru-RU',
+  en: 'en-US',
+  de: 'de-DE',
+  fr: 'fr-FR',
+  es: 'es-ES',
+};
 export function google(
   emit: (event: ProviderEvent) => void,
   clientFactory = (region: string) =>
     new v2.SpeechClient({ apiEndpoint: `${region}-speech.googleapis.com` }),
+  language: Language = 'ka',
 ): Provider {
   const project = process.env.GOOGLE_CLOUD_PROJECT;
   const region = process.env.STT_GOOGLE_REGION;
@@ -190,7 +202,7 @@ export function google(
     streamingConfig: {
       config: {
         model: 'chirp_3',
-        languageCodes: ['ka-GE'],
+        languageCodes: [BCP47[language]],
         explicitDecodingConfig: {
           encoding: 'LINEAR16',
           sampleRateHertz: 16000,
@@ -226,5 +238,7 @@ export function google(
     },
   };
 }
-export const createProvider: ProviderFactory = (name, emit) =>
-  name === 'google' ? google(emit) : elevenlabs(emit);
+export const createProvider: ProviderFactory = (name, emit, language) =>
+  name === 'google'
+    ? google(emit, undefined, language)
+    : elevenlabs(emit, undefined, language);

@@ -17,13 +17,15 @@ function fakeProvider() {
     audio: Buffer[];
     cancelled: boolean;
     finished: boolean;
+    language?: string;
   }[] = [];
-  const factory: ProviderFactory = (_name, emit) => {
+  const factory: ProviderFactory = (_name, emit, language) => {
     const session = {
       emit,
       audio: [] as Buffer[],
       cancelled: false,
       finished: false,
+      language: language as string | undefined,
     };
     sessions.push(session);
     queueMicrotask(() => emit({ type: 'ready' }));
@@ -43,6 +45,7 @@ async function connect(
   port: number,
   user = 'user',
   token = signToken({ sub: user, email: '' }),
+  extra: Record<string, unknown> = {},
 ) {
   const ws = new WebSocket(`ws://127.0.0.1:${port}/api/stt/stream`);
   const messages: Record<string, unknown>[] = [];
@@ -60,6 +63,7 @@ async function connect(
       version: 1,
       sampleRate: 16000,
       channels: 1,
+      ...extra,
       encoding: 'pcm16',
     }),
   );
@@ -254,4 +258,23 @@ test('account rate limit and delayed quota admission fail closed before opening 
     admit({ release: async seconds => { refunded = seconds; } }); await pause();
     assert.equal(refunded, 0); assert.equal(delayed.sessions.length, 0);
   } finally { await delayed.close(); }
+});
+
+test('spoken language reaches the provider (default ka); unknown languages are rejected before upstream', async () => {
+  const f = await fixture();
+  try {
+    const ru = await connect(f.port, 'user', undefined, { language: 'ru' });
+    await ru.wait('ready');
+    assert.equal(f.sessions[0].language, 'ru');
+    ru.ws.close();
+    const plain = await connect(f.port, 'user2');
+    await plain.wait('ready');
+    assert.equal(f.sessions[1].language, 'ka');
+    plain.ws.close();
+    const bad = await connect(f.port, 'user3', undefined, { language: 'xx' });
+    assert.equal((await bad.wait('error')).code, 'protocol');
+    assert.equal(f.sessions.length, 2);
+  } finally {
+    await f.close();
+  }
 });
