@@ -9,7 +9,9 @@ value on Android. Every file here must also be copied to
   family (Georgian, Latin, Cyrillic). From bBoxType/FiraGO 1.001, subset with
   fontTools to Latin + Latin Extended + Cyrillic + Georgian + punctuation,
   arrows and currency (≈295 KB each instead of ≈800 KB). License: `OFL-FiraGO.txt`.
-- `MarckScript-Regular.ttf` — the "Mia" wordmark only. License: `OFL.txt`.
+- `Fredoka-SemiBold.ttf` — the "Mia" wordmark only. A static weight-600 /
+  width-100 instance of Google Fonts' variable `Fredoka[wdth,wght].ttf`, subset
+  to Latin-1 (≈33 KB). License: `OFL-Fredoka.txt`.
 
 To re-subset after adding a script:
 

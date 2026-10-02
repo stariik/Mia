@@ -7,5 +7,5 @@ export const fontFiles = {
   'FiraGO-Regular': require('../../assets/fonts/FiraGO-Regular.ttf'),
   'FiraGO-Medium': require('../../assets/fonts/FiraGO-Medium.ttf'),
   'FiraGO-SemiBold': require('../../assets/fonts/FiraGO-SemiBold.ttf'),
-  'MarckScript-Regular': require('../../assets/fonts/MarckScript-Regular.ttf'),
+  'Fredoka-SemiBold': require('../../assets/fonts/Fredoka-SemiBold.ttf'),
 };

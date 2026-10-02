@@ -3,26 +3,28 @@ import Svg, { Defs, LinearGradient, Stop, Text as SvgText } from 'react-native-s
 
 import { colors, fonts } from '@/theme';
 
-// "Mia" as one connected script word (Marck Script), filled with the brand
-// violet → pink → coral gradient. Drawn as a single SVG text run so the
-// letters join into one stroke; the script's capital M is naturally the hero.
+// "Mia" set in Fredoka SemiBold — round, bubbly, friendly — filled with the
+// brand violet → pink → coral gradient. Drawn as one SVG text run so the
+// gradient sweeps across the whole word.
 
-// Marck Script metrics per 1px of font size: "Mia" advances ~1.54, ink rises
-// ~0.64 above the baseline and the strokes' tails dip ~0.14 below it.
-const ADVANCE = 1.54;
-const INK_TOP = 0.64;
-const INK_BOTTOM = 0.14;
-// Marck is small on its em square; this keeps the wordmark as tall as before.
-const SIZE_TO_FONT = 1.6;
+// Fredoka SemiBold metrics per 1px of font size: "Mia" advances ~1.62, ink
+// rises ~0.72 above the baseline (the i's dot is the top) and sits on it.
+const ADVANCE = 1.62;
+const INK_TOP = 0.72;
+// Fredoka is heavy and round, so it reads bigger than its cap height; this
+// keeps the wordmark in proportion with the header icons.
+const SIZE_TO_FONT = 1.35;
 
 export function MiaWordmark({ size = 22 }: { size?: number }) {
   const gradId = `mia${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
   const fontSize = Math.round(size * SIZE_TO_FONT);
-  const padX = fontSize * 0.08; // swashes overhang the advance a little
-  const padTop = fontSize * 0.12;
+  const padX = fontSize * 0.04;
+  // Even padding above and below the ink keeps the word optically centred
+  // wherever the box is centred.
+  const padY = fontSize * 0.1;
   const width = Math.ceil(fontSize * ADVANCE + padX * 2);
-  const baseline = padTop + fontSize * INK_TOP;
-  const height = Math.ceil(baseline + fontSize * (INK_BOTTOM + 0.06));
+  const baseline = padY + fontSize * INK_TOP;
+  const height = Math.ceil(baseline + padY);
 
   return (
     <Svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
