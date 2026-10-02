@@ -46,13 +46,13 @@ const BLOBS: Blob[] = [
   { key: 'coral', color: colors.gradientEnd, x: 0.5, y: 1.05, size: 1.1, dx: 40, dy: 16, period: 15000 },
 ];
 
-// Peak opacity of each field per mood. Kept low: even where all three
-// centres would stack at their peaks, muted text stays above 4.5:1 (AA).
+// Peak opacity of each field per mood. A hint, not a light show: the ground
+// stays navy and only warms or cools a little with her state.
 const MIX: Record<Mood, Record<Blob['key'], number>> = {
-  idle: { violet: 0.2, pink: 0.07, coral: 0.05 },
-  listening: { violet: 0.1, pink: 0.22, coral: 0.08 },
-  thinking: { violet: 0.28, pink: 0.08, coral: 0.04 },
-  speaking: { violet: 0.1, pink: 0.16, coral: 0.18 },
+  idle: { violet: 0.09, pink: 0.03, coral: 0.02 },
+  listening: { violet: 0.05, pink: 0.1, coral: 0.03 },
+  thinking: { violet: 0.13, pink: 0.03, coral: 0.02 },
+  speaking: { violet: 0.05, pink: 0.07, coral: 0.08 },
 };
 
 function Field({

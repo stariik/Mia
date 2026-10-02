@@ -11,11 +11,11 @@ import { MiaRow, SpeakingRow, ThinkingRow, UserRow } from './MessageRows';
 import { useStickyScroll } from './useStickyScroll';
 import { useTapToCompose } from './useTapToCompose';
 
-// The conversation. Mia speaks in calm reading text under her marble; you
-// speak in violet capsules on the right. Whatever is happening right now
-// lives at the bottom: your words forming as you talk, or her colours rising
-// while she thinks. Scrolling up to reread is never interrupted (see
-// useStickyScroll); tapping the conversation focuses the text field.
+// The conversation. Mia speaks in calm reading text; you speak in quiet
+// capsules on the right. Whatever is happening right now lives at the
+// bottom: your words forming as you talk, or three notes rising while she
+// thinks. Scrolling up to reread is never interrupted (see useStickyScroll);
+// tapping the conversation focuses the text field.
 
 export function ChatView({
   messages,
@@ -23,7 +23,6 @@ export function ChatView({
   listening,
   awaitingReply,
   replyLive,
-  speaking,
   onCompose,
   onCopied,
   onSuggestion,
@@ -38,8 +37,6 @@ export function ChatView({
   awaitingReply: boolean;
   /** The last reply is still streaming in. */
   replyLive: boolean;
-  /** Mia's voice is playing. */
-  speaking: boolean;
   onCompose: () => void;
   onCopied: () => void;
   onSuggestion: (text: string) => void;
@@ -64,13 +61,12 @@ export function ChatView({
         <MiaRow
           content={item.content}
           live={replyLive && last}
-          speaking={speaking && last}
           animate={animate}
           onCopied={onCopied}
         />
       );
     },
-    [replyLive, speaking, lastIndex, reduceMotion, mountedAt, onCopied],
+    [replyLive, lastIndex, reduceMotion, mountedAt, onCopied],
   );
 
   const footer = useMemo(() => {

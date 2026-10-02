@@ -18,20 +18,15 @@ import { copyText } from '@/lib/clipboard';
 import { haptics } from '@/lib/haptics';
 import { colors, easeOut, radius, spacing, typography } from '@/theme';
 
-import { MiaAvatar } from './MiaAvatar';
 import { useSmoothReveal } from './useSmoothReveal';
 
 // The pieces of a conversation.
-//   Mia      — her marble at the head of the reply, then calm reading text.
-//              While she writes, the newest letters arrive warm and settle
-//              to white; while she talks, her marble breathes.
-//   You      — a tinted capsule on the right, in the brand violet.
-//   Thinking — her marble and three notes of her colours, rising in turn.
+//   Mia      — calm reading text across the full measure. While she writes,
+//              the newest letters arrive warm and settle to white.
+//   You      — a quiet capsule on the right.
+//   Thinking — three small notes rising in turn.
 //   Speaking — your words forming live, beside bars that move with your
 //              actual voice level.
-
-const AVATAR = 24;
-const AVATAR_GAP = spacing.md;
 
 const COPY_ACTION = [{ name: 'copy', label: 'დაკოპირება' }];
 
@@ -55,7 +50,6 @@ function useCopy(content: string, onCopied: () => void) {
 export const MiaRow = memo(function MiaRow({
   content,
   live,
-  speaking,
   animate,
   onCopied,
   children,
@@ -63,8 +57,6 @@ export const MiaRow = memo(function MiaRow({
   content: string;
   /** Still streaming in: reveal evenly, with fresh ink. */
   live: boolean;
-  /** Her voice is playing: the marble breathes. */
-  speaking: boolean;
   animate: boolean;
   onCopied: () => void;
   /** Extra content under the text (the translator's replay button). */
@@ -77,11 +69,7 @@ export const MiaRow = memo(function MiaRow({
 
   return (
     <Animated.View entering={animate ? rowEnter : undefined} style={styles.miaRow}>
-      <View style={styles.avatarCol}>
-        <MiaAvatar size={AVATAR} live={speaking} />
-      </View>
       <Pressable
-        style={styles.miaBody}
         onLongPress={copy}
         delayLongPress={380}
         accessibilityLabel={`Mia: ${content}`}
@@ -140,7 +128,6 @@ export const UserRow = memo(function UserRow({
 
 // ── Thinking ────────────────────────────────────────────────────────────
 
-const NOTE_COLORS = [colors.gradientStart, colors.gradientMid, colors.gradientEnd];
 
 function Note({ index, still }: { index: number; still: boolean }) {
   const v = useSharedValue(still ? 0.5 : 0);
@@ -164,7 +151,7 @@ function Note({ index, still }: { index: number; still: boolean }) {
     opacity: 0.45 + v.value * 0.55,
     transform: [{ translateY: -v.value * 4 }, { scale: 0.85 + v.value * 0.25 }],
   }));
-  return <Animated.View style={[styles.note, { backgroundColor: NOTE_COLORS[index] }, style]} />;
+  return <Animated.View style={[styles.note, style]} />;
 }
 
 export function ThinkingRow({ label }: { label?: string }) {
@@ -176,9 +163,6 @@ export function ThinkingRow({ label }: { label?: string }) {
       accessibilityLabel={label ?? 'Mia ფიქრობს'}
       accessibilityLiveRegion="polite"
     >
-      <View style={styles.avatarCol}>
-        <MiaAvatar size={AVATAR} live />
-      </View>
       <View style={styles.notes}>
         {[0, 1, 2].map((i) => (
           <Note key={i} index={i} still={still} />
@@ -227,17 +211,8 @@ export function SpeakingRow({ text }: { text: string }) {
 
 const styles = StyleSheet.create({
   miaRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: AVATAR_GAP,
     marginTop: spacing.lg,
   },
-  avatarCol: {
-    width: AVATAR,
-    // Sits on the first line of the reply text.
-    paddingTop: 2,
-  },
-  miaBody: { flex: 1 },
   miaText: {
     ...typography.reading,
     color: colors.text,
@@ -262,13 +237,12 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm + 2,
     paddingHorizontal: spacing.lg,
     borderRadius: radius.xl,
-    backgroundColor: 'rgba(109,59,245,0.24)',
+    backgroundColor: colors.surfaceHigh,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(217,201,255,0.22)',
+    borderColor: colors.stroke,
   },
   capsuleLive: {
-    backgroundColor: 'rgba(255,77,139,0.12)',
-    borderColor: 'rgba(255,77,139,0.45)',
+    borderColor: 'rgba(255,77,139,0.35)',
   },
   userText: {
     ...typography.body,
@@ -281,12 +255,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    height: AVATAR + 2,
+    height: 26,
   },
   note: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.textMuted,
   },
   thinkingLabel: {
     ...typography.caption,

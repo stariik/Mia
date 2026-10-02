@@ -62,21 +62,18 @@ function LanguageChip({
 }
 
 // One exchange: what was said, as a capsule on the right (like your side of
-// a chat), and its translation from Mia under her marble — so translator mode
+// a chat), and its translation from Mia — so translator mode
 // reads as the same conversation, just in two languages.
 const Turn = memo(function Turn({
   turn,
   showPair,
   animate,
-  speaking,
   onControlPressIn,
   onCopied,
 }: {
   turn: TranslationTurn;
   showPair: boolean;
   animate: boolean;
-  /** This translation is being read aloud right now. */
-  speaking: boolean;
   onControlPressIn: () => void;
   onCopied: () => void;
 }) {
@@ -96,7 +93,6 @@ const Turn = memo(function Turn({
         <MiaRow
           content={turn.translated}
           live={false}
-          speaking={speaking}
           animate={animate}
           onCopied={onCopied}
         >
@@ -127,7 +123,6 @@ export function TranslatorView({
   const reduceMotion = useReducedMotion();
   const turns = useTranslatorSession((s) => s.turns);
   const liveText = useTranslatorSession((s) => s.liveText);
-  const phase = useTranslatorSession((s) => s.phase);
   const direction = useTranslatorStore((s) => s.direction);
   const autoSpeak = useTranslatorStore((s) => s.autoSpeak);
   const [picking, setPicking] = useState<LanguageSide | null>(null);
@@ -146,13 +141,12 @@ export function TranslatorView({
             !prev || prev.source !== item.source || prev.target !== item.target
           }
           animate={!reduceMotion && Number(item.id.split('_')[1]) > mountedAt}
-          speaking={phase === 'speaking' && index === turns.length - 1}
           onControlPressIn={claim}
           onCopied={onCopied}
         />
       );
     },
-    [turns, phase, reduceMotion, mountedAt, claim, onCopied],
+    [turns, reduceMotion, mountedAt, claim, onCopied],
   );
 
   return (

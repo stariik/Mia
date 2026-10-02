@@ -1,26 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { Keyboard, Pressable, StyleSheet, TextInput, View } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import Animated, { ZoomIn, ZoomOut, useReducedMotion } from 'react-native-reanimated';
 
 import { Icon } from '@/components/ui/Icon';
-import { HIT, brandGradient, colors, radius, spacing, typography } from '@/theme';
+import { HIT, colors, radius, spacing, typography } from '@/theme';
 
-// The text field, always in view at the bottom of the conversation. Its one
-// button changes with what you'd want next:
-//   empty      → a mic in the orb's colours (talk instead — same as the orb)
-//   mic open   → stop
-//   text typed → send, in the same colours
-// The field's hairline warms to pink while it has focus.
-
-type Action = 'mic' | 'stop' | 'send';
+// The text field, always in view at the bottom of the conversation, with one
+// send button: quiet while the field is empty, pink once there's something
+// to send. Voice stays on the orb. The field's hairline warms on focus.
 
 export function Composer({
   value,
   onChangeText,
   onSend,
-  onMic,
-  micActive,
   onFocus,
   placeholder,
   inputRef,
@@ -28,17 +19,12 @@ export function Composer({
   value: string;
   onChangeText: (v: string) => void;
   onSend: () => void;
-  /** Start or stop talking — the same as tapping the orb. */
-  onMic: () => void;
-  /** The mic is open (listening). */
-  micActive: boolean;
   /** The field got focus — the screen opens its typing mode. */
   onFocus?: () => void;
   placeholder: string;
   /** Lets the screen focus the field (tapping the conversation does). */
   inputRef: React.RefObject<TextInput | null>;
 }) {
-  const reduceMotion = useReducedMotion();
   const [focused, setFocused] = useState(false);
 
   useEffect(() => {
@@ -49,11 +35,7 @@ export function Composer({
     return () => sub.remove();
   }, [inputRef]);
 
-  const hasText = value.trim().length > 0;
-  const action: Action = hasText ? 'send' : micActive ? 'stop' : 'mic';
-  const onAction = action === 'send' ? onSend : onMic;
-  const label =
-    action === 'send' ? 'გაგზავნა' : action === 'stop' ? 'მოსმენის შეწყვეტა' : 'ხმით საუბარი';
+  const canSend = value.trim().length > 0;
 
   return (
     <View style={styles.bar}>
@@ -74,51 +56,36 @@ export function Composer({
           multiline
           submitBehavior="blurAndSubmit"
           returnKeyType="send"
-          onSubmitEditing={() => hasText && onSend()}
+          onSubmitEditing={() => canSend && onSend()}
           style={styles.input}
           accessibilityLabel={placeholder}
         />
         <Pressable
-          onPress={onAction}
+          onPress={onSend}
+          disabled={!canSend}
           hitSlop={6}
           accessibilityRole="button"
-          accessibilityLabel={label}
-          style={({ pressed }) => [styles.action, pressed && styles.pressed]}
+          accessibilityLabel="გაგზავნა"
+          accessibilityState={{ disabled: !canSend }}
+          style={({ pressed }) => [
+            styles.send,
+            canSend && styles.sendReady,
+            pressed && styles.pressed,
+          ]}
         >
-          <Animated.View
-            key={action}
-            entering={reduceMotion ? undefined : ZoomIn.duration(180)}
-            exiting={reduceMotion ? undefined : ZoomOut.duration(120)}
-            style={styles.actionInner}
-          >
-            {action === 'stop' ? (
-              <View style={[StyleSheet.absoluteFill, styles.stopFill]} />
-            ) : (
-              <LinearGradient
-                colors={[...brandGradient]}
-                start={{ x: 0, y: 1 }}
-                end={{ x: 1, y: 0 }}
-                style={StyleSheet.absoluteFill}
-              />
-            )}
-            {/* Explicitly above the fill: some renderers paint absolutely
-                positioned siblings over in-flow ones. */}
-            <View style={styles.glyph}>
-              <Icon
-                name={action}
-                size={18}
-                strokeWidth={2}
-                color={action === 'stop' ? colors.primary : colors.primaryOn}
-              />
-            </View>
-          </Animated.View>
+          <Icon
+            name="send"
+            size={18}
+            strokeWidth={2}
+            color={canSend ? colors.primaryOn : colors.textFaint}
+          />
         </Pressable>
       </View>
     </View>
   );
 }
 
-const ACTION = 38;
+const SEND = 38;
 
 const styles = StyleSheet.create({
   bar: {
@@ -131,8 +98,8 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     minHeight: HIT + 6,
     paddingLeft: spacing.lg,
-    paddingRight: (HIT + 6 - ACTION) / 2,
-    paddingVertical: (HIT + 6 - ACTION) / 2,
+    paddingRight: (HIT + 6 - SEND) / 2,
+    paddingVertical: (HIT + 6 - SEND) / 2,
     borderRadius: radius.xl,
     backgroundColor: colors.surfaceSolid,
     borderWidth: StyleSheet.hairlineWidth,
@@ -140,37 +107,26 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   fieldFocused: {
-    borderColor: 'rgba(255,77,139,0.55)',
+    borderColor: 'rgba(255,77,139,0.45)',
   },
   input: {
     ...typography.body,
     flex: 1,
     color: colors.text,
     maxHeight: 132,
-    minHeight: ACTION,
+    minHeight: SEND,
     paddingTop: 8,
     paddingBottom: 7,
     paddingHorizontal: 0,
     textAlignVertical: 'center',
   },
-  action: {
-    width: ACTION,
-    height: ACTION,
-  },
-  actionInner: {
-    width: ACTION,
-    height: ACTION,
-    borderRadius: ACTION / 2,
-    overflow: 'hidden',
+  send: {
+    width: SEND,
+    height: SEND,
+    borderRadius: SEND / 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  stopFill: {
-    backgroundColor: 'rgba(255,77,139,0.16)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,77,139,0.6)',
-    borderRadius: ACTION / 2,
-  },
-  glyph: { zIndex: 1 },
+  sendReady: { backgroundColor: colors.primary },
   pressed: { opacity: 0.8 },
 });

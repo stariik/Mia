@@ -12,12 +12,11 @@ import Animated, { FadeIn, FadeInRight, useReducedMotion } from 'react-native-re
 import { Icon, type IconName } from '@/components/ui/Icon';
 import { colors, duration, easeOut, radius, spacing, typography } from '@/theme';
 
-import { MiaAvatar } from './MiaAvatar';
 
 // The first thing under the orb: a greeting for the time of day, then one
-// card per thing Mia can do by voice — each in one of the orb's own hues, so
-// the screen is full of colour without inventing any. Tapping a card says it
-// for you. The cards scroll sideways, so short phones never overflow.
+// card per thing Mia can do by voice. The cards are quiet surfaces; only each
+// icon carries a touch of one of the orb's hues. Tapping a card says it for
+// you. They scroll sideways, so short phones never overflow.
 
 type Card = { icon: IconName; title: string; say: string; hue: string; ink: string };
 
@@ -64,12 +63,9 @@ export function EmptyState({
       keyboardShouldPersistTaps="handled"
       {...touchProps}
     >
-      <Animated.View entering={fade(0)} style={styles.helloRow}>
-        <MiaAvatar size={32} />
-        <Text style={styles.hello} accessibilityRole="header">
-          {hello}
-        </Text>
-      </Animated.View>
+      <Animated.Text entering={fade(0)} style={styles.hello} accessibilityRole="header">
+        {hello}
+      </Animated.Text>
       <Animated.Text entering={fade(1)} style={styles.lead}>
         შეეხე სფეროს და ილაპარაკე, ან მომწერე ქვემოთ.
       </Animated.Text>
@@ -99,16 +95,9 @@ export function EmptyState({
               accessibilityRole="button"
               accessibilityLabel={`${c.title}: ${c.say}`}
               accessibilityHint="Mia-ს ეს გაეგზავნება"
-              style={({ pressed }) => [
-                styles.card,
-                {
-                  backgroundColor: rgba(c.hue, pressed ? 0.2 : 0.12),
-                  borderColor: rgba(c.hue, 0.3),
-                },
-                pressed && styles.cardPressed,
-              ]}
+              style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
             >
-              <View style={[styles.cardIcon, { backgroundColor: rgba(c.hue, 0.22) }]}>
+              <View style={[styles.cardIcon, { backgroundColor: rgba(c.hue, 0.14) }]}>
                 <Icon name={c.icon} size={20} color={c.ink} strokeWidth={1.8} />
               </View>
               <Text style={styles.cardTitle}>{c.title}</Text>
@@ -131,16 +120,10 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingTop: spacing.xxl,
   },
-  helloRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingHorizontal: spacing.xl,
-  },
   hello: {
     ...typography.display,
     color: colors.text,
-    flexShrink: 1,
+    paddingHorizontal: spacing.xl,
   },
   lead: {
     ...typography.body,
@@ -165,9 +148,14 @@ const styles = StyleSheet.create({
     minHeight: 132,
     padding: spacing.lg,
     borderRadius: radius.xl,
+    backgroundColor: colors.surface,
     borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.stroke,
   },
-  cardPressed: { transform: [{ scale: 0.97 }] },
+  cardPressed: {
+    backgroundColor: colors.surfaceHigh,
+    transform: [{ scale: 0.97 }],
+  },
   cardIcon: {
     width: 36,
     height: 36,

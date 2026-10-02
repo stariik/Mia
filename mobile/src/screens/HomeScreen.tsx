@@ -28,7 +28,6 @@ import Animated, {
 
 import { ChatView } from '@/components/chat/ChatView';
 import { ColourField, type Mood } from '@/components/chat/ColourField';
-import { MiaAvatar } from '@/components/chat/MiaAvatar';
 import { Composer } from '@/components/chat/Composer';
 import { TranslatorView } from '@/components/chat/TranslatorView';
 import { ConversationDrawer } from '@/components/ConversationDrawer';
@@ -314,12 +313,6 @@ export function HomeScreen() {
     });
     return () => sub.remove();
   }, [typing, exitTyping]);
-  // The composer's mic is the orb's tap, from the keyboard side: leave typing
-  // mode first so the orb is in view while it listens.
-  const onMicPress = () => {
-    if (typing) exitTyping();
-    onOrbPress();
-  };
   const onCopied = useCallback(() => setCopiedAt(Date.now()), []);
   const onSend = () => {
     const text = draft.trim();
@@ -394,9 +387,6 @@ export function HomeScreen() {
     isProcessing ||
     (isThinking &&
       (last?.role === 'user' || (last?.role === 'assistant' && !last.content)));
-  const micActive = trActive
-    ? trPhase === 'listening' || trPhase === 'connecting'
-    : flow === 'listening';
   const mood: Mood = trActive
     ? (translatorOrbState(trPhase) as Mood)
     : flow === 'error'
@@ -520,9 +510,13 @@ export function HomeScreen() {
                     >
                       <View style={styles.whoText}>
                         <Text style={styles.whoName}>Mia</Text>
-                        <Text style={styles.whoStatus}>{status}</Text>
+                        <View style={styles.whoStatusRow}>
+                          {flow !== 'idle' && flow !== 'error' ? (
+                            <View style={styles.whoDot} />
+                          ) : null}
+                          <Text style={styles.whoStatus}>{status}</Text>
+                        </View>
                       </View>
-                      <MiaAvatar size={30} live={flow !== 'idle' && flow !== 'error'} />
                     </View>
                   </Animated.View>
                 ) : null}
@@ -553,7 +547,6 @@ export function HomeScreen() {
                         listening={flow === 'listening'}
                         awaitingReply={awaitingReply}
                         replyLive={replyLive}
-                        speaking={isSpeaking}
                         onCompose={focusComposer}
                         onCopied={onCopied}
                         onSuggestion={(t) => pipeline.sendText(t)}
@@ -600,8 +593,6 @@ export function HomeScreen() {
                   value={draft}
                   onChangeText={setDraft}
                   onSend={onSend}
-                  onMic={onMicPress}
-                  micActive={micActive}
                   onFocus={enterTyping}
                   inputRef={inputRef}
                   placeholder={
@@ -688,6 +679,17 @@ const styles = StyleSheet.create({
     paddingRight: spacing.xl - 12,
   },
   whoText: { alignItems: 'flex-end' },
+  whoStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  whoDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: colors.primary,
+  },
   whoName: {
     ...typography.bodyMedium,
     color: colors.text,
