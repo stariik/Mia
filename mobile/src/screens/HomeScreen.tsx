@@ -391,20 +391,26 @@ export function HomeScreen() {
     <View style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor={colors.bgDeep} />
       <SafeAreaView style={styles.flex} edges={['top', 'bottom']}>
+        {/* History · Mia · Settings. Equal side slots keep the wordmark on
+            the screen's true centre line, above the orb. */}
         <View style={styles.topBar}>
+          <View style={styles.topSide}>
+            <IconButton
+              icon="history"
+              label="საუბრების ისტორია"
+              onPress={() => setShowDrawer(true)}
+            />
+          </View>
           <View style={styles.brand} accessibilityRole="header" accessibilityLabel="Mia">
             <MiaWordmark size={20} />
           </View>
-          <IconButton
-            icon="history"
-            label="საუბრების ისტორია"
-            onPress={() => setShowDrawer(true)}
-          />
-          <IconButton
-            icon="settings"
-            label="პარამეტრები"
-            onPress={() => navigation.navigate('Settings')}
-          />
+          <View style={[styles.topSide, styles.topSideEnd]}>
+            <IconButton
+              icon="settings"
+              label="პარამეტრები"
+              onPress={() => navigation.navigate('Settings')}
+            />
+          </View>
         </View>
 
         <View style={styles.flex} onLayout={onMainLayout}>
@@ -578,16 +584,20 @@ const styles = StyleSheet.create({
     height: TOP_BAR_H,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingLeft: spacing.xl,
     // Icon glyphs (22 in a 44 target) line up with the 24pt gutter.
-    paddingRight: spacing.xl - 11,
+    paddingHorizontal: spacing.xl - 11,
     // Wins hit-testing over the orb, which can reach up under the bar on
     // tall phones.
     zIndex: 10,
   },
-  brand: {
+  topSide: {
     flex: 1,
-    alignItems: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  topSideEnd: { justifyContent: 'flex-end' },
+  brand: {
+    alignItems: 'center',
   },
 
   stage: {
