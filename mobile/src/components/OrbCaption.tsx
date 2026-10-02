@@ -53,7 +53,7 @@ export function OrbCaption({ model }: { model: CaptionModel }) {
           exiting={out}
           style={styles.waveBlock}
           accessible
-          accessibilityLabel={model.text ?? undefined}
+          accessibilityLabel={[model.text, model.hint].filter(Boolean).join(' · ') || undefined}
         >
           <VoiceRibbon mode={model.wave} remaining={model.remaining} />
           {model.hint ? (
@@ -98,8 +98,10 @@ export function OrbCaption({ model }: { model: CaptionModel }) {
               color={model.keepingOn ? colors.primary : colors.textMuted}
               strokeWidth={2}
             />
+            {/* One label in both states (pink says it's on), so the row
+                never grows or shifts when it's tapped. */}
             <Text style={[styles.chipText, model.keepingOn && styles.chipTextOn]}>
-              {model.keepingOn ? 'ვაგრძელებ მოსმენას' : 'განაგრძე მოსმენა'}
+              განაგრძე მოსმენა
             </Text>
           </Pressable>
         </Animated.View>
@@ -277,7 +279,9 @@ const styles = StyleSheet.create({
   },
   controls: {
     flexDirection: 'row',
-    gap: spacing.md,
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: spacing.sm + 2,
     marginTop: spacing.sm,
   },
   chip: {
@@ -285,7 +289,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.xs + 2,
     minHeight: 36,
-    paddingHorizontal: spacing.md + 2,
+    paddingHorizontal: spacing.md,
     borderRadius: radius.full,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.strokeStrong,
