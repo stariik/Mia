@@ -70,8 +70,13 @@ const TOP_BAR_H = 64;
 const OLD_TOOLBAR_H = 95;
 const OLD_SECTION_PAD = 16;
 const OLD_STATUS_SLOT = 72;
-/** Gap between the orb and its caption line. */
-const CAPTION_GAP = 8;
+/** Gap between the orb's glass and its caption. */
+const CAPTION_GAP = 10;
+/** The sphere's edge sits at this share of the orb box's height from its
+ *  centre (ORB_CONFIG.radius / 2); below it the box is empty canvas, so the
+ *  caption tucks up into that margin and its controls stay clear of the chat. */
+const GLASS_R = 0.43;
+const CAPTION_FADE_H = 16;
 /** Where the conversation begins, below the orb's bottom edge. */
 const CONVERSATION_GAP = 40;
 /** While typing, the orb docks into the conversation's header at this share
@@ -152,6 +157,7 @@ export function HomeScreen() {
     OLD_SECTION_PAD +
     (sectionH - OLD_SECTION_PAD - (orbSize + OLD_STATUS_SLOT)) / 2;
   const panelTop = orbTop + orbSize + CONVERSATION_GAP;
+  const captionTop = CAPTION_GAP - Math.round(orbSize * (0.5 - GLASS_R));
 
   const messages = useConversationStore(selectActiveMessages);
   const {
@@ -524,10 +530,16 @@ export function HomeScreen() {
                   </Pressable>
                 </Animated.View>
                 <Animated.View
-                  style={[styles.caption, captionStyle]}
-                  pointerEvents={typing ? 'none' : 'auto'}
+                  style={[styles.caption, { marginTop: captionTop }, captionStyle]}
+                  pointerEvents={typing ? 'none' : 'box-none'}
                 >
                   <OrbCaption model={caption} />
+                  {/* A soft lower edge where the caption sits over the chat. */}
+                  <LinearGradient
+                    colors={[colors.bgDeep, bgAlpha(0)]}
+                    style={styles.captionFade}
+                    pointerEvents="none"
+                  />
                 </Animated.View>
               </View>
 
@@ -699,9 +711,15 @@ const styles = StyleSheet.create({
     zIndex: 3,
   },
   caption: {
-    marginTop: CAPTION_GAP,
     alignSelf: 'stretch',
     backgroundColor: colors.bgDeep,
+  },
+  captionFade: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: -CAPTION_FADE_H,
+    height: CAPTION_FADE_H,
   },
 
   panel: {

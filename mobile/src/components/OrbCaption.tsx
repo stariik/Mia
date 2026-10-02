@@ -282,7 +282,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'center',
     gap: spacing.sm + 2,
-    marginTop: spacing.sm,
+    marginTop: spacing.xs,
   },
   chip: {
     flexDirection: 'row',
