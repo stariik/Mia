@@ -23,6 +23,7 @@ import Animated, {
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
+  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 
@@ -73,8 +74,14 @@ const OLD_STATUS_SLOT = 72;
 const CAPTION_GAP = 8;
 /** Where the conversation begins, below the orb's bottom edge. */
 const CONVERSATION_GAP = 40;
-/** Height of the typing-mode header (the close button row). */
-const CHAT_HEADER_H = 52;
+/** While typing, the orb docks into the conversation's header at this share
+ *  of the screen's height (clamped), so it stays in view, alive, the whole
+ *  time you write to her. */
+const DOCK_SHARE = 0.15;
+const DOCK_MIN = 64;
+const DOCK_MAX = 116;
+/** Air above and below the docked orb inside the header. */
+const DOCK_PAD = 10;
 const FADE_H = 32;
 
 function orbState(
@@ -295,9 +302,11 @@ export function HomeScreen() {
 
   // ── Typing mode ─────────────────────────────────────────────────────────
   // Focusing the field (or tapping the conversation) opens the conversation
-  // over the whole area below the top bar: the orb fades away cleanly instead
-  // of being half-covered by the keyboard-raised chat. "დახურვა" (or Android
-  // back) closes the keyboard and brings the orb back, exactly where it was.
+  // over the whole area below the top bar, and the orb glides up and shrinks
+  // into the centre of its header — still alive, still showing her listening,
+  // thinking and speaking while you write. "დახურვა" (or Android back) closes
+  // the keyboard and the orb springs back to its place. Tapping the docked
+  // orb switches to voice: it returns to full size and starts listening.
   const focusComposer = useCallback(() => inputRef.current?.focus(), []);
   const enterTyping = useCallback(() => setTyping(true), []);
   const exitTyping = useCallback(() => {
@@ -305,6 +314,10 @@ export function HomeScreen() {
     Keyboard.dismiss();
     setTyping(false);
   }, []);
+  const onDockedOrbPress = () => {
+    exitTyping();
+    onOrbPress();
+  };
   useEffect(() => {
     if (!typing) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -340,8 +353,28 @@ export function HomeScreen() {
     top: panelTop * (1 - open.value),
     bottom: Math.max(0, keyboard.height.value - bottomInset),
   }));
-  // The orb steps back (fades, never moves) while the conversation is open.
-  const stageStyle = useAnimatedStyle(() => ({ opacity: 1 - open.value }));
+
+  // The dock: a spring (a touch of settle, never a bounce) on its own value,
+  // so the orb's glide and the panel's slide feel related but not mechanical.
+  const dockSize = Math.round(
+    Math.min(DOCK_MAX, Math.max(DOCK_MIN, mainH * DOCK_SHARE)),
+  );
+  const headerH = dockSize + DOCK_PAD * 2;
+  const dock = useSharedValue(0);
+  useEffect(() => {
+    dock.value = reduceMotion
+      ? withTiming(typing ? 1 : 0, { duration: 0 })
+      : withSpring(typing ? 1 : 0, { damping: 18, stiffness: 160, mass: 1 });
+  }, [typing, dock, reduceMotion]);
+  const orbHome = orbTop + orbSize / 2;
+  const orbStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: dock.value * (headerH / 2 - orbHome) },
+      { scale: 1 + dock.value * (dockSize / orbSize - 1) },
+    ],
+  }));
+  // The caption under the orb has nothing to say in the dock.
+  const captionStyle = useAnimatedStyle(() => ({ opacity: 1 - open.value }));
 
   // ── Caption under the orb ───────────────────────────────────────────────
   let caption: CaptionModel = { text: null };
@@ -438,49 +471,42 @@ export function HomeScreen() {
         <View style={styles.flex} onLayout={onMainLayout}>
           {mainH > 0 ? (
             <>
-              <Animated.View
-                style={[
-                  styles.stage,
-                  { top: orbTop },
-                  // The streaming controls reach below the caption line; keep
-                  // them above the conversation while they're shown.
-                  caption.onFinish && !typing ? styles.stageOver : null,
-                  stageStyle,
-                ]}
-                pointerEvents={typing ? 'none' : 'box-none'}
-                importantForAccessibility={typing ? 'no-hide-descendants' : 'auto'}
-                accessibilityElementsHidden={typing}
+              {/* Above the conversation, so the orb can dock into its header
+                  (and the streaming controls under it stay tappable). */}
+              <View
+                style={[styles.stage, { top: orbTop }]}
+                pointerEvents="box-none"
               >
-                <Pressable
-                  onPress={onOrbPress}
-                  accessibilityRole="button"
-                  accessibilityLabel={
-                    trActive ? 'თარჯიმნის მიკროფონი' : 'ხმოვანი საუბარი'
-                  }
-                  accessibilityHint={toolsHint || undefined}
-                  style={{
-                    width: orbSize,
-                    height: orbSize,
-                    borderRadius: orbSize / 2,
-                  }}
+                <Animated.View style={orbStyle}>
+                  <Pressable
+                    onPress={typing ? onDockedOrbPress : onOrbPress}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      trActive ? 'თარჯიმნის მიკროფონი' : 'ხმოვანი საუბარი'
+                    }
+                    accessibilityHint={
+                      typing ? 'ხმით საუბარზე გადასვლა' : toolsHint || undefined
+                    }
+                    style={{
+                      width: orbSize,
+                      height: orbSize,
+                      borderRadius: orbSize / 2,
+                    }}
+                  >
+                    {/* The orb owns its press physics (shell dip + ripple). */}
+                    <View style={styles.flex}>
+                      <MiaOrb size={orbSize} state={orbLook} tint={trActive ? 1 : 0} />
+                      <OrbMarks size={orbSize} />
+                    </View>
+                  </Pressable>
+                </Animated.View>
+                <Animated.View
+                  style={[styles.caption, captionStyle]}
+                  pointerEvents={typing ? 'none' : 'auto'}
                 >
-                  {/* The orb owns its press physics (shell dip + ripple). */}
-                  <View style={styles.flex}>
-                    <MiaOrb
-                      size={orbSize}
-                      state={orbLook}
-                      tint={trActive ? 1 : 0}
-                      // Hidden behind the open conversation: skip drawing
-                      // (Mia's voice still plays through it).
-                      paused={typing}
-                    />
-                    <OrbMarks size={orbSize} />
-                  </View>
-                </Pressable>
-                <View style={styles.caption}>
                   <OrbCaption model={caption} />
-                </View>
-              </Animated.View>
+                </Animated.View>
+              </View>
 
               <Animated.View style={[styles.panel, panelStyle]}>
                 <ColourField mood={mood} height={mainH - panelTop} />
@@ -488,7 +514,7 @@ export function HomeScreen() {
                   <Animated.View
                     entering={reduceMotion ? undefined : FadeIn.duration(duration.base)}
                     exiting={reduceMotion ? undefined : FadeOut.duration(duration.fast)}
-                    style={styles.chatHeader}
+                    style={[styles.chatHeader, { height: headerH }]}
                   >
                     <Pressable
                       onPress={exitTyping}
@@ -647,8 +673,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     alignItems: 'center',
+    zIndex: 3,
   },
-  stageOver: { zIndex: 3 },
   caption: {
     marginTop: CAPTION_GAP,
     alignSelf: 'stretch',
@@ -663,7 +689,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bgDeep,
   },
   chatHeader: {
-    height: CHAT_HEADER_H,
     flexDirection: 'row',
     alignItems: 'center',
     // The chevron's glyph lines up with the 24pt gutter.
