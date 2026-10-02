@@ -36,7 +36,7 @@ export function EmptyState({
 }: {
   onSuggestion: (text: string) => void;
   bottomPadding: number;
-  /** Tap-to-type on the empty space (see useTapToCompose). */
+  /** Tapping empty space focuses the text field (see useTapToCompose). */
   touchProps: {
     onTouchStart: (e: GestureResponderEvent) => void;
     onTouchEnd: (e: GestureResponderEvent) => void;
@@ -83,9 +83,6 @@ export function EmptyState({
         ))}
       </Animated.View>
 
-      <Animated.Text entering={enter(3)} style={styles.typeHint}>
-        დასაწერად შეეხე ცარიელ ადგილს
-      </Animated.Text>
     </ScrollView>
   );
 }
@@ -123,11 +120,5 @@ const styles = StyleSheet.create({
   exampleText: {
     ...typography.body,
     color: colors.text,
-  },
-  typeHint: {
-    ...typography.caption,
-    color: colors.textFaint,
-    marginTop: 'auto',
-    paddingTop: spacing.lg,
   },
 });

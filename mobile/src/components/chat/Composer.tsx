@@ -1,57 +1,42 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect } from 'react';
 import { Keyboard, Pressable, StyleSheet, TextInput, View } from 'react-native';
-import Animated, {
-  FadeInDown,
-  FadeOutDown,
-  useReducedMotion,
-} from 'react-native-reanimated';
 
 import { Icon } from '@/components/ui/Icon';
-import { HIT, colors, duration, radius, spacing, typography } from '@/theme';
+import { HIT, colors, radius, spacing, typography } from '@/theme';
 
-// The keyboard is a fallback, not a mode: there is no button for it. Tapping
-// the conversation slides this in with the keyboard already up; when the
-// keyboard goes away with nothing typed, it slides back out.
+// The text field, always in view at the bottom of the conversation so nobody
+// has to look for where to type. Voice stays first (the orb); this is the
+// quiet alternative right under it.
 
 export function Composer({
   value,
   onChangeText,
   onSend,
-  onDismiss,
   placeholder,
+  inputRef,
   busy,
 }: {
   value: string;
   onChangeText: (v: string) => void;
   onSend: () => void;
-  /** Keyboard closed with an empty field — hide me. */
-  onDismiss: () => void;
   placeholder: string;
+  /** Lets the screen focus the field (tapping the conversation does). */
+  inputRef: React.RefObject<TextInput | null>;
   /** A reply is in flight; typing is fine, sending waits. */
   busy?: boolean;
 }) {
-  const reduceMotion = useReducedMotion();
-  const inputRef = useRef<TextInput>(null);
-  const valueRef = useRef(value);
-  valueRef.current = value;
-
   useEffect(() => {
+    // Android's back button closes the keyboard but leaves focus behind.
     const sub = Keyboard.addListener('keyboardDidHide', () => {
-      // Android's back button closes the keyboard but leaves focus behind.
       inputRef.current?.blur();
-      if (!valueRef.current.trim()) onDismiss();
     });
     return () => sub.remove();
-  }, [onDismiss]);
+  }, [inputRef]);
 
   const canSend = value.trim().length > 0 && !busy;
 
   return (
-    <Animated.View
-      entering={reduceMotion ? undefined : FadeInDown.duration(duration.base)}
-      exiting={reduceMotion ? undefined : FadeOutDown.duration(duration.fast)}
-      style={styles.bar}
-    >
+    <View style={styles.bar}>
       <View style={styles.field}>
         <TextInput
           ref={inputRef}
@@ -61,7 +46,6 @@ export function Composer({
           placeholderTextColor={colors.textFaint}
           cursorColor={colors.primary}
           selectionColor={colors.primaryGlow}
-          autoFocus
           multiline
           submitBehavior="blurAndSubmit"
           returnKeyType="send"
@@ -90,7 +74,7 @@ export function Composer({
           />
         </Pressable>
       </View>
-    </Animated.View>
+    </View>
   );
 }
 

@@ -7,6 +7,7 @@ import {
   StatusBar,
   StyleSheet,
   Text,
+  TextInput,
   View,
   useWindowDimensions,
   type LayoutChangeEvent,
@@ -173,8 +174,8 @@ export function HomeScreen() {
   const pipeline = useVoicePipeline();
   const navigation = useNavigation<RootNav>();
   const [showDrawer, setShowDrawer] = useState(false);
-  const [composerOpen, setComposerOpen] = useState(false);
   const [draft, setDraft] = useState('');
+  const inputRef = useRef<TextInput>(null);
   const [copiedAt, setCopiedAt] = useState(0);
 
   // ── Errors: one quiet notice, auto-dismissed after 6 s ─────────────────
@@ -293,15 +294,15 @@ export function HomeScreen() {
   useWakeTrigger(onWake);
 
   // ── Typing ──────────────────────────────────────────────────────────────
-  const openComposer = useCallback(() => setComposerOpen(true), []);
-  const closeComposer = useCallback(() => setComposerOpen(false), []);
+  // Tapping the conversation is a shortcut to the field below it.
+  const focusComposer = useCallback(() => inputRef.current?.focus(), []);
   const onCopied = useCallback(() => setCopiedAt(Date.now()), []);
   const onSend = () => {
     const text = draft.trim();
     if (!text) return;
     setDraft('');
+    // Close the keyboard so the reply (and the orb) come into view.
     Keyboard.dismiss();
-    setComposerOpen(false);
     if (useTranslatorSession.getState().active) {
       void translator.translateTyped(text);
     } else {
@@ -452,7 +453,7 @@ export function HomeScreen() {
                       style={styles.flex}
                     >
                       <TranslatorView
-                        onCompose={openComposer}
+                        onCompose={focusComposer}
                         onCopied={onCopied}
                         bottomPadding={0}
                       />
@@ -468,7 +469,7 @@ export function HomeScreen() {
                         messages={messages}
                         liveTranscript={liveTranscript}
                         replyLive={replyLive}
-                        onCompose={openComposer}
+                        onCompose={focusComposer}
                         onCopied={onCopied}
                         onSuggestion={(t) => pipeline.sendText(t)}
                         bottomPadding={0}
@@ -510,30 +511,17 @@ export function HomeScreen() {
                   ) : null}
                 </View>
 
-                {/* Sighted users tap the conversation to type; screen-reader
-                    users get this (visually empty) control instead. */}
-                {!composerOpen ? (
-                  <Pressable
-                    onPress={openComposer}
-                    accessibilityRole="button"
-                    accessibilityLabel="შეტყობინების დაწერა"
-                    style={styles.srOnly}
-                  />
-                ) : null}
-
-                {composerOpen ? (
-                  <Composer
-                    value={draft}
-                    onChangeText={setDraft}
-                    onSend={onSend}
-                    onDismiss={closeComposer}
-                    placeholder={
-                      trActive
-                        ? `დაწერე ${languageNameKaAdverb(trFrom)}…`
-                        : 'მიწერე Mia-ს…'
-                    }
-                  />
-                ) : null}
+                <Composer
+                  value={draft}
+                  onChangeText={setDraft}
+                  onSend={onSend}
+                  inputRef={inputRef}
+                  placeholder={
+                    trActive
+                      ? `დაწერე ${languageNameKaAdverb(trFrom)}…`
+                      : 'მიწერე Mia-ს…'
+                  }
+                />
               </Animated.View>
             </>
           ) : null}
@@ -608,15 +596,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: FADE_H,
-  },
-
-  srOnly: {
-    position: 'absolute',
-    left: 0,
-    bottom: 0,
-    width: 1,
-    height: 1,
-    opacity: 0,
   },
 
   noticeWrap: {
