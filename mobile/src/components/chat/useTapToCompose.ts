@@ -1,11 +1,12 @@
 import { useCallback, useRef } from 'react';
 import type { GestureResponderEvent } from 'react-native';
 
-// "Tap the conversation to type" without wrapping the list in a Pressable —
-// a parent that claims the touch responder can fight the list's scrolling on
-// some Android/iOS versions. Raw touch events never claim anything, so the
-// list scrolls exactly as it would alone; we just watch for a short, still
-// touch that didn't land on a control and didn't stop a scroll.
+// Tapping the conversation focuses the text field below it. Done without
+// wrapping the list in a Pressable: a parent that claims the touch responder
+// can fight the list's scrolling on some Android/iOS versions. Raw touch
+// events never claim anything, so the list scrolls exactly as it would alone;
+// we just watch for a short, still touch that didn't land on a control and
+// didn't stop a scroll.
 
 const MAX_MOVE = 10;
 const MAX_MS = 350;
@@ -44,7 +45,7 @@ export function useTapToCompose(onTap: () => void) {
   );
 
   /** Controls inside the list call this from onPressIn so their taps don't
-   *  also open the composer. */
+   *  also focus the text field. */
   const claim = useCallback(() => {
     onControl.current = true;
   }, []);

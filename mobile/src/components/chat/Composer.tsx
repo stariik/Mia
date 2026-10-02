@@ -1,67 +1,58 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Keyboard, Pressable, StyleSheet, TextInput, View } from 'react-native';
-import Animated, {
-  FadeInDown,
-  FadeOutDown,
-  useReducedMotion,
-} from 'react-native-reanimated';
 
 import { Icon } from '@/components/ui/Icon';
-import { HIT, colors, duration, radius, spacing, typography } from '@/theme';
+import { HIT, colors, radius, spacing, typography } from '@/theme';
 
-// The keyboard is a fallback, not a mode: there is no button for it. Tapping
-// the conversation slides this in with the keyboard already up; when the
-// keyboard goes away with nothing typed, it slides back out.
+// The text field, always in view at the bottom of the conversation, with one
+// send button: quiet while the field is empty, pink once there's something
+// to send. Voice stays on the orb. The field's hairline warms on focus.
 
 export function Composer({
   value,
   onChangeText,
   onSend,
-  onDismiss,
+  onFocus,
   placeholder,
-  busy,
+  inputRef,
 }: {
   value: string;
   onChangeText: (v: string) => void;
   onSend: () => void;
-  /** Keyboard closed with an empty field — hide me. */
-  onDismiss: () => void;
+  /** The field got focus — the screen opens its typing mode. */
+  onFocus?: () => void;
   placeholder: string;
-  /** A reply is in flight; typing is fine, sending waits. */
-  busy?: boolean;
+  /** Lets the screen focus the field (tapping the conversation does). */
+  inputRef: React.RefObject<TextInput | null>;
 }) {
-  const reduceMotion = useReducedMotion();
-  const inputRef = useRef<TextInput>(null);
-  const valueRef = useRef(value);
-  valueRef.current = value;
+  const [focused, setFocused] = useState(false);
 
   useEffect(() => {
+    // Android's back button closes the keyboard but leaves focus behind.
     const sub = Keyboard.addListener('keyboardDidHide', () => {
-      // Android's back button closes the keyboard but leaves focus behind.
       inputRef.current?.blur();
-      if (!valueRef.current.trim()) onDismiss();
     });
     return () => sub.remove();
-  }, [onDismiss]);
+  }, [inputRef]);
 
-  const canSend = value.trim().length > 0 && !busy;
+  const canSend = value.trim().length > 0;
 
   return (
-    <Animated.View
-      entering={reduceMotion ? undefined : FadeInDown.duration(duration.base)}
-      exiting={reduceMotion ? undefined : FadeOutDown.duration(duration.fast)}
-      style={styles.bar}
-    >
-      <View style={styles.field}>
+    <View style={styles.bar}>
+      <View style={[styles.field, focused && styles.fieldFocused]}>
         <TextInput
           ref={inputRef}
           value={value}
           onChangeText={onChangeText}
+          onFocus={() => {
+            setFocused(true);
+            onFocus?.();
+          }}
+          onBlur={() => setFocused(false)}
           placeholder={placeholder}
           placeholderTextColor={colors.textFaint}
           cursorColor={colors.primary}
           selectionColor={colors.primaryGlow}
-          autoFocus
           multiline
           submitBehavior="blurAndSubmit"
           returnKeyType="send"
@@ -79,7 +70,7 @@ export function Composer({
           style={({ pressed }) => [
             styles.send,
             canSend && styles.sendReady,
-            pressed && styles.sendPressed,
+            pressed && styles.pressed,
           ]}
         >
           <Icon
@@ -90,31 +81,33 @@ export function Composer({
           />
         </Pressable>
       </View>
-    </Animated.View>
+    </View>
   );
 }
 
-const SEND = 36;
+const SEND = 38;
 
 const styles = StyleSheet.create({
   bar: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
     paddingBottom: spacing.md,
-    backgroundColor: colors.bgDeep,
   },
   field: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    minHeight: HIT + 4,
+    minHeight: HIT + 6,
     paddingLeft: spacing.lg,
-    paddingRight: (HIT + 4 - SEND) / 2,
-    paddingVertical: (HIT + 4 - SEND) / 2,
-    borderRadius: radius.lg,
+    paddingRight: (HIT + 6 - SEND) / 2,
+    paddingVertical: (HIT + 6 - SEND) / 2,
+    borderRadius: radius.xl,
     backgroundColor: colors.surfaceSolid,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.strokeStrong,
     gap: spacing.sm,
+  },
+  fieldFocused: {
+    borderColor: 'rgba(255,77,139,0.45)',
   },
   input: {
     ...typography.body,
@@ -122,8 +115,8 @@ const styles = StyleSheet.create({
     color: colors.text,
     maxHeight: 132,
     minHeight: SEND,
-    paddingTop: 7,
-    paddingBottom: 6,
+    paddingTop: 8,
+    paddingBottom: 7,
     paddingHorizontal: 0,
     textAlignVertical: 'center',
   },
@@ -135,5 +128,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   sendReady: { backgroundColor: colors.primary },
-  sendPressed: { opacity: 0.8 },
+  pressed: { opacity: 0.8 },
 });
