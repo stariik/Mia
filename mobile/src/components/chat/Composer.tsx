@@ -12,6 +12,7 @@ export function Composer({
   value,
   onChangeText,
   onSend,
+  onFocus,
   placeholder,
   inputRef,
   busy,
@@ -19,6 +20,8 @@ export function Composer({
   value: string;
   onChangeText: (v: string) => void;
   onSend: () => void;
+  /** The field got focus — the screen opens its typing mode. */
+  onFocus?: () => void;
   placeholder: string;
   /** Lets the screen focus the field (tapping the conversation does). */
   inputRef: React.RefObject<TextInput | null>;
@@ -42,6 +45,7 @@ export function Composer({
           ref={inputRef}
           value={value}
           onChangeText={onChangeText}
+          onFocus={onFocus}
           placeholder={placeholder}
           placeholderTextColor={colors.textFaint}
           cursorColor={colors.primary}

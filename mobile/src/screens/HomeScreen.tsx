@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AppState,
+  BackHandler,
   Keyboard,
   Platform,
   Pressable,
@@ -21,6 +22,8 @@ import Animated, {
   useAnimatedKeyboard,
   useAnimatedStyle,
   useReducedMotion,
+  useSharedValue,
+  withTiming,
 } from 'react-native-reanimated';
 
 import { ChatView } from '@/components/chat/ChatView';
@@ -30,6 +33,7 @@ import { ConversationDrawer } from '@/components/ConversationDrawer';
 import { MiaWordmark } from '@/components/MiaWordmark';
 import { OrbCaption, type CaptionModel } from '@/components/OrbCaption';
 import { OrbMarks } from '@/components/OrbMarks';
+import { Icon } from '@/components/ui/Icon';
 import { IconButton } from '@/components/ui/IconButton';
 import { userErrorMessage } from '@/lib/errorMessages';
 import { haptics } from '@/lib/haptics';
@@ -53,7 +57,7 @@ import {
 } from '@/stores/translatorSessionStore';
 import { useTranslatorStore } from '@/stores/translatorStore';
 import { useVoiceStore } from '@/stores/voiceStore';
-import { bgAlpha, colors, spacing, typography } from '@/theme';
+import { HIT, bgAlpha, colors, duration, easeOut, spacing, typography } from '@/theme';
 
 // Dev-only orb lab (state preview + simulated voices). Folded out of release.
 const OrbLab: typeof import('@/dev/OrbLab').OrbLab | null = __DEV__
@@ -73,9 +77,8 @@ const OLD_STATUS_SLOT = 72;
 const CAPTION_GAP = 8;
 /** Where the conversation begins, below the orb's bottom edge. */
 const CONVERSATION_GAP = 40;
-/** While typing, the conversation never gets shorter than this; if the
- *  keyboard leaves less room it rises over the orb's lower half instead. */
-const MIN_PANEL_WHILE_TYPING = 220;
+/** Height of the typing-mode header (the close button row). */
+const CHAT_HEADER_H = 52;
 const FADE_H = 32;
 
 function orbState(
@@ -175,6 +178,7 @@ export function HomeScreen() {
   const navigation = useNavigation<RootNav>();
   const [showDrawer, setShowDrawer] = useState(false);
   const [draft, setDraft] = useState('');
+  const [typing, setTyping] = useState(false);
   const inputRef = useRef<TextInput>(null);
   const [copiedAt, setCopiedAt] = useState(0);
 
@@ -276,6 +280,9 @@ export function HomeScreen() {
   // playback if Mia is mid-sentence). In translator mode it reopens the
   // interpreter's mic. Reads live state so it never goes stale.
   const onWake = useCallback(() => {
+    // The orb is about to listen — let it be seen.
+    setTyping(false);
+    inputRef.current?.blur();
     const tr = useTranslatorSession.getState();
     if (tr.active) {
       if (tr.phase === 'paused') {
@@ -293,16 +300,32 @@ export function HomeScreen() {
   }, [pipeline]);
   useWakeTrigger(onWake);
 
-  // ── Typing ──────────────────────────────────────────────────────────────
-  // Tapping the conversation is a shortcut to the field below it.
+  // ── Typing mode ─────────────────────────────────────────────────────────
+  // Focusing the field (or tapping the conversation) opens the conversation
+  // over the whole area below the top bar: the orb fades away cleanly instead
+  // of being half-covered by the keyboard-raised chat. "დახურვა" (or Android
+  // back) closes the keyboard and brings the orb back, exactly where it was.
   const focusComposer = useCallback(() => inputRef.current?.focus(), []);
+  const enterTyping = useCallback(() => setTyping(true), []);
+  const exitTyping = useCallback(() => {
+    inputRef.current?.blur();
+    Keyboard.dismiss();
+    setTyping(false);
+  }, []);
+  useEffect(() => {
+    if (!typing) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      exitTyping();
+      return true;
+    });
+    return () => sub.remove();
+  }, [typing, exitTyping]);
   const onCopied = useCallback(() => setCopiedAt(Date.now()), []);
   const onSend = () => {
     const text = draft.trim();
     if (!text) return;
     setDraft('');
-    // Close the keyboard so the reply (and the orb) come into view.
-    Keyboard.dismiss();
+    // The keyboard stays up for a follow-up; the reply streams in above.
     if (useTranslatorSession.getState().active) {
       void translator.translateTyped(text);
     } else {
@@ -313,19 +336,19 @@ export function HomeScreen() {
   // ── Keyboard: the conversation rides on top of it ───────────────────────
   const keyboard = useAnimatedKeyboard();
   const bottomInset = Platform.OS === 'ios' ? insets.bottom : 0;
-  const panelStyle = useAnimatedStyle(() => {
-    const kb = Math.max(0, keyboard.height.value - bottomInset);
-    return {
-      top: kb > 0 ? Math.min(panelTop, mainH - kb - MIN_PANEL_WHILE_TYPING) : panelTop,
-      bottom: kb,
-    };
-  });
-  // When the panel has to rise over the orb, a soft skirt hides the seam.
-  const skirtStyle = useAnimatedStyle(() => {
-    const kb = Math.max(0, keyboard.height.value - bottomInset);
-    const raised = kb > 0 ? panelTop - (mainH - kb - MIN_PANEL_WHILE_TYPING) : 0;
-    return { opacity: Math.min(1, Math.max(0, raised / FADE_H)) };
-  });
+  const open = useSharedValue(0);
+  useEffect(() => {
+    open.value = withTiming(typing ? 1 : 0, {
+      duration: reduceMotion ? 0 : duration.slow,
+      easing: easeOut,
+    });
+  }, [typing, open, reduceMotion]);
+  const panelStyle = useAnimatedStyle(() => ({
+    top: panelTop * (1 - open.value),
+    bottom: Math.max(0, keyboard.height.value - bottomInset),
+  }));
+  // The orb steps back (fades, never moves) while the conversation is open.
+  const stageStyle = useAnimatedStyle(() => ({ opacity: 1 - open.value }));
 
   // ── Caption under the orb ───────────────────────────────────────────────
   let caption: CaptionModel = { text: null };
@@ -395,15 +418,18 @@ export function HomeScreen() {
         <View style={styles.flex} onLayout={onMainLayout}>
           {mainH > 0 ? (
             <>
-              <View
+              <Animated.View
                 style={[
                   styles.stage,
                   { top: orbTop },
                   // The streaming controls reach below the caption line; keep
                   // them above the conversation while they're shown.
-                  caption.onFinish ? styles.stageOver : null,
+                  caption.onFinish && !typing ? styles.stageOver : null,
+                  stageStyle,
                 ]}
-                pointerEvents="box-none"
+                pointerEvents={typing ? 'none' : 'box-none'}
+                importantForAccessibility={typing ? 'no-hide-descendants' : 'auto'}
+                accessibilityElementsHidden={typing}
               >
                 <Pressable
                   onPress={onOrbPress}
@@ -425,6 +451,9 @@ export function HomeScreen() {
                       size={orbSize}
                       state={orbLook}
                       tint={trActive ? 1 : 0}
+                      // Hidden behind the open conversation: skip drawing
+                      // (Mia's voice still plays through it).
+                      paused={typing}
                     />
                     <OrbMarks size={orbSize} />
                   </View>
@@ -432,18 +461,28 @@ export function HomeScreen() {
                 <View style={styles.caption}>
                   <OrbCaption model={caption} />
                 </View>
-              </View>
+              </Animated.View>
 
               <Animated.View style={[styles.panel, panelStyle]}>
-                <Animated.View
-                  style={[styles.skirt, skirtStyle]}
-                  pointerEvents="none"
-                >
-                  <LinearGradient
-                    colors={[bgAlpha(0), colors.bgDeep]}
-                    style={StyleSheet.absoluteFill}
-                  />
-                </Animated.View>
+                {typing ? (
+                  <Animated.View
+                    entering={reduceMotion ? undefined : FadeIn.duration(duration.base)}
+                    exiting={reduceMotion ? undefined : FadeOut.duration(duration.fast)}
+                    style={styles.chatHeader}
+                  >
+                    <Pressable
+                      onPress={exitTyping}
+                      accessibilityRole="button"
+                      accessibilityLabel="დახურვა"
+                      accessibilityHint="კლავიატურა დაიხურება და სფერო დაბრუნდება"
+                      hitSlop={4}
+                      style={({ pressed }) => [styles.closeBtn, pressed && styles.pressed]}
+                    >
+                      <Icon name="chevronDown" size={20} color={colors.text} strokeWidth={1.8} />
+                      <Text style={styles.closeText}>დახურვა</Text>
+                    </Pressable>
+                  </Animated.View>
+                ) : null}
                 <View style={styles.flex}>
                   {trActive ? (
                     <Animated.View
@@ -515,6 +554,7 @@ export function HomeScreen() {
                   value={draft}
                   onChangeText={setDraft}
                   onSend={onSend}
+                  onFocus={enterTyping}
                   inputRef={inputRef}
                   placeholder={
                     trActive
@@ -583,13 +623,27 @@ const styles = StyleSheet.create({
     zIndex: 2,
     backgroundColor: colors.bgDeep,
   },
-  skirt: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: -FADE_H,
-    height: FADE_H,
+  chatHeader: {
+    height: CHAT_HEADER_H,
+    flexDirection: 'row',
+    alignItems: 'center',
+    // The chevron's glyph lines up with the 24pt gutter.
+    paddingLeft: spacing.xl - 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.stroke,
   },
+  closeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    minHeight: HIT,
+    paddingHorizontal: spacing.sm,
+  },
+  closeText: {
+    ...typography.bodyMedium,
+    color: colors.text,
+  },
+  pressed: { opacity: 0.6 },
   fade: {
     position: 'absolute',
     top: 0,
