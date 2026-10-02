@@ -45,7 +45,7 @@ import { useSilenceAutoStop } from '@/hooks/useSilenceAutoStop';
 import { useVoicePipeline } from '@/hooks/useVoicePipeline';
 import { ensureWakeWordOnLaunch, useWakeTrigger } from '@/hooks/useWakeWord';
 import type { RootNav } from '@/navigation/navigationRef';
-import { MiaOrb, type MiaOrbHandle, type OrbState } from '@/orb';
+import { MiaOrb, type OrbState } from '@/orb';
 import {
   selectActiveMessages,
   useConversationStore,
@@ -58,11 +58,6 @@ import {
 import { useTranslatorStore } from '@/stores/translatorStore';
 import { useVoiceStore } from '@/stores/voiceStore';
 import { HIT, bgAlpha, colors, duration, easeOut, spacing, typography } from '@/theme';
-
-// Dev-only orb lab (state preview + simulated voices). Folded out of release.
-const OrbLab: typeof import('@/dev/OrbLab').OrbLab | null = __DEV__
-  ? require('@/dev/OrbLab').OrbLab
-  : null;
 
 // ── Where the orb sits ───────────────────────────────────────────────────
 // The orb keeps the exact size and position it had above the old bottom
@@ -202,12 +197,9 @@ export function HomeScreen() {
 
   // ── Orb ─────────────────────────────────────────────────────────────────
   const state = orbState(isListening, isThinking, isSpeaking);
-  const [labState, setLabState] = useState<OrbState | null>(null);
   const flow = orbFlow(state, isProcessing, isArming, streaming, sttState);
   const chatLook: OrbState = error && flow === 'idle' ? 'error' : flow;
-  const orbLook: OrbState =
-    labState ?? (trActive ? translatorOrbState(trPhase) : chatLook);
-  const orbRef = useRef<MiaOrbHandle>(null);
+  const orbLook: OrbState = trActive ? translatorOrbState(trPhase) : chatLook;
 
   // The orb is a single toggle for the whole hands-free conversation: first tap
   // opens it, the next one closes it — whether Mia is listening, thinking or
@@ -447,7 +439,6 @@ export function HomeScreen() {
                   {/* The orb owns its press physics (shell dip + ripple). */}
                   <View style={styles.flex}>
                     <MiaOrb
-                      ref={orbRef}
                       size={orbSize}
                       state={orbLook}
                       tint={trActive ? 1 : 0}
@@ -571,10 +562,6 @@ export function HomeScreen() {
           visible={showDrawer}
           onClose={() => setShowDrawer(false)}
         />
-
-        {OrbLab ? (
-          <OrbLab orbRef={orbRef} labState={labState} onLabState={setLabState} />
-        ) : null}
       </SafeAreaView>
     </View>
   );
