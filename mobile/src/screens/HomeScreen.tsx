@@ -83,6 +83,8 @@ const DOCK_MAX = 116;
 /** Air above and below the docked orb inside the header. */
 const DOCK_PAD = 10;
 const FADE_H = 32;
+/** The streaming recognizer closes a turn at one minute (SttController). */
+const LISTEN_BUDGET_S = 60;
 
 function orbState(
   listening: boolean,
@@ -397,17 +399,21 @@ export function HomeScreen() {
   let caption: CaptionModel = { text: null };
   if (trActive) {
     if (trPhase === 'paused') caption = { text: 'შეჩერებულია · შეეხე სფეროს' };
-    else if (trPhase === 'connecting') caption = { text: 'ვემზადები…' };
+    else if (trPhase === 'connecting') caption = { text: 'ვემზადები…', wave: 'connecting' };
     else if (trPhase === 'listening')
-      caption = { text: `გისმენ · ილაპარაკე ${languageNameKaAdverb(trFrom)}`, live: true };
+      caption = {
+        text: 'გისმენ',
+        wave: 'live',
+        hint: `ილაპარაკე ${languageNameKaAdverb(trFrom)}`,
+      };
     else if (trPhase === 'working') caption = { text: 'ვთარგმნი…' };
     else if (trPhase === 'speaking')
       caption = { text: 'ვკითხულობ თარგმანს · შეეხე შესაწყვეტად' };
   } else if (streaming && isListening) {
     caption = {
       text: 'გისმენ',
-      live: true,
-      seconds: listeningSeconds,
+      wave: 'live',
+      remaining: Math.max(0, 1 - listeningSeconds / LISTEN_BUDGET_S),
       onFinish: stopListeningAndSend,
       onKeepListening: pipeline.keepListening,
       keepingOn: keepListening,
@@ -415,7 +421,7 @@ export function HomeScreen() {
   } else if (flow === 'listening') {
     caption = {
       text: streaming && sttState === 'connecting' ? 'ვუკავშირდები…' : 'გისმენ',
-      live: isListening,
+      wave: isListening ? 'live' : 'connecting',
     };
   } else if (flow === 'thinking') {
     caption = { text: isThinking ? 'ვფიქრობ…' : 'მუშავდება…' };
