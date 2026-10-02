@@ -474,7 +474,7 @@ export function HomeScreen() {
             />
           </View>
           <View style={styles.brand} accessibilityRole="header" accessibilityLabel="Mia">
-            <MiaWordmark size={20} />
+            <MiaWordmark size={23} />
           </View>
           <View style={[styles.topSide, styles.topSideEnd]}>
             <IconButton
