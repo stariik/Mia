@@ -1,33 +1,46 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Keyboard, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import Animated, { ZoomIn, ZoomOut, useReducedMotion } from 'react-native-reanimated';
 
 import { Icon } from '@/components/ui/Icon';
-import { HIT, colors, radius, spacing, typography } from '@/theme';
+import { HIT, brandGradient, colors, radius, spacing, typography } from '@/theme';
 
-// The text field, always in view at the bottom of the conversation so nobody
-// has to look for where to type. Voice stays first (the orb); this is the
-// quiet alternative right under it.
+// The text field, always in view at the bottom of the conversation. Its one
+// button changes with what you'd want next:
+//   empty      → a mic in the orb's colours (talk instead — same as the orb)
+//   mic open   → stop
+//   text typed → send, in the same colours
+// The field's hairline warms to pink while it has focus.
+
+type Action = 'mic' | 'stop' | 'send';
 
 export function Composer({
   value,
   onChangeText,
   onSend,
+  onMic,
+  micActive,
   onFocus,
   placeholder,
   inputRef,
-  busy,
 }: {
   value: string;
   onChangeText: (v: string) => void;
   onSend: () => void;
+  /** Start or stop talking — the same as tapping the orb. */
+  onMic: () => void;
+  /** The mic is open (listening). */
+  micActive: boolean;
   /** The field got focus — the screen opens its typing mode. */
   onFocus?: () => void;
   placeholder: string;
   /** Lets the screen focus the field (tapping the conversation does). */
   inputRef: React.RefObject<TextInput | null>;
-  /** A reply is in flight; typing is fine, sending waits. */
-  busy?: boolean;
 }) {
+  const reduceMotion = useReducedMotion();
+  const [focused, setFocused] = useState(false);
+
   useEffect(() => {
     // Android's back button closes the keyboard but leaves focus behind.
     const sub = Keyboard.addListener('keyboardDidHide', () => {
@@ -36,16 +49,24 @@ export function Composer({
     return () => sub.remove();
   }, [inputRef]);
 
-  const canSend = value.trim().length > 0 && !busy;
+  const hasText = value.trim().length > 0;
+  const action: Action = hasText ? 'send' : micActive ? 'stop' : 'mic';
+  const onAction = action === 'send' ? onSend : onMic;
+  const label =
+    action === 'send' ? 'გაგზავნა' : action === 'stop' ? 'მოსმენის შეწყვეტა' : 'ხმით საუბარი';
 
   return (
     <View style={styles.bar}>
-      <View style={styles.field}>
+      <View style={[styles.field, focused && styles.fieldFocused]}>
         <TextInput
           ref={inputRef}
           value={value}
           onChangeText={onChangeText}
-          onFocus={onFocus}
+          onFocus={() => {
+            setFocused(true);
+            onFocus?.();
+          }}
+          onBlur={() => setFocused(false)}
           placeholder={placeholder}
           placeholderTextColor={colors.textFaint}
           cursorColor={colors.primary}
@@ -53,75 +74,103 @@ export function Composer({
           multiline
           submitBehavior="blurAndSubmit"
           returnKeyType="send"
-          onSubmitEditing={() => canSend && onSend()}
+          onSubmitEditing={() => hasText && onSend()}
           style={styles.input}
           accessibilityLabel={placeholder}
         />
         <Pressable
-          onPress={onSend}
-          disabled={!canSend}
+          onPress={onAction}
           hitSlop={6}
           accessibilityRole="button"
-          accessibilityLabel="გაგზავნა"
-          accessibilityState={{ disabled: !canSend }}
-          style={({ pressed }) => [
-            styles.send,
-            canSend && styles.sendReady,
-            pressed && styles.sendPressed,
-          ]}
+          accessibilityLabel={label}
+          style={({ pressed }) => [styles.action, pressed && styles.pressed]}
         >
-          <Icon
-            name="send"
-            size={18}
-            strokeWidth={2}
-            color={canSend ? colors.primaryOn : colors.textFaint}
-          />
+          <Animated.View
+            key={action}
+            entering={reduceMotion ? undefined : ZoomIn.duration(180)}
+            exiting={reduceMotion ? undefined : ZoomOut.duration(120)}
+            style={styles.actionInner}
+          >
+            {action === 'stop' ? (
+              <View style={[StyleSheet.absoluteFill, styles.stopFill]} />
+            ) : (
+              <LinearGradient
+                colors={[...brandGradient]}
+                start={{ x: 0, y: 1 }}
+                end={{ x: 1, y: 0 }}
+                style={StyleSheet.absoluteFill}
+              />
+            )}
+            {/* Explicitly above the fill: some renderers paint absolutely
+                positioned siblings over in-flow ones. */}
+            <View style={styles.glyph}>
+              <Icon
+                name={action}
+                size={18}
+                strokeWidth={2}
+                color={action === 'stop' ? colors.primary : colors.primaryOn}
+              />
+            </View>
+          </Animated.View>
         </Pressable>
       </View>
     </View>
   );
 }
 
-const SEND = 36;
+const ACTION = 38;
 
 const styles = StyleSheet.create({
   bar: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
     paddingBottom: spacing.md,
-    backgroundColor: colors.bgDeep,
   },
   field: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    minHeight: HIT + 4,
+    minHeight: HIT + 6,
     paddingLeft: spacing.lg,
-    paddingRight: (HIT + 4 - SEND) / 2,
-    paddingVertical: (HIT + 4 - SEND) / 2,
-    borderRadius: radius.lg,
+    paddingRight: (HIT + 6 - ACTION) / 2,
+    paddingVertical: (HIT + 6 - ACTION) / 2,
+    borderRadius: radius.xl,
     backgroundColor: colors.surfaceSolid,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.strokeStrong,
     gap: spacing.sm,
+  },
+  fieldFocused: {
+    borderColor: 'rgba(255,77,139,0.55)',
   },
   input: {
     ...typography.body,
     flex: 1,
     color: colors.text,
     maxHeight: 132,
-    minHeight: SEND,
-    paddingTop: 7,
-    paddingBottom: 6,
+    minHeight: ACTION,
+    paddingTop: 8,
+    paddingBottom: 7,
     paddingHorizontal: 0,
     textAlignVertical: 'center',
   },
-  send: {
-    width: SEND,
-    height: SEND,
-    borderRadius: SEND / 2,
+  action: {
+    width: ACTION,
+    height: ACTION,
+  },
+  actionInner: {
+    width: ACTION,
+    height: ACTION,
+    borderRadius: ACTION / 2,
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sendReady: { backgroundColor: colors.primary },
-  sendPressed: { opacity: 0.8 },
+  stopFill: {
+    backgroundColor: 'rgba(255,77,139,0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,77,139,0.6)',
+    borderRadius: ACTION / 2,
+  },
+  glyph: { zIndex: 1 },
+  pressed: { opacity: 0.8 },
 });

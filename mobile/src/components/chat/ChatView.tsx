@@ -1,95 +1,45 @@
-import React, { memo, useCallback, useMemo, useRef } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeIn, useReducedMotion } from 'react-native-reanimated';
+import React, { useCallback, useMemo, useRef } from 'react';
+import { FlatList, StyleSheet, View } from 'react-native';
+import { useReducedMotion } from 'react-native-reanimated';
 
-import { copyText } from '@/lib/clipboard';
-import { haptics } from '@/lib/haptics';
 import type { Message } from '@/stores/conversationStore';
-import { colors, duration, spacing, typography } from '@/theme';
+import { spacing } from '@/theme';
 
 import { EmptyState } from './EmptyState';
 import { JumpToLatest } from './JumpToLatest';
-import { LiveLine } from './LiveLine';
-import { useSmoothReveal } from './useSmoothReveal';
+import { MiaRow, SpeakingRow, ThinkingRow, UserRow } from './MessageRows';
 import { useStickyScroll } from './useStickyScroll';
 import { useTapToCompose } from './useTapToCompose';
 
-// The conversation as typography, not bubbles. Mia's replies are plain
-// reading text across the full measure; what the user said sits quieter —
-// smaller, muted, set to the right — like a transcript of their side. What is
-// being said right now appears live at the bottom, and a streamed reply is
-// revealed at an even pace rather than in bursts.
-
-type RowProps = {
-  message: Message;
-  /** Starts a new exchange (a user line after a reply): more air above. */
-  opensTurn: boolean;
-  live: boolean;
-  animate: boolean;
-  onCopied: () => void;
-};
-
-const COPY_ACTION = [{ name: 'copy', label: 'დაკოპირება' }];
-
-const Row = memo(function Row({
-  message,
-  opensTurn,
-  live,
-  animate,
-  onCopied,
-}: RowProps) {
-  const isUser = message.role === 'user';
-  const text = useSmoothReveal(message.content, live && !isUser);
-
-  const copy = useCallback(async () => {
-    if (!message.content) return;
-    if (await copyText(message.content)) {
-      haptics.tap();
-      onCopied();
-    }
-  }, [message.content, onCopied]);
-
-  if (!isUser && !text) return null;
-
-  return (
-    <Animated.View
-      entering={animate ? FadeIn.duration(duration.base) : undefined}
-      style={[
-        isUser ? styles.userRow : styles.miaRow,
-        opensTurn && styles.opensTurn,
-      ]}
-    >
-      {/* A tap falls through to the list (tap-to-type); long-press copies. */}
-      <Pressable
-        onLongPress={copy}
-        delayLongPress={380}
-        accessibilityLabel={`${isUser ? 'შენ' : 'Mia'}: ${message.content}`}
-        accessibilityHint="ხანგრძლივად დააჭირე დასაკოპირებლად"
-        accessibilityActions={COPY_ACTION}
-        onAccessibilityAction={(e) => {
-          if (e.nativeEvent.actionName === 'copy') void copy();
-        }}
-      >
-        <Text style={isUser ? styles.userText : styles.miaText}>{text}</Text>
-      </Pressable>
-    </Animated.View>
-  );
-});
+// The conversation. Mia speaks in calm reading text under her marble; you
+// speak in violet capsules on the right. Whatever is happening right now
+// lives at the bottom: your words forming as you talk, or her colours rising
+// while she thinks. Scrolling up to reread is never interrupted (see
+// useStickyScroll); tapping the conversation focuses the text field.
 
 export function ChatView({
   messages,
   liveTranscript,
+  listening,
+  awaitingReply,
   replyLive,
+  speaking,
   onCompose,
   onCopied,
   onSuggestion,
   bottomPadding,
 }: {
   messages: Message[];
-  /** What the user is saying right now ('' when not listening). */
+  /** What the user is saying right now. */
   liveTranscript: string;
+  /** The mic is open for the user. */
+  listening: boolean;
+  /** Mia is working on a reply and hasn't written any of it yet. */
+  awaitingReply: boolean;
   /** The last reply is still streaming in. */
   replyLive: boolean;
+  /** Mia's voice is playing. */
+  speaking: boolean;
   onCompose: () => void;
   onCopied: () => void;
   onSuggestion: (text: string) => void;
@@ -99,34 +49,37 @@ export function ChatView({
   const { touchProps, claim, noteScroll } = useTapToCompose(onCompose);
   const { ref, behind, jumpToLatest, scrollProps } =
     useStickyScroll<FlatList<Message>>(noteScroll);
-  // Only messages that arrive while the view is up fade in; history doesn't.
+  // Only messages that arrive while the view is up animate in; history doesn't.
   const mountedAt = useRef(Date.now()).current;
 
   const lastIndex = messages.length - 1;
   const renderItem = useCallback(
-    ({ item, index }: { item: Message; index: number }) => (
-      <Row
-        message={item}
-        opensTurn={index > 0 && item.role === 'user'}
-        live={replyLive && index === lastIndex && item.role === 'assistant'}
-        animate={!reduceMotion && item.timestamp > mountedAt}
-        onCopied={onCopied}
-      />
-    ),
-    [replyLive, lastIndex, reduceMotion, mountedAt, onCopied],
+    ({ item, index }: { item: Message; index: number }) => {
+      const animate = !reduceMotion && item.timestamp > mountedAt;
+      if (item.role === 'user') {
+        return <UserRow content={item.content} animate={animate} onCopied={onCopied} />;
+      }
+      const last = index === lastIndex;
+      return (
+        <MiaRow
+          content={item.content}
+          live={replyLive && last}
+          speaking={speaking && last}
+          animate={animate}
+          onCopied={onCopied}
+        />
+      );
+    },
+    [replyLive, speaking, lastIndex, reduceMotion, mountedAt, onCopied],
   );
 
-  const footer = useMemo(
-    () =>
-      liveTranscript ? (
-        <View style={[styles.userRow, messages.length > 0 && styles.opensTurn]}>
-          <LiveLine text={liveTranscript} />
-        </View>
-      ) : null,
-    [liveTranscript, messages.length],
-  );
+  const footer = useMemo(() => {
+    if (listening) return <SpeakingRow text={liveTranscript} />;
+    if (awaitingReply) return <ThinkingRow />;
+    return null;
+  }, [listening, liveTranscript, awaitingReply]);
 
-  if (messages.length === 0 && !liveTranscript) {
+  if (messages.length === 0 && !listening && !awaitingReply) {
     return (
       <EmptyState
         onSuggestion={onSuggestion}
@@ -169,25 +122,6 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: spacing.xl,
     // Clears the soft fade where the chat meets the orb.
-    paddingTop: spacing.xxl,
-  },
-  miaRow: {
-    marginTop: spacing.md,
-  },
-  userRow: {
-    alignSelf: 'flex-end',
-    maxWidth: '84%',
-    marginTop: spacing.md,
-  },
-  opensTurn: {
-    marginTop: spacing.xxl,
-  },
-  miaText: {
-    ...typography.reading,
-    color: colors.text,
-  },
-  userText: {
-    ...typography.body,
-    color: colors.textMuted,
+    paddingTop: spacing.xl,
   },
 });

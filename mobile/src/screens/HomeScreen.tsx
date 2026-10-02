@@ -27,6 +27,8 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { ChatView } from '@/components/chat/ChatView';
+import { ColourField, type Mood } from '@/components/chat/ColourField';
+import { MiaAvatar } from '@/components/chat/MiaAvatar';
 import { Composer } from '@/components/chat/Composer';
 import { TranslatorView } from '@/components/chat/TranslatorView';
 import { ConversationDrawer } from '@/components/ConversationDrawer';
@@ -312,6 +314,12 @@ export function HomeScreen() {
     });
     return () => sub.remove();
   }, [typing, exitTyping]);
+  // The composer's mic is the orb's tap, from the keyboard side: leave typing
+  // mode first so the orb is in view while it listens.
+  const onMicPress = () => {
+    if (typing) exitTyping();
+    onOrbPress();
+  };
   const onCopied = useCallback(() => setCopiedAt(Date.now()), []);
   const onSend = () => {
     const text = draft.trim();
@@ -379,6 +387,30 @@ export function HomeScreen() {
   const last = messages[messages.length - 1];
   const replyLive =
     (isThinking || isSpeaking) && last?.role === 'assistant';
+  // Her colours rise while she works on a reply she hasn't written yet (the
+  // assistant message appears on the first token, while "thinking" lasts
+  // until her voice starts), and while the recording is transcribed.
+  const awaitingReply =
+    isProcessing ||
+    (isThinking &&
+      (last?.role === 'user' || (last?.role === 'assistant' && !last.content)));
+  const micActive = trActive
+    ? trPhase === 'listening' || trPhase === 'connecting'
+    : flow === 'listening';
+  const mood: Mood = trActive
+    ? (translatorOrbState(trPhase) as Mood)
+    : flow === 'error'
+    ? 'idle'
+    : (flow as Mood);
+  const status = trActive
+    ? 'თარჯიმანი'
+    : flow === 'listening'
+    ? 'გისმენს…'
+    : flow === 'thinking'
+    ? 'ფიქრობს…'
+    : flow === 'speaking'
+    ? 'ლაპარაკობს…'
+    : 'მზადაა';
 
   const toolsHint = [
     timerCount ? `ტაიმერი: ${timerCount}` : null,
@@ -461,6 +493,7 @@ export function HomeScreen() {
               </Animated.View>
 
               <Animated.View style={[styles.panel, panelStyle]}>
+                <ColourField mood={mood} height={mainH - panelTop} />
                 {typing ? (
                   <Animated.View
                     entering={reduceMotion ? undefined : FadeIn.duration(duration.base)}
@@ -478,6 +511,19 @@ export function HomeScreen() {
                       <Icon name="chevronDown" size={20} color={colors.text} strokeWidth={1.8} />
                       <Text style={styles.closeText}>დახურვა</Text>
                     </Pressable>
+                    {/* Who you're talking to, and what she's doing. */}
+                    <View
+                      style={styles.who}
+                      accessible
+                      accessibilityLabel={`Mia, ${status}`}
+                      accessibilityLiveRegion="polite"
+                    >
+                      <View style={styles.whoText}>
+                        <Text style={styles.whoName}>Mia</Text>
+                        <Text style={styles.whoStatus}>{status}</Text>
+                      </View>
+                      <MiaAvatar size={30} live={flow !== 'idle' && flow !== 'error'} />
+                    </View>
                   </Animated.View>
                 ) : null}
                 <View style={styles.flex}>
@@ -504,7 +550,10 @@ export function HomeScreen() {
                       <ChatView
                         messages={messages}
                         liveTranscript={liveTranscript}
+                        listening={flow === 'listening'}
+                        awaitingReply={awaitingReply}
                         replyLive={replyLive}
+                        speaking={isSpeaking}
                         onCompose={focusComposer}
                         onCopied={onCopied}
                         onSuggestion={(t) => pipeline.sendText(t)}
@@ -551,6 +600,8 @@ export function HomeScreen() {
                   value={draft}
                   onChangeText={setDraft}
                   onSend={onSend}
+                  onMic={onMicPress}
+                  micActive={micActive}
                   onFocus={enterTyping}
                   inputRef={inputRef}
                   placeholder={
@@ -628,6 +679,25 @@ const styles = StyleSheet.create({
     paddingLeft: spacing.xl - 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.stroke,
+  },
+  who: {
+    marginLeft: 'auto',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingRight: spacing.xl - 12,
+  },
+  whoText: { alignItems: 'flex-end' },
+  whoName: {
+    ...typography.bodyMedium,
+    color: colors.text,
+    lineHeight: 18,
+  },
+  whoStatus: {
+    ...typography.caption,
+    fontSize: 12,
+    lineHeight: 16,
+    color: colors.textMuted,
   },
   closeBtn: {
     flexDirection: 'row',
