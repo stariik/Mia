@@ -17,13 +17,13 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import Animated, {
-  Easing,
   FadeIn,
   FadeOut,
   useAnimatedKeyboard,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
+  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 
@@ -59,7 +59,7 @@ import {
 } from '@/stores/translatorSessionStore';
 import { useTranslatorStore } from '@/stores/translatorStore';
 import { useVoiceStore } from '@/stores/voiceStore';
-import { HIT, bgAlpha, colors, duration, spacing, typography } from '@/theme';
+import { HIT, bgAlpha, colors, duration, easeOut, spacing, typography } from '@/theme';
 
 // ── Where the orb sits ───────────────────────────────────────────────────
 // The orb keeps the exact size and position it had above the old bottom
@@ -82,10 +82,6 @@ const DOCK_MIN = 64;
 const DOCK_MAX = 116;
 /** Air above and below the docked orb inside the header. */
 const DOCK_PAD = 10;
-/** The dock transition: unhurried, symmetric ease-in-out (Material's
- *  "standard" curve), no overshoot. */
-const DOCK_MS = 560;
-const DOCK_EASE = Easing.bezier(0.4, 0, 0.2, 1);
 const FADE_H = 32;
 
 function orbState(
@@ -346,14 +342,11 @@ export function HomeScreen() {
   // ── Keyboard: the conversation rides on top of it ───────────────────────
   const keyboard = useAnimatedKeyboard();
   const bottomInset = Platform.OS === 'ios' ? insets.bottom : 0;
-  // One value drives the whole transition — the panel's slide, the orb's
-  // glide and shrink, the caption's fade — on one gentle ease-in-out curve
-  // with no overshoot, so everything moves as a single gesture.
   const open = useSharedValue(0);
   useEffect(() => {
     open.value = withTiming(typing ? 1 : 0, {
-      duration: reduceMotion ? 0 : DOCK_MS,
-      easing: DOCK_EASE,
+      duration: reduceMotion ? 0 : duration.slow,
+      easing: easeOut,
     });
   }, [typing, open, reduceMotion]);
   const panelStyle = useAnimatedStyle(() => ({
@@ -361,19 +354,40 @@ export function HomeScreen() {
     bottom: Math.max(0, keyboard.height.value - bottomInset),
   }));
 
+  // The dock: a spring (a touch of settle, never a bounce) on its own value,
+  // so the orb's glide and the panel's slide feel related but not mechanical.
   const dockSize = Math.round(
     Math.min(DOCK_MAX, Math.max(DOCK_MIN, mainH * DOCK_SHARE)),
   );
   const headerH = dockSize + DOCK_PAD * 2;
+  const dock = useSharedValue(0);
+  // The size has its own spring, critically damped (damping = 2·√stiffness):
+  // it eases into the docked size and never dips past it, so the shrink has
+  // no wobble while the glide above keeps its touch of settle.
+  const shrink = useSharedValue(0);
+  useEffect(() => {
+    const to = typing ? 1 : 0;
+    if (reduceMotion) {
+      dock.value = withTiming(to, { duration: 0 });
+      shrink.value = withTiming(to, { duration: 0 });
+      return;
+    }
+    dock.value = withSpring(to, { damping: 18, stiffness: 160, mass: 1 });
+    shrink.value = withSpring(to, {
+      damping: 2 * Math.sqrt(160),
+      stiffness: 160,
+      mass: 1,
+      overshootClamping: true,
+    });
+  }, [typing, dock, shrink, reduceMotion]);
   const orbHome = orbTop + orbSize / 2;
-  // Scale is interpolated geometrically (in log space): each moment shrinks
-  // the orb by the same proportion, so it doesn't rush at first and crawl at
-  // the end the way a linear scale does.
+  // Scale is interpolated geometrically (in log space), so the orb shrinks
+  // at a steady visual rate, like a camera zoom.
   const dockLogScale = Math.log(dockSize / orbSize);
   const orbStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateY: open.value * (headerH / 2 - orbHome) },
-      { scale: Math.exp(open.value * dockLogScale) },
+      { translateY: dock.value * (headerH / 2 - orbHome) },
+      { scale: Math.exp(shrink.value * dockLogScale) },
     ],
   }));
   // The caption under the orb has nothing to say in the dock.
