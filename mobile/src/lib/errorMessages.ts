@@ -36,10 +36,12 @@ const RULES: Rule[] = [
     test: /stream stalled|chat (stream )?failed/i,
     message: 'პასუხი ვერ მოვიდა — სცადეთ თავიდან',
   },
-  // Device offline (RN fetch's canonical offline error).
+  // RN fetch's catch-all: thrown when the phone is offline, but also when the
+  // server is down, DNS is wrong or its TLS certificate doesn't match. Don't
+  // claim "no internet" — that sends users debugging a connection that works.
   {
     test: /network request failed/i,
-    message: 'ინტერნეტ კავშირი არ არის',
+    message: 'სერვერთან დაკავშირება ვერ მოხერხდა — შეამოწმეთ ინტერნეტი ან სცადეთ მოგვიანებით',
   },
   // Server-side guard responses.
   { test: /rate limit|429/i, message: 'ძალიან ბევრი მოთხოვნა — მოიცადეთ წუთით' },

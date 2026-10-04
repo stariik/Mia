@@ -13,7 +13,9 @@ describe('userErrorMessage', () => {
   });
 
   test('maps offline and guard responses', () => {
-    expect(userErrorMessage('Network request failed')).toContain('ინტერნეტ');
+    const unreachable = userErrorMessage('Network request failed');
+    expect(unreachable).toContain('სერვერთან დაკავშირება ვერ მოხერხდა');
+    expect(unreachable).not.toContain('არ არის');
     expect(userErrorMessage('rate limit exceeded')).toContain('ბევრი მოთხოვნა');
     expect(userErrorMessage('unauthorized')).toContain('ავტორიზაცია');
   });
