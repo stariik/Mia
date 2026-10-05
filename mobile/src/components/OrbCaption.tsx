@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
   FadeIn,
@@ -12,10 +12,9 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 
-import { Icon } from '@/components/ui/Icon';
 import { audioLevel } from '@/lib/audioLevel';
 import { ORB_CONFIG } from '@/orb';
-import { colors, duration, radius, spacing, typography } from '@/theme';
+import { colors, duration, spacing, typography } from '@/theme';
 
 // What Mia is doing, under the orb. While she listens there are no words: a
 // ribbon of gradient bars moves with your voice, and it doubles as the
@@ -32,10 +31,6 @@ export type CaptionModel = {
   remaining?: number;
   /** A short line under the ribbon (the translator's "speak English"). */
   hint?: string;
-  /** Streaming STT controls. */
-  onFinish?: () => void;
-  onKeepListening?: () => void;
-  keepingOn?: boolean;
 };
 
 export function OrbCaption({
@@ -79,43 +74,6 @@ export function OrbCaption({
           <Text style={styles.text} numberOfLines={1}>
             {model.text}
           </Text>
-        </Animated.View>
-      ) : null}
-      {model.onFinish ? (
-        <Animated.View entering={fade} exiting={out} style={styles.controls}>
-          <Pressable
-            onPress={model.onFinish}
-            accessibilityRole="button"
-            hitSlop={4}
-            style={({ pressed }) => [styles.chip, styles.chipSend, pressed && styles.pressed]}
-          >
-            <Icon name="check" size={16} color={colors.primary} strokeWidth={2} />
-            <Text style={styles.chipText}>დასრულება</Text>
-          </Pressable>
-          <Pressable
-            onPress={model.onKeepListening}
-            disabled={model.keepingOn}
-            accessibilityRole="button"
-            accessibilityState={{ disabled: !!model.keepingOn, selected: !!model.keepingOn }}
-            hitSlop={4}
-            style={({ pressed }) => [
-              styles.chip,
-              model.keepingOn && styles.chipOn,
-              pressed && styles.pressed,
-            ]}
-          >
-            <Icon
-              name="infinity"
-              size={16}
-              color={model.keepingOn ? colors.primary : colors.textMuted}
-              strokeWidth={2}
-            />
-            {/* One label in both states (pink says it's on), so the row
-                never grows or shifts when it's tapped. */}
-            <Text style={[styles.chipText, model.keepingOn && styles.chipTextOn]}>
-              განაგრძე მოსმენა
-            </Text>
-          </Pressable>
         </Animated.View>
       ) : null}
     </View>
@@ -295,37 +253,4 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.textMuted,
   },
-  controls: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: spacing.sm + 2,
-    marginTop: spacing.xs,
-  },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs + 2,
-    minHeight: 36,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.full,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.strokeStrong,
-  },
-  chipSend: {
-    backgroundColor: colors.surfaceHigh,
-    borderColor: colors.strokeBrand,
-  },
-  chipOn: {
-    backgroundColor: colors.primaryGlow,
-    borderColor: colors.strokeBrand,
-  },
-  pressed: { opacity: 0.6 },
-  chipText: {
-    ...typography.bodyMedium,
-    fontSize: 13,
-    lineHeight: 18,
-    color: colors.text,
-  },
-  chipTextOn: { color: colors.primarySoft },
 });

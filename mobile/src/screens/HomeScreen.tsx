@@ -88,8 +88,6 @@ const DOCK_MAX = 116;
 /** Air above and below the docked orb inside the header. */
 const DOCK_PAD = 10;
 const FADE_H = 32;
-/** The streaming recognizer closes a turn at one minute (SttController). */
-const LISTEN_BUDGET_S = 60;
 
 function orbState(
   listening: boolean,
@@ -171,8 +169,6 @@ export function HomeScreen() {
     setError,
     streaming,
     sttState,
-    listeningSeconds,
-    keepListening,
   } = useVoiceStore();
   const trActive = useTranslatorSession((s) => s.active);
   const trPhase = useTranslatorSession((s) => s.phase);
@@ -402,6 +398,8 @@ export function HomeScreen() {
   const captionStyle = useAnimatedStyle(() => ({ opacity: 1 - open.value }));
 
   // ── Caption under the orb ───────────────────────────────────────────────
+  // Nothing while Mia listens: the orb shows it, the turn ends by itself when
+  // you stop talking, and a tap on the orb cancels it.
   let caption: CaptionModel = { text: null };
   if (trActive) {
     if (trPhase === 'paused') caption = { text: 'შეჩერებულია · შეეხე სფეროს' };
@@ -415,20 +413,6 @@ export function HomeScreen() {
     else if (trPhase === 'working') caption = { text: 'ვთარგმნი…' };
     else if (trPhase === 'speaking')
       caption = { text: 'ვკითხულობ თარგმანს · შეეხე შესაწყვეტად' };
-  } else if (streaming && isListening) {
-    caption = {
-      text: 'გისმენ',
-      wave: 'live',
-      remaining: Math.max(0, 1 - listeningSeconds / LISTEN_BUDGET_S),
-      onFinish: stopListeningAndSend,
-      onKeepListening: pipeline.keepListening,
-      keepingOn: keepListening,
-    };
-  } else if (flow === 'listening') {
-    caption = {
-      text: streaming && sttState === 'connecting' ? 'ვუკავშირდები…' : 'გისმენ',
-      wave: isListening ? 'live' : 'connecting',
-    };
   } else if (flow === 'thinking') {
     caption = { text: isThinking ? 'ვფიქრობ…' : 'მუშავდება…' };
   } else if (flow === 'speaking') {
@@ -500,8 +484,7 @@ export function HomeScreen() {
         <View style={styles.flex} onLayout={onMainLayout}>
           {mainH > 0 ? (
             <>
-              {/* Above the conversation, so the orb can dock into its header
-                  (and the streaming controls under it stay tappable). */}
+              {/* Above the conversation, so the orb can dock into its header. */}
               <View
                 style={[styles.stage, { top: orbTop }]}
                 pointerEvents="box-none"
