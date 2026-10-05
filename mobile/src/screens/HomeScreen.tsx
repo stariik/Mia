@@ -525,7 +525,7 @@ export function HomeScreen() {
                     {/* The orb owns its press physics (shell dip + ripple). */}
                     <View style={styles.flex}>
                       <MiaOrb size={orbSize} state={orbLook} tint={trActive ? 1 : 0} />
-                      <OrbMarks size={orbSize} />
+                      <OrbMarks size={orbSize} translator={trActive} />
                     </View>
                   </Pressable>
                 </Animated.View>
@@ -533,7 +533,7 @@ export function HomeScreen() {
                   style={[styles.caption, { marginTop: captionTop }, captionStyle]}
                   pointerEvents={typing ? 'none' : 'box-none'}
                 >
-                  <OrbCaption model={caption} />
+                  <OrbCaption model={caption} translator={trActive} />
                   {/* A soft lower edge where the caption sits over the chat. */}
                   <LinearGradient
                     colors={[colors.bgDeep, bgAlpha(0)]}
