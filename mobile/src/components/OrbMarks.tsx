@@ -34,8 +34,8 @@ import { duration, easeOut } from '@/theme';
 // ring, so they read as part of the orb's halo, not as a gauge stuck on it.
 //
 //   Timer — a round pearl that travels clockwise from 12 o'clock as time
-//   elapses, trailing nothing; ahead of it a faint arc shows the time still
-//   left, shrinking to nothing at 12. It breathes slowly.
+//   elapses, trailing nothing and with no glow behind it; ahead of it a faint
+//   arc shows the time still left, shrinking to nothing at 12.
 //   Alarm — a short radial notch at its ring time on a 12-hour dial (like an
 //   hour mark), steady. Within 12 hours a hairline runs from "now" (an
 //   hour-hand position) to the notch and shrinks as the alarm approaches.
@@ -43,7 +43,8 @@ import { duration, easeOut } from '@/theme';
 // Every frame reads the wall clock on the UI thread (useFrameCallback), so the
 // motion is continuous at display rate and React renders only when a timer
 // or alarm is added or removed. In the last stretch (10 s for a timer, a
-// minute for an alarm) the glow builds gently. Marks fade in and out.
+// minute for an alarm) the pearl swells a little and the alarm's glow builds
+// gently. Marks fade in and out.
 
 type Palette = typeof ORB_CONFIG.palette;
 const TAU = Math.PI * 2;
@@ -126,7 +127,6 @@ function TimerMark({
   r,
   clock,
   calm,
-  still,
   leaving,
   onGone,
   palette: P,
@@ -134,8 +134,6 @@ function TimerMark({
   const fade = useFade(leaving, timer.id, onGone);
   const startedAt = timer.startedAt ?? timer.endsAt;
   const endsAt = timer.endsAt;
-  // Desynchronise several timers' breathing.
-  const phase = (timer.endsAt % 9973) / 9973;
 
   const groupProps = useAnimatedProps(() => ({
     opacity: fade.value * (1 - 0.35 * calm.value),
@@ -144,24 +142,6 @@ function TimerMark({
     const a = timerProgress(clock.value, startedAt, endsAt) * TAU;
     return { d: arcPath(c, c, r, a, TAU - a) };
   });
-  // The glow: three soft discs with falling opacity (a gradient fill would
-  // be smoother but doesn't render on every SVG backend while animated).
-  const glow = (scale: number, alpha: number) => {
-    'worklet';
-    const now = clock.value;
-    const p = pointAt(c, c, r, timerProgress(now, startedAt, endsAt) * TAU);
-    const u = urgency(endsAt - now, TIMER_FINAL_MS);
-    const breath = still ? 0 : 0.5 + 0.5 * Math.sin((now / 4200 + phase) * TAU);
-    return {
-      cx: p.x,
-      cy: p.y,
-      r: (5 + 1.5 * breath + 4 * u) * scale,
-      opacity: alpha * (0.7 + 0.3 * breath + 0.6 * u),
-    };
-  };
-  const glowOuter = useAnimatedProps(() => glow(2.2, 0.07));
-  const glowMid = useAnimatedProps(() => glow(1.4, 0.13));
-  const glowInner = useAnimatedProps(() => glow(0.9, 0.24));
   const pearlProps = useAnimatedProps(() => {
     const now = clock.value;
     const p = pointAt(c, c, r, timerProgress(now, startedAt, endsAt) * TAU);
@@ -187,9 +167,6 @@ function TimerMark({
         strokeLinecap="round"
         fill="none"
       />
-      <AnimatedCircle animatedProps={glowOuter} fill={P.pink} />
-      <AnimatedCircle animatedProps={glowMid} fill={P.pink} />
-      <AnimatedCircle animatedProps={glowInner} fill={P.pinkSoft} />
       <AnimatedCircle animatedProps={pearlProps} fill={P.pinkSoft} />
     </AnimatedG>
   );
