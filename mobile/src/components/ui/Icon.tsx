@@ -26,7 +26,8 @@ export type IconName =
   | 'sun'
   | 'timer'
   | 'alarm'
-  | 'translate';
+  | 'translate'
+  | 'infinity';
 
 const PATHS: Record<IconName, React.ReactNode> = {
   // Six soft teeth on a ring — calmer than the usual cog.
@@ -123,6 +124,10 @@ const PATHS: Record<IconName, React.ReactNode> = {
       <Path d="M12.5 20l3.75-8.5L20 20" />
       <Path d="M13.9 17h4.7" />
     </>
+  ),
+  // Keep listening: no end to the turn until you say so.
+  infinity: (
+    <Path d="M12 12c-1.9-2.5-3.5-3.75-5.25-3.75a3.75 3.75 0 0 0 0 7.5C8.5 15.75 10.1 14.5 12 12zm0 0c1.9 2.5 3.5 3.75 5.25 3.75a3.75 3.75 0 0 0 0-7.5C15.5 8.25 13.9 9.5 12 12z" />
   ),
 };
 
