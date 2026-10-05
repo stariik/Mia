@@ -1,10 +1,9 @@
 import React, { memo, useCallback, useRef, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeIn, useReducedMotion } from 'react-native-reanimated';
+import { useReducedMotion } from 'react-native-reanimated';
 
 import { Icon } from '@/components/ui/Icon';
 import { IconButton } from '@/components/ui/IconButton';
-import { copyText } from '@/lib/clipboard';
 import { haptics } from '@/lib/haptics';
 import {
   languageNameKa,
@@ -17,18 +16,18 @@ import {
   type TranslationTurn,
 } from '@/stores/translatorSessionStore';
 import { useTranslatorStore } from '@/stores/translatorStore';
-import { HIT, colors, duration, radius, spacing, typography } from '@/theme';
+import { HIT, colors, radius, spacing, typography } from '@/theme';
 
 import { JumpToLatest } from './JumpToLatest';
 import { LanguageSheet, type LanguageSide } from './LanguageSheet';
-import { LiveLine } from './LiveLine';
+import { MiaRow, SpeakingRow, ThinkingRow, UserRow } from './MessageRows';
 import { useStickyScroll } from './useStickyScroll';
 import { useTapToCompose } from './useTapToCompose';
 
-// Translator mode takes over the chat area. The language pair sits on top
-// (from → to, with a swap), each turn shows what was said, quietly, above its
-// translation set as the main reading text. Close (×) returns to the chat;
-// so does saying "stop translating".
+// Translator mode takes over the chat area in the chat's own design: the
+// language pair on top (from → to, with a swap), then each exchange as what
+// was said (capsule, right) and its translation (Mia, left). Close (×)
+// returns to the chat; so does saying "stop translating".
 
 const name = (l: Lang) => languageNameKa(l) ?? l;
 
@@ -62,6 +61,9 @@ function LanguageChip({
   );
 }
 
+// One exchange: what was said, as a capsule on the right (like your side of
+// a chat), and its translation from Mia — so translator mode
+// reads as the same conversation, just in two languages.
 const Turn = memo(function Turn({
   turn,
   showPair,
@@ -75,26 +77,25 @@ const Turn = memo(function Turn({
   onControlPressIn: () => void;
   onCopied: () => void;
 }) {
-  const copy = useCallback(async () => {
-    if (turn.translated && (await copyText(turn.translated))) {
-      haptics.tap();
-      onCopied();
-    }
-  }, [turn.translated, onCopied]);
-
   return (
-    <Animated.View
-      entering={animate ? FadeIn.duration(duration.base) : undefined}
-      style={styles.turn}
-    >
-      {showPair ? (
-        <Text style={styles.pair}>
-          {name(turn.source)} → {name(turn.target)}
-        </Text>
-      ) : null}
-      <View style={styles.heardRow}>
-        <Text style={styles.heard}>{turn.heard}</Text>
-        {turn.translated ? (
+    <View>
+      <UserRow
+        content={turn.heard}
+        caption={showPair ? `${name(turn.source)} → ${name(turn.target)}` : undefined}
+        animate={animate}
+        onCopied={onCopied}
+      />
+      {turn.pending ? (
+        <ThinkingRow label="ვთარგმნი…" />
+      ) : turn.failed ? (
+        <Text style={styles.failed}>ვერ ითარგმნა</Text>
+      ) : (
+        <MiaRow
+          content={turn.translated}
+          live={false}
+          animate={animate}
+          onCopied={onCopied}
+        >
           <IconButton
             icon="speaker"
             size={18}
@@ -104,28 +105,9 @@ const Turn = memo(function Turn({
             onPress={() => translator.replay(turn)}
             style={styles.replay}
           />
-        ) : null}
-      </View>
-      {/* A tap falls through to the list (tap-to-type); long-press copies. */}
-      <Pressable
-        onLongPress={copy}
-        delayLongPress={380}
-        accessibilityLabel={
-          turn.pending ? 'ითარგმნება' : turn.translated || 'ვერ ითარგმნა'
-        }
-        accessibilityHint="ხანგრძლივად დააჭირე დასაკოპირებლად"
-        accessibilityActions={[{ name: 'copy', label: 'დაკოპირება' }]}
-        onAccessibilityAction={() => void copy()}
-      >
-        {turn.pending ? (
-          <Text style={styles.pending}>ვთარგმნი…</Text>
-        ) : turn.failed ? (
-          <Text style={styles.failed}>ვერ ითარგმნა</Text>
-        ) : (
-          <Text style={styles.translated}>{turn.translated}</Text>
-        )}
-      </Pressable>
-    </Animated.View>
+        </MiaRow>
+      )}
+    </View>
   );
 });
 
@@ -229,11 +211,7 @@ export function TranslatorView({
             keyExtractor={(t) => t.id}
             renderItem={renderItem}
             ListFooterComponent={
-              liveText ? (
-                <View style={styles.live}>
-                  <LiveLine text={liveText} align="left" />
-                </View>
-              ) : null
+              liveText ? <SpeakingRow text={liveText} /> : null
             }
             contentContainerStyle={[
               styles.content,
@@ -315,44 +293,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.md,
   },
-  turn: {
-    marginTop: spacing.xl,
-  },
-  pair: {
-    ...typography.label,
-    color: colors.textFaint,
-    marginBottom: spacing.sm,
-  },
-  heardRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  heard: {
-    ...typography.body,
-    color: colors.textMuted,
-    flex: 1,
-    paddingTop: spacing.xxs,
-  },
   replay: {
-    marginTop: -spacing.sm,
-    marginRight: -spacing.md,
-  },
-  translated: {
-    ...typography.reading,
-    color: colors.text,
-    marginTop: spacing.xs,
-  },
-  pending: {
-    ...typography.body,
-    color: colors.textFaint,
-    marginTop: spacing.xs,
+    alignSelf: 'flex-start',
+    marginLeft: -spacing.md,
+    marginTop: -spacing.xs,
   },
   failed: {
     ...typography.caption,
     color: colors.danger,
-    marginTop: spacing.xs,
+    marginTop: spacing.md,
+    marginLeft: 24 + spacing.md,
   },
-  live: { marginTop: spacing.xl },
   empty: {
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.xl,

@@ -1,12 +1,14 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AppState,
+  BackHandler,
   Keyboard,
   Platform,
   Pressable,
   StatusBar,
   StyleSheet,
   Text,
+  TextInput,
   View,
   useWindowDimensions,
   type LayoutChangeEvent,
@@ -20,15 +22,20 @@ import Animated, {
   useAnimatedKeyboard,
   useAnimatedStyle,
   useReducedMotion,
+  useSharedValue,
+  withSpring,
+  withTiming,
 } from 'react-native-reanimated';
 
 import { ChatView } from '@/components/chat/ChatView';
+import { ColourField, type Mood } from '@/components/chat/ColourField';
 import { Composer } from '@/components/chat/Composer';
 import { TranslatorView } from '@/components/chat/TranslatorView';
 import { ConversationDrawer } from '@/components/ConversationDrawer';
 import { MiaWordmark } from '@/components/MiaWordmark';
 import { OrbCaption, type CaptionModel } from '@/components/OrbCaption';
 import { OrbMarks } from '@/components/OrbMarks';
+import { Icon } from '@/components/ui/Icon';
 import { IconButton } from '@/components/ui/IconButton';
 import { userErrorMessage } from '@/lib/errorMessages';
 import { haptics } from '@/lib/haptics';
@@ -40,7 +47,7 @@ import { useSilenceAutoStop } from '@/hooks/useSilenceAutoStop';
 import { useVoicePipeline } from '@/hooks/useVoicePipeline';
 import { ensureWakeWordOnLaunch, useWakeTrigger } from '@/hooks/useWakeWord';
 import type { RootNav } from '@/navigation/navigationRef';
-import { MiaOrb, type MiaOrbHandle, type OrbState } from '@/orb';
+import { MiaOrb, type OrbState } from '@/orb';
 import {
   selectActiveMessages,
   useConversationStore,
@@ -52,12 +59,7 @@ import {
 } from '@/stores/translatorSessionStore';
 import { useTranslatorStore } from '@/stores/translatorStore';
 import { useVoiceStore } from '@/stores/voiceStore';
-import { bgAlpha, colors, spacing, typography } from '@/theme';
-
-// Dev-only orb lab (state preview + simulated voices). Folded out of release.
-const OrbLab: typeof import('@/dev/OrbLab').OrbLab | null = __DEV__
-  ? require('@/dev/OrbLab').OrbLab
-  : null;
+import { HIT, bgAlpha, colors, duration, easeOut, spacing, typography } from '@/theme';
 
 // ── Where the orb sits ───────────────────────────────────────────────────
 // The orb keeps the exact size and position it had above the old bottom
@@ -72,9 +74,14 @@ const OLD_STATUS_SLOT = 72;
 const CAPTION_GAP = 8;
 /** Where the conversation begins, below the orb's bottom edge. */
 const CONVERSATION_GAP = 40;
-/** While typing, the conversation never gets shorter than this; if the
- *  keyboard leaves less room it rises over the orb's lower half instead. */
-const MIN_PANEL_WHILE_TYPING = 220;
+/** While typing, the orb docks into the conversation's header at this share
+ *  of the screen's height (clamped), so it stays in view, alive, the whole
+ *  time you write to her. */
+const DOCK_SHARE = 0.15;
+const DOCK_MIN = 64;
+const DOCK_MAX = 116;
+/** Air above and below the docked orb inside the header. */
+const DOCK_PAD = 10;
 const FADE_H = 32;
 
 function orbState(
@@ -173,8 +180,9 @@ export function HomeScreen() {
   const pipeline = useVoicePipeline();
   const navigation = useNavigation<RootNav>();
   const [showDrawer, setShowDrawer] = useState(false);
-  const [composerOpen, setComposerOpen] = useState(false);
   const [draft, setDraft] = useState('');
+  const [typing, setTyping] = useState(false);
+  const inputRef = useRef<TextInput>(null);
   const [copiedAt, setCopiedAt] = useState(0);
 
   // ── Errors: one quiet notice, auto-dismissed after 6 s ─────────────────
@@ -197,12 +205,9 @@ export function HomeScreen() {
 
   // ── Orb ─────────────────────────────────────────────────────────────────
   const state = orbState(isListening, isThinking, isSpeaking);
-  const [labState, setLabState] = useState<OrbState | null>(null);
   const flow = orbFlow(state, isProcessing, isArming, streaming, sttState);
   const chatLook: OrbState = error && flow === 'idle' ? 'error' : flow;
-  const orbLook: OrbState =
-    labState ?? (trActive ? translatorOrbState(trPhase) : chatLook);
-  const orbRef = useRef<MiaOrbHandle>(null);
+  const orbLook: OrbState = trActive ? translatorOrbState(trPhase) : chatLook;
 
   // The orb is a single toggle for the whole hands-free conversation: first tap
   // opens it, the next one closes it — whether Mia is listening, thinking or
@@ -275,6 +280,9 @@ export function HomeScreen() {
   // playback if Mia is mid-sentence). In translator mode it reopens the
   // interpreter's mic. Reads live state so it never goes stale.
   const onWake = useCallback(() => {
+    // The orb is about to listen — let it be seen.
+    setTyping(false);
+    inputRef.current?.blur();
     const tr = useTranslatorSession.getState();
     if (tr.active) {
       if (tr.phase === 'paused') {
@@ -292,16 +300,38 @@ export function HomeScreen() {
   }, [pipeline]);
   useWakeTrigger(onWake);
 
-  // ── Typing ──────────────────────────────────────────────────────────────
-  const openComposer = useCallback(() => setComposerOpen(true), []);
-  const closeComposer = useCallback(() => setComposerOpen(false), []);
+  // ── Typing mode ─────────────────────────────────────────────────────────
+  // Focusing the field (or tapping the conversation) opens the conversation
+  // over the whole area below the top bar, and the orb glides up and shrinks
+  // into the centre of its header — still alive, still showing her listening,
+  // thinking and speaking while you write. "დახურვა" (or Android back) closes
+  // the keyboard and the orb springs back to its place. Tapping the docked
+  // orb switches to voice: it returns to full size and starts listening.
+  const focusComposer = useCallback(() => inputRef.current?.focus(), []);
+  const enterTyping = useCallback(() => setTyping(true), []);
+  const exitTyping = useCallback(() => {
+    inputRef.current?.blur();
+    Keyboard.dismiss();
+    setTyping(false);
+  }, []);
+  const onDockedOrbPress = () => {
+    exitTyping();
+    onOrbPress();
+  };
+  useEffect(() => {
+    if (!typing) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      exitTyping();
+      return true;
+    });
+    return () => sub.remove();
+  }, [typing, exitTyping]);
   const onCopied = useCallback(() => setCopiedAt(Date.now()), []);
   const onSend = () => {
     const text = draft.trim();
     if (!text) return;
     setDraft('');
-    Keyboard.dismiss();
-    setComposerOpen(false);
+    // The keyboard stays up for a follow-up; the reply streams in above.
     if (useTranslatorSession.getState().active) {
       void translator.translateTyped(text);
     } else {
@@ -312,19 +342,56 @@ export function HomeScreen() {
   // ── Keyboard: the conversation rides on top of it ───────────────────────
   const keyboard = useAnimatedKeyboard();
   const bottomInset = Platform.OS === 'ios' ? insets.bottom : 0;
-  const panelStyle = useAnimatedStyle(() => {
-    const kb = Math.max(0, keyboard.height.value - bottomInset);
-    return {
-      top: kb > 0 ? Math.min(panelTop, mainH - kb - MIN_PANEL_WHILE_TYPING) : panelTop,
-      bottom: kb,
-    };
-  });
-  // When the panel has to rise over the orb, a soft skirt hides the seam.
-  const skirtStyle = useAnimatedStyle(() => {
-    const kb = Math.max(0, keyboard.height.value - bottomInset);
-    const raised = kb > 0 ? panelTop - (mainH - kb - MIN_PANEL_WHILE_TYPING) : 0;
-    return { opacity: Math.min(1, Math.max(0, raised / FADE_H)) };
-  });
+  const open = useSharedValue(0);
+  useEffect(() => {
+    open.value = withTiming(typing ? 1 : 0, {
+      duration: reduceMotion ? 0 : duration.slow,
+      easing: easeOut,
+    });
+  }, [typing, open, reduceMotion]);
+  const panelStyle = useAnimatedStyle(() => ({
+    top: panelTop * (1 - open.value),
+    bottom: Math.max(0, keyboard.height.value - bottomInset),
+  }));
+
+  // The dock: a spring (a touch of settle, never a bounce) on its own value,
+  // so the orb's glide and the panel's slide feel related but not mechanical.
+  const dockSize = Math.round(
+    Math.min(DOCK_MAX, Math.max(DOCK_MIN, mainH * DOCK_SHARE)),
+  );
+  const headerH = dockSize + DOCK_PAD * 2;
+  const dock = useSharedValue(0);
+  // The size has its own spring, critically damped (damping = 2·√stiffness):
+  // it eases into the docked size and never dips past it, so the shrink has
+  // no wobble while the glide above keeps its touch of settle.
+  const shrink = useSharedValue(0);
+  useEffect(() => {
+    const to = typing ? 1 : 0;
+    if (reduceMotion) {
+      dock.value = withTiming(to, { duration: 0 });
+      shrink.value = withTiming(to, { duration: 0 });
+      return;
+    }
+    dock.value = withSpring(to, { damping: 18, stiffness: 160, mass: 1 });
+    shrink.value = withSpring(to, {
+      damping: 2 * Math.sqrt(160),
+      stiffness: 160,
+      mass: 1,
+      overshootClamping: true,
+    });
+  }, [typing, dock, shrink, reduceMotion]);
+  const orbHome = orbTop + orbSize / 2;
+  // Scale is interpolated geometrically (in log space), so the orb shrinks
+  // at a steady visual rate, like a camera zoom.
+  const dockLogScale = Math.log(dockSize / orbSize);
+  const orbStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: dock.value * (headerH / 2 - orbHome) },
+      { scale: Math.exp(shrink.value * dockLogScale) },
+    ],
+  }));
+  // The caption under the orb has nothing to say in the dock.
+  const captionStyle = useAnimatedStyle(() => ({ opacity: 1 - open.value }));
 
   // ── Caption under the orb ───────────────────────────────────────────────
   let caption: CaptionModel = { text: null };
@@ -363,6 +430,27 @@ export function HomeScreen() {
   const last = messages[messages.length - 1];
   const replyLive =
     (isThinking || isSpeaking) && last?.role === 'assistant';
+  // Her colours rise while she works on a reply she hasn't written yet (the
+  // assistant message appears on the first token, while "thinking" lasts
+  // until her voice starts), and while the recording is transcribed.
+  const awaitingReply =
+    isProcessing ||
+    (isThinking &&
+      (last?.role === 'user' || (last?.role === 'assistant' && !last.content)));
+  const mood: Mood = trActive
+    ? (translatorOrbState(trPhase) as Mood)
+    : flow === 'error'
+    ? 'idle'
+    : (flow as Mood);
+  const status = trActive
+    ? 'თარჯიმანი'
+    : flow === 'listening'
+    ? 'გისმენს…'
+    : flow === 'thinking'
+    ? 'ფიქრობს…'
+    : flow === 'speaking'
+    ? 'ლაპარაკობს…'
+    : 'მზადაა';
 
   const toolsHint = [
     timerCount ? `ტაიმერი: ${timerCount}` : null,
@@ -375,74 +463,106 @@ export function HomeScreen() {
     <View style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor={colors.bgDeep} />
       <SafeAreaView style={styles.flex} edges={['top', 'bottom']}>
+        {/* History · Mia · Settings. Equal side slots keep the wordmark on
+            the screen's true centre line, above the orb. */}
         <View style={styles.topBar}>
+          <View style={styles.topSide}>
+            <IconButton
+              icon="history"
+              label="საუბრების ისტორია"
+              onPress={() => setShowDrawer(true)}
+            />
+          </View>
           <View style={styles.brand} accessibilityRole="header" accessibilityLabel="Mia">
             <MiaWordmark size={20} />
           </View>
-          <IconButton
-            icon="history"
-            label="საუბრების ისტორია"
-            onPress={() => setShowDrawer(true)}
-          />
-          <IconButton
-            icon="settings"
-            label="პარამეტრები"
-            onPress={() => navigation.navigate('Settings')}
-          />
+          <View style={[styles.topSide, styles.topSideEnd]}>
+            <IconButton
+              icon="settings"
+              label="პარამეტრები"
+              onPress={() => navigation.navigate('Settings')}
+            />
+          </View>
         </View>
 
         <View style={styles.flex} onLayout={onMainLayout}>
           {mainH > 0 ? (
             <>
+              {/* Above the conversation, so the orb can dock into its header
+                  (and the streaming controls under it stay tappable). */}
               <View
-                style={[
-                  styles.stage,
-                  { top: orbTop },
-                  // The streaming controls reach below the caption line; keep
-                  // them above the conversation while they're shown.
-                  caption.onFinish ? styles.stageOver : null,
-                ]}
+                style={[styles.stage, { top: orbTop }]}
                 pointerEvents="box-none"
               >
-                <Pressable
-                  onPress={onOrbPress}
-                  accessibilityRole="button"
-                  accessibilityLabel={
-                    trActive ? 'თარჯიმნის მიკროფონი' : 'ხმოვანი საუბარი'
-                  }
-                  accessibilityHint={toolsHint || undefined}
-                  style={{
-                    width: orbSize,
-                    height: orbSize,
-                    borderRadius: orbSize / 2,
-                  }}
+                <Animated.View style={orbStyle}>
+                  <Pressable
+                    onPress={typing ? onDockedOrbPress : onOrbPress}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      trActive ? 'თარჯიმნის მიკროფონი' : 'ხმოვანი საუბარი'
+                    }
+                    accessibilityHint={
+                      typing ? 'ხმით საუბარზე გადასვლა' : toolsHint || undefined
+                    }
+                    style={{
+                      width: orbSize,
+                      height: orbSize,
+                      borderRadius: orbSize / 2,
+                    }}
+                  >
+                    {/* The orb owns its press physics (shell dip + ripple). */}
+                    <View style={styles.flex}>
+                      <MiaOrb size={orbSize} state={orbLook} tint={trActive ? 1 : 0} />
+                      <OrbMarks size={orbSize} />
+                    </View>
+                  </Pressable>
+                </Animated.View>
+                <Animated.View
+                  style={[styles.caption, captionStyle]}
+                  pointerEvents={typing ? 'none' : 'auto'}
                 >
-                  {/* The orb owns its press physics (shell dip + ripple). */}
-                  <View style={styles.flex}>
-                    <MiaOrb
-                      ref={orbRef}
-                      size={orbSize}
-                      state={orbLook}
-                      tint={trActive ? 1 : 0}
-                    />
-                    <OrbMarks size={orbSize} />
-                  </View>
-                </Pressable>
-                <View style={styles.caption}>
                   <OrbCaption model={caption} />
-                </View>
+                </Animated.View>
               </View>
 
               <Animated.View style={[styles.panel, panelStyle]}>
-                <Animated.View
-                  style={[styles.skirt, skirtStyle]}
-                  pointerEvents="none"
-                >
-                  <LinearGradient
-                    colors={[bgAlpha(0), colors.bgDeep]}
-                    style={StyleSheet.absoluteFill}
-                  />
-                </Animated.View>
+                <ColourField mood={mood} height={mainH - panelTop} />
+                {typing ? (
+                  <Animated.View
+                    entering={reduceMotion ? undefined : FadeIn.duration(duration.base)}
+                    exiting={reduceMotion ? undefined : FadeOut.duration(duration.fast)}
+                    style={[styles.chatHeader, { height: headerH }]}
+                  >
+                    <Pressable
+                      onPress={exitTyping}
+                      accessibilityRole="button"
+                      accessibilityLabel="დახურვა"
+                      accessibilityHint="კლავიატურა დაიხურება და სფერო დაბრუნდება"
+                      hitSlop={4}
+                      style={({ pressed }) => [styles.closeBtn, pressed && styles.pressed]}
+                    >
+                      <Icon name="chevronDown" size={20} color={colors.text} strokeWidth={1.8} />
+                      <Text style={styles.closeText}>დახურვა</Text>
+                    </Pressable>
+                    {/* Who you're talking to, and what she's doing. */}
+                    <View
+                      style={styles.who}
+                      accessible
+                      accessibilityLabel={`Mia, ${status}`}
+                      accessibilityLiveRegion="polite"
+                    >
+                      <View style={styles.whoText}>
+                        <Text style={styles.whoName}>Mia</Text>
+                        <View style={styles.whoStatusRow}>
+                          {flow !== 'idle' && flow !== 'error' ? (
+                            <View style={styles.whoDot} />
+                          ) : null}
+                          <Text style={styles.whoStatus}>{status}</Text>
+                        </View>
+                      </View>
+                    </View>
+                  </Animated.View>
+                ) : null}
                 <View style={styles.flex}>
                   {trActive ? (
                     <Animated.View
@@ -452,7 +572,7 @@ export function HomeScreen() {
                       style={styles.flex}
                     >
                       <TranslatorView
-                        onCompose={openComposer}
+                        onCompose={focusComposer}
                         onCopied={onCopied}
                         bottomPadding={0}
                       />
@@ -467,8 +587,10 @@ export function HomeScreen() {
                       <ChatView
                         messages={messages}
                         liveTranscript={liveTranscript}
+                        listening={flow === 'listening'}
+                        awaitingReply={awaitingReply}
                         replyLive={replyLive}
-                        onCompose={openComposer}
+                        onCompose={focusComposer}
                         onCopied={onCopied}
                         onSuggestion={(t) => pipeline.sendText(t)}
                         bottomPadding={0}
@@ -510,30 +632,18 @@ export function HomeScreen() {
                   ) : null}
                 </View>
 
-                {/* Sighted users tap the conversation to type; screen-reader
-                    users get this (visually empty) control instead. */}
-                {!composerOpen ? (
-                  <Pressable
-                    onPress={openComposer}
-                    accessibilityRole="button"
-                    accessibilityLabel="შეტყობინების დაწერა"
-                    style={styles.srOnly}
-                  />
-                ) : null}
-
-                {composerOpen ? (
-                  <Composer
-                    value={draft}
-                    onChangeText={setDraft}
-                    onSend={onSend}
-                    onDismiss={closeComposer}
-                    placeholder={
-                      trActive
-                        ? `დაწერე ${languageNameKaAdverb(trFrom)}…`
-                        : 'მიწერე Mia-ს…'
-                    }
-                  />
-                ) : null}
+                <Composer
+                  value={draft}
+                  onChangeText={setDraft}
+                  onSend={onSend}
+                  onFocus={enterTyping}
+                  inputRef={inputRef}
+                  placeholder={
+                    trActive
+                      ? `დაწერე ${languageNameKaAdverb(trFrom)}…`
+                      : 'მიწერე Mia-ს…'
+                  }
+                />
               </Animated.View>
             </>
           ) : null}
@@ -543,10 +653,6 @@ export function HomeScreen() {
           visible={showDrawer}
           onClose={() => setShowDrawer(false)}
         />
-
-        {OrbLab ? (
-          <OrbLab orbRef={orbRef} labState={labState} onLabState={setLabState} />
-        ) : null}
       </SafeAreaView>
     </View>
   );
@@ -563,16 +669,20 @@ const styles = StyleSheet.create({
     height: TOP_BAR_H,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingLeft: spacing.xl,
     // Icon glyphs (22 in a 44 target) line up with the 24pt gutter.
-    paddingRight: spacing.xl - 11,
+    paddingHorizontal: spacing.xl - 11,
     // Wins hit-testing over the orb, which can reach up under the bar on
     // tall phones.
     zIndex: 10,
   },
-  brand: {
+  topSide: {
     flex: 1,
-    alignItems: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  topSideEnd: { justifyContent: 'flex-end' },
+  brand: {
+    alignItems: 'center',
   },
 
   stage: {
@@ -580,8 +690,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     alignItems: 'center',
+    zIndex: 3,
   },
-  stageOver: { zIndex: 3 },
   caption: {
     marginTop: CAPTION_GAP,
     alignSelf: 'stretch',
@@ -595,28 +705,62 @@ const styles = StyleSheet.create({
     zIndex: 2,
     backgroundColor: colors.bgDeep,
   },
-  skirt: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: -FADE_H,
-    height: FADE_H,
+  chatHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    // The chevron's glyph lines up with the 24pt gutter.
+    paddingLeft: spacing.xl - 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.stroke,
   },
+  who: {
+    marginLeft: 'auto',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingRight: spacing.xl - 12,
+  },
+  whoText: { alignItems: 'flex-end' },
+  whoStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  whoDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: colors.primary,
+  },
+  whoName: {
+    ...typography.bodyMedium,
+    color: colors.text,
+    lineHeight: 18,
+  },
+  whoStatus: {
+    ...typography.caption,
+    fontSize: 12,
+    lineHeight: 16,
+    color: colors.textMuted,
+  },
+  closeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    minHeight: HIT,
+    paddingHorizontal: spacing.sm,
+  },
+  closeText: {
+    ...typography.bodyMedium,
+    color: colors.text,
+  },
+  pressed: { opacity: 0.6 },
   fade: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     height: FADE_H,
-  },
-
-  srOnly: {
-    position: 'absolute',
-    left: 0,
-    bottom: 0,
-    width: 1,
-    height: 1,
-    opacity: 0,
   },
 
   noticeWrap: {
