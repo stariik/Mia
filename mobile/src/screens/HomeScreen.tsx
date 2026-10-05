@@ -172,7 +172,6 @@ export function HomeScreen() {
     streaming,
     sttState,
     listeningSeconds,
-    keepListening,
   } = useVoiceStore();
   const trActive = useTranslatorSession((s) => s.active);
   const trPhase = useTranslatorSession((s) => s.phase);
@@ -402,6 +401,8 @@ export function HomeScreen() {
   const captionStyle = useAnimatedStyle(() => ({ opacity: 1 - open.value }));
 
   // ── Caption under the orb ───────────────────────────────────────────────
+  // While Mia listens: just the voice ribbon, no buttons — the turn ends by
+  // itself when you stop talking, and a tap on the orb cancels it.
   let caption: CaptionModel = { text: null };
   if (trActive) {
     if (trPhase === 'paused') caption = { text: 'შეჩერებულია · შეეხე სფეროს' };
@@ -420,9 +421,6 @@ export function HomeScreen() {
       text: 'გისმენ',
       wave: 'live',
       remaining: Math.max(0, 1 - listeningSeconds / LISTEN_BUDGET_S),
-      onFinish: stopListeningAndSend,
-      onKeepListening: pipeline.keepListening,
-      keepingOn: keepListening,
     };
   } else if (flow === 'listening') {
     caption = {
@@ -500,8 +498,7 @@ export function HomeScreen() {
         <View style={styles.flex} onLayout={onMainLayout}>
           {mainH > 0 ? (
             <>
-              {/* Above the conversation, so the orb can dock into its header
-                  (and the streaming controls under it stay tappable). */}
+              {/* Above the conversation, so the orb can dock into its header. */}
               <View
                 style={[styles.stage, { top: orbTop }]}
                 pointerEvents="box-none"
