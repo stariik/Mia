@@ -45,7 +45,7 @@ import { duration, easeOut } from '@/theme';
 // or alarm is added or removed. In the last stretch (10 s for a timer, a
 // minute for an alarm) the glow builds gently. Marks fade in and out.
 
-const P = ORB_CONFIG.palette;
+type Palette = typeof ORB_CONFIG.palette;
 const TAU = Math.PI * 2;
 
 // Fractions of the orb box (the glass edge sits at 0.43).
@@ -116,6 +116,8 @@ type MarkProps = {
   still: boolean;
   leaving: boolean;
   onGone: (id: string) => void;
+  /** The orb's current palette (translator mode has its own). */
+  palette: Palette;
 };
 
 function TimerMark({
@@ -127,6 +129,7 @@ function TimerMark({
   still,
   leaving,
   onGone,
+  palette: P,
 }: MarkProps & { timer: ActiveTimer }) {
   const fade = useFade(leaving, timer.id, onGone);
   const startedAt = timer.startedAt ?? timer.endsAt;
@@ -202,6 +205,7 @@ function AlarmMark({
   leaving,
   onGone,
   tz,
+  palette: P,
 }: MarkProps & { alarm: ActiveAlarm; tz: number }) {
   const fade = useFade(leaving, alarm.id, onGone);
   const ringsAt = alarm.ringsAt;
@@ -258,7 +262,7 @@ function AlarmMark({
   );
 }
 
-export function OrbMarks({ size }: { size: number }) {
+export function OrbMarks({ size, translator = false }: { size: number; translator?: boolean }) {
   const timers = useToolsStore((s) => s.timers);
   const alarms = useToolsStore((s) => s.alarms);
   const isSpeaking = useVoiceStore((s) => s.isSpeaking);
@@ -286,7 +290,8 @@ export function OrbMarks({ size }: { size: number }) {
 
   const box = size + PAD * 2;
   const c = box / 2;
-  const common = { c, clock, calm, still: reduceMotion };
+  const palette = translator ? ORB_CONFIG.translatorPalette : ORB_CONFIG.palette;
+  const common = { c, clock, calm, still: reduceMotion, palette };
 
   return (
     <View

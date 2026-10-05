@@ -3,8 +3,9 @@
 // Colours come straight from the theme and are LOCKED: the shader only mixes
 // these, scales their brightness and blends them. It never rotates hue.
 // The one sanctioned exception is translator mode: `translatorPalette` is a
-// slightly cooler sibling the page cross-fades the palette uniforms to (see
-// `tint`). At tint 0 the page uploads exactly `palette`, untouched.
+// complete second palette (same seven roles) the page cross-fades the palette
+// uniforms to (see `tint`). At tint 0 the page uploads exactly `palette`,
+// untouched.
 //
 // Springs are specified like a designer would: `freq` (Hz — how fast it moves)
 // and `damping` (1 = critically damped / no overshoot, <1 = settles with a
@@ -68,22 +69,28 @@ export const ORB_CONFIG = {
   },
 
   /**
-   * Translator mode: the same seven roles, each nudged a few degrees cooler —
-   * violet toward indigo, pink toward orchid, coral toward rose — so the orb
-   * reads as "listening differently" without becoming a different object.
-   * Glass white and the navy depth stay put.
+   * Translator mode — "night water": the same glass and motion, lit from a
+   * second palette (colorhunt.co/palette/321e4843637e65dcd5d9fff4) whose four
+   * swatches run dark → light the way the roles do: plum #321e48 is the glass
+   * depth, turquoise #65dcd5 the heart, mint #d9fff4 the sparkles, pulses and
+   * warm rim. The roles between are those swatches made to read as light:
+   * the ink is #321e48 lifted to a glowing plum, and the silk sits between
+   * slate #43637e and the turquoise — plum straight into turquoise would
+   * pass through grey where they mix. Specular white leans mint; the cool
+   * rim is a lavender cut from the plum.
    */
   translatorPalette: {
-    violet: '#5b45f2',
-    pink: '#e252b4',
-    coral: '#ff5a86',
-    pinkSoft: '#f6dcf6',
-    violetSoft: '#d0cdff',
-    white: colors.text,
-    navy: colors.surfaceSolid,
+    violet: '#5e3a9c',
+    pink: '#3fb0b8',
+    coral: '#65dcd5',
+    pinkSoft: '#d9fff4',
+    violetSoft: '#cdbde6',
+    white: '#effffa',
+    navy: '#321e48',
   },
 
-  /** Palette cross-fade into / out of translator mode (ms, smoothstep). */
+  /** Palette cross-fade into / out of translator mode (ms, smoothstep). The
+   *  hue travels the cool way round (see buildOrbPage), so it never greys. */
   tintMs: 500,
 
   /** Sphere radius as a fraction of half the canvas (room for the edge AA). */

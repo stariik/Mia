@@ -14,6 +14,7 @@ import Animated, {
 
 import { Icon } from '@/components/ui/Icon';
 import { audioLevel } from '@/lib/audioLevel';
+import { ORB_CONFIG } from '@/orb';
 import { colors, duration, radius, spacing, typography } from '@/theme';
 
 // What Mia is doing, under the orb. While she listens there are no words: a
@@ -37,7 +38,14 @@ export type CaptionModel = {
   keepingOn?: boolean;
 };
 
-export function OrbCaption({ model }: { model: CaptionModel }) {
+export function OrbCaption({
+  model,
+  translator = false,
+}: {
+  model: CaptionModel;
+  /** The orb is in translator colours: the ribbon follows it. */
+  translator?: boolean;
+}) {
   const reduceMotion = useReducedMotion();
   const fade = reduceMotion ? undefined : FadeIn.duration(duration.base);
   const out = reduceMotion ? undefined : FadeOut.duration(duration.fast);
@@ -55,7 +63,11 @@ export function OrbCaption({ model }: { model: CaptionModel }) {
           accessible
           accessibilityLabel={[model.text, model.hint].filter(Boolean).join(' · ') || undefined}
         >
-          <VoiceRibbon mode={model.wave} remaining={model.remaining} />
+          <VoiceRibbon
+            mode={model.wave}
+            remaining={model.remaining}
+            barColors={translator ? BAR_COLORS_TRANSLATOR : BAR_COLORS}
+          />
           {model.hint ? (
             <Text style={styles.hint} numberOfLines={1}>
               {model.hint}
@@ -125,25 +137,31 @@ const ENVELOPE = Array.from({ length: BARS }, (_, i) => {
 });
 
 // Each bar takes its own colour from the brand gradient (violet → pink at
-// 55% → coral), the same stops as the wordmark and the orb.
+// 55% → coral), the same stops as the wordmark and the orb. In translator
+// mode the orb's translator palette fills the same three stops.
 function mix(a: string, b: string, t: number): string {
   const pa = [1, 3, 5].map((k) => parseInt(a.slice(k, k + 2), 16));
   const pb = [1, 3, 5].map((k) => parseInt(b.slice(k, k + 2), 16));
   return `rgb(${pa.map((v, k) => Math.round(v + (pb[k] - v) * t)).join(',')})`;
 }
-const BAR_COLORS = Array.from({ length: BARS }, (_, i) => {
-  const t = i / (BARS - 1);
-  return t < 0.55
-    ? mix(colors.gradientStart, colors.gradientMid, t / 0.55)
-    : mix(colors.gradientMid, colors.gradientEnd, (t - 0.55) / 0.45);
-});
+function ribbonColors(start: string, mid: string, end: string): string[] {
+  return Array.from({ length: BARS }, (_, i) => {
+    const t = i / (BARS - 1);
+    return t < 0.55 ? mix(start, mid, t / 0.55) : mix(mid, end, (t - 0.55) / 0.45);
+  });
+}
+const BAR_COLORS = ribbonColors(colors.gradientStart, colors.gradientMid, colors.gradientEnd);
+const TP = ORB_CONFIG.translatorPalette;
+const BAR_COLORS_TRANSLATOR = ribbonColors(TP.violet, TP.pink, TP.coral);
 
 function VoiceRibbon({
   mode,
   remaining,
+  barColors,
 }: {
   mode: 'live' | 'connecting';
   remaining?: number;
+  barColors: readonly string[];
 }) {
   const still = useReducedMotion();
   const clock = useSharedValue(0);
@@ -180,7 +198,7 @@ function VoiceRibbon({
           key={i}
           index={i}
           env={env}
-          color={BAR_COLORS[i]}
+          color={barColors[i]}
           clock={clock}
           level={level}
           live={live}
