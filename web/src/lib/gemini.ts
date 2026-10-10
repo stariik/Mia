@@ -14,10 +14,11 @@ export function gemini(): GoogleGenAI {
   }));
 }
 
-// Assistant and translator. 3.6 over 3.8 for cost: same tool calls and Georgian
-// quality in the tools:probe comparison, and faster. One regression seen: asked
-// "ხვალ?" after current weather, 3.6 invents a forecast (get_weather has none).
-export const CHAT_MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash";
+// Assistant and translator. Flash over 3.8 for cost: same tool calls and
+// Georgian quality in the tools:probe comparison, and faster. Known gap (3.6
+// and 3.7 alike): asked "ხვალ?" after current weather, it presents today's
+// reading as tomorrow's forecast (get_weather has no forecast).
+export const CHAT_MODEL = process.env.GEMINI_MODEL || "gemini-3.7-flash";
 // Transcript proofreading runs on every utterance, so it gets the fast model.
 export const FAST_MODEL = process.env.GEMINI_FAST_MODEL || "gemini-3.5-flash-lite";
 

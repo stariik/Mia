@@ -26,7 +26,12 @@ export type BuildOrbPageOpts = {
   forceFallback?: boolean;
 };
 
-function hexToRgb(hex: string): [number, number, number] {
+type Rgb = [number, number, number];
+
+/** Must match the shader's uPal[] order. */
+export const PAL_KEYS = ['violet', 'pink', 'coral', 'pinkSoft', 'violetSoft', 'white', 'navy'] as const;
+
+function hexToRgb(hex: string): Rgb {
   const h = hex.replace('#', '');
   return [
     parseInt(h.slice(0, 2), 16) / 255,
@@ -35,15 +40,50 @@ function hexToRgb(hex: string): [number, number, number] {
   ];
 }
 
+/** HSV with hue in turns (0..1). */
+function rgbToHsv([r, g, b]: Rgb): Rgb {
+  const max = Math.max(r, g, b);
+  const d = max - Math.min(r, g, b);
+  let h = 0;
+  if (d > 0) {
+    if (max === r) h = ((g - b) / d + 6) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+  }
+  return [h / 6, max > 0 ? d / max : 0, max];
+}
+
+/** Chartreuse (90°): the side of the wheel a palette cross-fade never crosses. */
+export const AVOID_HUE = 0.25;
+
+/**
+ * The translator cross-fade, per role: [h0, s0, v0, h1, s1, v1], with h1
+ * unwrapped so a straight lerp goes round the hue wheel the way that misses
+ * AVOID_HUE. A plain RGB blend from the pink/coral theme to the teal palette
+ * passes through grey and beige; this way the orb sweeps through violet and
+ * blue instead.
+ */
+export function tintPath(from: readonly string[], to: readonly string[]): number[] {
+  return from.flatMap((hex, i) => {
+    const a = rgbToHsv(hexToRgb(hex));
+    const b = rgbToHsv(hexToRgb(to[i]));
+    // A grey has no hue of its own: it takes the other end's.
+    if (a[1] < 0.02) a[0] = b[0];
+    if (b[1] < 0.02) b[0] = a[0];
+    const up = (b[0] - a[0] + 1) % 1;
+    const upCrosses = (AVOID_HUE - a[0] + 1) % 1 < up;
+    const h1 = upCrosses ? a[0] - (1 - up) : a[0] + up;
+    return [a[0], a[1], a[2], h1, b[1], b[2]];
+  });
+}
+
 /** Page-side JSON. `<` is escaped so no string can close the <script>. */
 function pageConfig(opts: BuildOrbPageOpts): string {
   const cfg = mergeConfig(opts.config);
   const pal = cfg.palette;
-  // Order must match the shader's uPal[]: violet, pink, coral, pinkSoft,
-  // violetSoft, white, navy.
-  const order = [pal.violet, pal.pink, pal.coral, pal.pinkSoft, pal.violetSoft, pal.white, pal.navy];
+  const order = PAL_KEYS.map((k) => pal[k]);
   const tp = cfg.translatorPalette;
-  const tintOrder = [tp.violet, tp.pink, tp.coral, tp.pinkSoft, tp.violetSoft, tp.white, tp.navy];
+  const tintOrder = PAL_KEYS.map((k) => tp[k]);
   const palRgb = Object.fromEntries(
     Object.entries(pal).map(([k, v]) => [k, hexToRgb(v)]),
   );
@@ -62,11 +102,10 @@ function pageConfig(opts: BuildOrbPageOpts): string {
     reducedMotion: cfg.reducedMotion,
     quality: cfg.quality,
     pal: order.flatMap(hexToRgb),
+    palKeys: PAL_KEYS,
     palRgb,
     palTint: tintOrder.flatMap(hexToRgb),
-    palTintRgb: Object.fromEntries(
-      Object.entries(tp).map(([k, v]) => [k, hexToRgb(v)]),
-    ),
+    tintHsv: tintPath(order, tintOrder),
     tintMs: cfg.tintMs,
     vert: ORB_VERT,
     fragInterior: ORB_INTERIOR_FRAG,

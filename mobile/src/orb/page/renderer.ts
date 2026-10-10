@@ -591,22 +591,39 @@ export const ORB_RENDERER_JS = `
     // ── Translator tint ─────────────────────────────────────────────────────
     // The palette uniforms cross-fade between C.pal and C.palTint. tintX walks
     // linearly toward I.tint over C.tintMs and the blend is smoothstepped.
+    // Between the ends each role follows its C.tintHsv path (hue the cool way
+    // round), so the orb sweeps through violet and blue instead of greying.
+    // The ends are exact: tint 0 uploads C.pal itself, tint 1 C.palTint.
     // Nothing is re-uploaded unless tintX actually moves, so outside
     // translator mode the shaders see exactly the original palette buffer.
     var palBuf = new Float32Array(C.pal);
     var tintX = 0;
+    function hsvInto(o, h, s, v) {
+      h = (h - Math.floor(h)) * 6;
+      var i = Math.floor(h), f = h - i;
+      i %= 6; // h rounding up to exactly 6.0 is still red
+      var p = v * (1 - s), q = v * (1 - s * f), t = v * (1 - s * (1 - f));
+      var r = i === 0 || i === 5 ? v : i === 1 ? q : i === 4 ? t : p;
+      var g = i === 1 || i === 2 ? v : i === 0 ? t : i === 3 ? q : p;
+      var b = i === 3 || i === 4 ? v : i === 2 ? t : i === 5 ? q : p;
+      palBuf[o] = r; palBuf[o + 1] = g; palBuf[o + 2] = b;
+    }
     function stepTint(dt) {
       if (tintX === I.tint) return;
       var stepBy = C.tintMs > 0 ? dt / (C.tintMs / 1000) : 1;
       tintX = I.tint > tintX ? Math.min(I.tint, tintX + stepBy) : Math.max(I.tint, tintX - stepBy);
       var e = tintX * tintX * (3 - 2 * tintX);
-      for (var i = 0; i < palBuf.length; i++) {
-        palBuf[i] = tintX === 0 ? C.pal[i] : C.pal[i] + (C.palTint[i] - C.pal[i]) * e;
+      var H = C.tintHsv, keys = C.palKeys;
+      if (tintX === 0 || tintX === 1) palBuf.set(tintX === 0 ? C.pal : C.palTint);
+      else {
+        for (var i = 0; i < keys.length; i++) {
+          var o = i * 6;
+          hsvInto(i * 3, H[o] + (H[o + 3] - H[o]) * e, H[o + 1] + (H[o + 4] - H[o + 1]) * e, H[o + 2] + (H[o + 5] - H[o + 2]) * e);
+        }
       }
-      var keys = Object.keys(P0);
       for (var k = 0; k < keys.length; k++) {
-        var a = P0[keys[k]], b = C.palTintRgb[keys[k]], o = P[keys[k]];
-        for (var j = 0; j < 3; j++) o[j] = a[j] + (b[j] - a[j]) * e;
+        var c = P[keys[k]];
+        c[0] = palBuf[k * 3]; c[1] = palBuf[k * 3 + 1]; c[2] = palBuf[k * 3 + 2];
       }
       if (gl && progI && progC) {
         gl.useProgram(progI);

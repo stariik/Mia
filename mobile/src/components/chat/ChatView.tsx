@@ -70,7 +70,9 @@ export function ChatView({
   );
 
   const footer = useMemo(() => {
-    if (listening) return <SpeakingRow text={liveTranscript} />;
+    // The orb's ribbon shows she's listening; your words get a bubble once
+    // there are words.
+    if (listening && liveTranscript) return <SpeakingRow text={liveTranscript} />;
     if (awaitingReply) return <ThinkingRow />;
     return null;
   }, [listening, liveTranscript, awaitingReply]);

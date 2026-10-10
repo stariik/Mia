@@ -20,7 +20,7 @@ export const fonts = {
   displayBold: 'FiraGO-SemiBold',
   headlineMedium: 'FiraGO-Medium',
   /** The "Mia" brand wordmark only. */
-  brand: 'MarckScript-Regular',
+  brand: 'Fredoka-SemiBold',
 };
 
 // Georgian has tall ascenders AND deep descenders on most letters (ბ, ფ, ყ,

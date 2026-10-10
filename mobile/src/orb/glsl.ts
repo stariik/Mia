@@ -18,6 +18,8 @@
 // GLSL ES 1.00 (WebGL1-safe): constant loop bounds, no derivatives, highp guarded.
 
 export const MAX_SLICES = 7;
+/** Closest-point steps per strand when drawing the thought (see drawThought). */
+export const KNOT_STEPS = 2;
 
 export const ORB_VERT = `
 attribute vec2 aPos;
@@ -36,6 +38,10 @@ precision mediump float;
 #endif
 
 #define MAX_SLICES ${MAX_SLICES}
+#define KNOT_STEPS ${KNOT_STEPS}
+#define FOLD_SEED 0.3
+#define FOLD_C 0.95533649
+#define FOLD_S 0.29552021
 
 uniform vec2 uRes;
 uniform vec4 uShape;   // x sphere radius (half-canvas units), y edge AA (sphere units), zw tilt
@@ -288,17 +294,74 @@ float sparkleLayer(vec2 uv, float density, float seed) {
   return (smoothstep(0.075, 0.0, d) + smoothstep(0.22, 0.0, d) * 0.18) * tw;
 }
 
+// Slides a point along the knot to the strand point nearest kq: KNOT_STEPS
+// damped Halley steps from azimuth (cx, sx) at knot parameter t. Returns the
+// point on screen (xy), its depth (z, + toward the viewer) and its knot
+// parameter (w).
+vec4 strandPoint(vec2 kq, vec2 kt, float cx, float sx, float t,
+                 float R, float tr, float k3, float Q, float roll, float cI, float sI) {
+  // Kept small before cos/sin: phone GPUs lose precision on large angles.
+  float a = mod(Q * t + roll, TAU);                // angle around the tube
+  float cA = cos(a), sA = sin(a);
+  for (int it = 0; it < KNOT_STEPS; it++) {
+    // Position and its first two derivatives along the strand (d/d azimuth).
+    float rho = R + tr * cA;
+    float r1 = -tr * k3 * sA;
+    float r2 = -tr * k3 * k3 * cA;
+    float py = rho * sx;
+    float py1 = r1 * sx + rho * cx;
+    float py2 = r2 * sx + 2.0 * r1 * cx - rho * sx;
+    float pz = tr * sA;
+    float pz1 = tr * k3 * cA;
+    float pz2 = -tr * k3 * k3 * sA;
+    float zv = -py * sI + pz * cI;
+    float zv1 = -py1 * sI + pz1 * cI;
+    float zv2 = -py2 * sI + pz2 * cI;
+    vec2 S = vec2(rho * cx, py * cI + pz * sI) + kt * zv;
+    vec2 S1 = vec2(r1 * cx - rho * sx, py1 * cI + pz1 * sI) + kt * zv1;
+    vec2 S2 = vec2(r2 * cx - 2.0 * r1 * sx - rho * cx, py2 * cI + pz2 * sI) + kt * zv2;
+    vec2 e = kq - S;
+    // Halley's denominator is |S1|² − e·S2. Where the strand turns tight
+    // (the orbit's ends) e·S2 can win and flip the step uphill, so the
+    // curvature term only ever damps: every step heads for the closest point.
+    float den = dot(S1, S1) + abs(dot(e, S2)) + 1e-5;
+    float dl = clamp(dot(e, S1) / den, -0.45, 0.45);
+    // Slide along the curve: rotate (cos, sin) by dl with a short series
+    // (|dl| ≤ 0.45) and the tube angle by k3·dl.
+    float l2 = dl * dl;
+    float cd = 1.0 - l2 * (0.5 - l2 / 24.0);
+    float sd = dl * (1.0 - l2 * (1.0 / 6.0 - l2 / 120.0));
+    float nx = cx * cd - sx * sd;
+    sx = sx * cd + cx * sd;
+    cx = nx;
+    float cda = cos(k3 * dl), sda = sin(k3 * dl);
+    float nA = cA * cda - sA * sda;
+    sA = sA * cda + cA * sda;
+    cA = nA;
+    t += dl / 3.0;
+  }
+  // Exactly on the curve at the final azimuth.
+  float rho = R + tr * cA;
+  float py = rho * sx;
+  float pz = tr * sA;
+  float zv = -py * sI + pz * cI;                   // depth (+ toward viewer)
+  return vec4(vec2(rho * cx, py * cI + pz * sI) + kt * zv, zv, t);
+}
+
 // The thought: one continuous (3, q) torus knot — a single strand winding three
 // times around its orbit and q times around its own tube. At any azimuth the
 // knot has exactly three points (one per winding), so it is drawn
 // analytically: three strand evaluations per pixel, no curve sampling.
 //
 // Each strand point starts at this pixel's azimuth on the orbit plane, then
-// one Halley step (Newton with curvature) slides it along the strand to the
-// closest point — a strand rising out of the plane would otherwise be
-// mislocated and break into dashes. The point is then re-evaluated exactly on
-// the curve (by angle addition, so it costs one more sin/cos, not two), which
-// keeps every drawn pixel genuinely on the knot.
+// KNOT_STEPS Halley steps (Newton with curvature) slide it along the strand to
+// the closest point — a strand rising out of the plane would otherwise be
+// mislocated and break into dashes. One step is not enough at the orbit's two
+// ends, where the inclined ellipse turns tightest: there the step hits its
+// limit and the strands broke into hooks and gaps. Each step moves the point
+// exactly along the curve (by angle addition, so it costs one sin/cos, not
+// two), which keeps every drawn pixel genuinely on the knot (strandPoint).
+// Near those ends a second seed also searches the arm across the fold.
 vec3 drawThought(vec2 q, float nz, float T, vec2 bend, vec2 tilt) {
   float R = uKnot.x;
   float tr = uKnot.y;
@@ -327,90 +390,85 @@ vec3 drawThought(vec2 q, float nz, float T, vec2 bend, vec2 tilt) {
 
   float az0 = atan(pu.y, pu.x);
   float ca = pu.x / max(rhoPx, 1e-4), sa = pu.y / max(rhoPx, 1e-4);
+  // Near the orbit's two ends (azimuth 0 or ±π, on this pixel's branch) each
+  // winding folds back on itself like a "<": a pixel there is near both arms,
+  // and a seed at its own azimuth can land on either. So in the fold the
+  // strand is solved from one seed on each arm (FOLD_SEED either side of the
+  // end) and the two are blended by distance; outside it, from the pixel's
+  // azimuth; between, both, cross-faded. Any hard pick drew a seam.
+  float inFold = 1.0 - smoothstep(0.36, 0.45, abs(sa));
+  float tipAz = az0 > 1.5707963 ? 3.14159265 : (az0 < -1.5707963 ? -3.14159265 : 0.0);
+  float ct = tipAz == 0.0 ? 1.0 : -1.0;              // cos at the end; sin is 0
   float coreMask = smoothstep(uLook2.z * 1.7, uLook2.z * 0.5, length(lq));
   float cov[3];
   float dep[3];
   vec3 lit[3];
   for (int j = 0; j < 3; j++) {
-    float t = (az0 - spin + TAU * float(j)) / 3.0;   // knot parameter (rad)
-    float a = Q * t + roll;                          // angle around the tube
-    float cA = cos(a), sA = sin(a);
-    // Position and its first two derivatives along the strand (d/d azimuth).
-    float rho = R + tr * cA;
-    float r1 = -tr * k3 * sA;
-    float r2 = -tr * k3 * k3 * cA;
-    float py = rho * sa;
-    float py1 = r1 * sa + rho * ca;
-    float py2 = r2 * sa + 2.0 * r1 * ca - rho * sa;
-    float pz = tr * sA;
-    float pz1 = tr * k3 * cA;
-    float pz2 = -tr * k3 * k3 * sA;
-    float zv = -py * sI + pz * cI;                   // depth (+ toward viewer)
-    float zv1 = -py1 * sI + pz1 * cI;
-    float zv2 = -py2 * sI + pz2 * cI;
-    vec2 S = vec2(rho * ca, py * cI + pz * sI) + kt * zv;
-    vec2 S1 = vec2(r1 * ca - rho * sa, py1 * cI + pz1 * sI) + kt * zv1;
-    vec2 S2 = vec2(r2 * ca - 2.0 * r1 * sa - rho * ca, py2 * cI + pz2 * sI) + kt * zv2;
-    vec2 e = kq - S;
-    float den = dot(S1, S1) - dot(e, S2);
-    float dl = clamp(dot(e, S1) / max(den, 0.25 * dot(S1, S1) + 1e-4), -0.45, 0.45);
-    // Exactly on the curve at the new azimuth: rotate (cos, sin) by dl with a
-    // short series (|dl| ≤ 0.45) and the tube angle by k3·dl.
-    float l2 = dl * dl;
-    float cd = 1.0 - l2 * (0.5 - l2 / 24.0);
-    float sd = dl * (1.0 - l2 * (1.0 / 6.0 - l2 / 120.0));
-    float cx = ca * cd - sa * sd, sx = sa * cd + ca * sd;
-    float cda = cos(k3 * dl), sda = sin(k3 * dl);
-    float cA1 = cA * cda - sA * sda, sA1 = sA * cda + cA * sda;
-    rho = R + tr * cA1;
-    py = rho * sx;
-    pz = tr * sA1;
-    zv = -py * sI + pz * cI;
-    S = vec2(rho * cx, py * cI + pz * sI) + kt * zv;
-    t += dl / 3.0;
-
-    float d = length(kq - S);
-    float near = clamp(zv / (R + tr) * 0.5 + 0.5, 0.0, 1.0);
-    float w = (0.011 + 0.008 * near) * uKnotB.x;     // nearer reads thicker
-    float d2 = d * d / (w * w);
-    cov[j] = 0.0;
-    dep[j] = zv;
-    lit[j] = vec3(0.0);
-    if (d2 > 60.0) continue;                         // nothing of this strand here
-    float core = exp(-d2);
-    float glow = exp(-d2 * 0.2);
-
-    float u = fract(t / TAU);                        // 0..1 along the strand
-    // Drawn like a pen stroke from u = 0 up to the trace head.
-    float vis = 1.0;
-    float head = 0.0;
-    if (trace < 1.0) {
-      vis = 1.0 - smoothstep(trace - 0.012, trace, u);
-      float du = u - trace;
-      head = exp(-du * du * 2600.0) * 1.8 + exp(du * 16.0) * vis * 0.6;
+    float t0 = (az0 - spin + TAU * float(j)) / 3.0;  // knot parameter (rad)
+    vec4 cand[3];
+    float wt[3];
+    cand[0] = cand[1] = cand[2] = vec4(0.0);
+    wt[0] = 1.0 - inFold;
+    wt[1] = wt[2] = 0.0;
+    if (wt[0] > 0.001) cand[0] = strandPoint(kq, kt, ca, sa, t0, R, tr, k3, Q, roll, cI, sI);
+    if (inFold > 0.001) {
+      float tTip = t0 + (tipAz - az0) / 3.0;         // the same pass, at the end
+      cand[1] = strandPoint(kq, kt, ct * FOLD_C, -ct * FOLD_S, tTip - FOLD_SEED / 3.0, R, tr, k3, Q, roll, cI, sI);
+      cand[2] = strandPoint(kq, kt, ct * FOLD_C, ct * FOLD_S, tTip + FOLD_SEED / 3.0, R, tr, k3, Q, roll, cI, sI);
+      vec2 d1 = kq - cand[1].xy, d2v = kq - cand[2].xy;
+      float to2 = smoothstep(-4e-4, 4e-4, dot(d1, d1) - dot(d2v, d2v));
+      wt[1] = inFold * (1.0 - to2);
+      wt[2] = inFold * to2;
     }
-    // Thought pulses: a bright head with a tail behind it.
-    float pulse = 0.0;
-    for (int i = 0; i < 3; i++) {
-      vec2 P = uPulse[i];
-      float du = u - P.x;
-      du -= floor(du + 0.5);
-      du *= sign(P.y);
-      float tail = du < 0.0 ? exp(du * 22.0) : 0.0;
-      pulse += (exp(-du * du * 5000.0) * 1.6 + tail * 0.55) * abs(P.y);
-    }
-    float behind = step(zv, 0.0) * coreMask * 0.45;  // passing behind the core
-    // …which veils its pulses too, or they float free of their dimmed strand.
-    pulse *= 1.0 - 1.8 * behind;
-    float hot = min(pulse + head, 1.0);
-    // The thought is the hero: the ink in front veils it, but only partly.
-    float tAt = pow(max(T, 1e-3), 0.6 * clamp((nz - zv) / (2.0 * nz), 0.0, 1.0));
-    float b = (0.5 + 0.5 * near) * uKnot.z * uKnotB.y * (1.0 - behind) * tAt;
-    vec3 c = ramp(0.28 + 0.3 * near + 0.4 * hot);
-    c = mix(c, uPal[3], clamp((pulse + head) * 0.3, 0.0, 0.55));
+    for (int k = 0; k < 3; k++) {
+      float wk = wt[k];
+      if (wk < 0.001) continue;
+      vec4 C = cand[k];
+      float zv = C.z;                                // depth (+ toward viewer)
+      float t = C.w;
+      vec2 ev = kq - C.xy;
+      float near = clamp(zv / (R + tr) * 0.5 + 0.5, 0.0, 1.0);
+      float w = (0.011 + 0.008 * near) * uKnotB.x;   // nearer reads thicker
+      float d2 = dot(ev, ev) / (w * w);
+      dep[j] += zv * wk;
+      if (d2 > 60.0) continue;                       // nothing of this strand here
+      float core = exp(-d2);
+      float glow = exp(-d2 * 0.2);
 
-    cov[j] = core * vis;
-    lit[j] = c * (core * (1.0 + pulse * 1.4 + head) + glow * (0.32 + pulse * 0.4 + head * 0.35)) * vis * b;
+      float u = fract(t / TAU);                      // 0..1 along the strand
+      // Drawn like a pen stroke from u = 0 up to the trace head.
+      float vis = 1.0;
+      float head = 0.0;
+      if (trace < 1.0) {
+        vis = 1.0 - smoothstep(trace - 0.012, trace, u);
+        float du = u - trace;
+        head = exp(-du * du * 2600.0) * 1.8 + exp(du * 16.0) * vis * 0.6;
+      }
+      // Thought pulses: a bright head with a tail behind it.
+      float pulse = 0.0;
+      for (int i = 0; i < 3; i++) {
+        vec2 P = uPulse[i];
+        float du = u - P.x;
+        du -= floor(du + 0.5);
+        du *= sign(P.y);
+        // The tail fades in under the head rather than starting at full
+        // strength, which drew a hard line across the strand.
+        float tail = du < 0.0 ? exp(du * 22.0) * (1.0 - exp(-du * du * 9000.0)) : 0.0;
+        pulse += (exp(-du * du * 5000.0) * 1.6 + tail * 0.55) * abs(P.y);
+      }
+      float behind = step(zv, 0.0) * coreMask * 0.45;  // passing behind the core
+      // …which veils its pulses too, or they float free of their dimmed strand.
+      pulse *= 1.0 - 1.8 * behind;
+      float hot = min(pulse + head, 1.0);
+      // The thought is the hero: the ink in front veils it, but only partly.
+      float tAt = pow(max(T, 1e-3), 0.6 * clamp((nz - zv) / (2.0 * nz), 0.0, 1.0));
+      float b = (0.5 + 0.5 * near) * uKnot.z * uKnotB.y * (1.0 - behind) * tAt;
+      vec3 c = ramp(0.28 + 0.3 * near + 0.4 * hot);
+      c = mix(c, uPal[3], clamp((pulse + head) * 0.3, 0.0, 0.55));
+
+      cov[j] += core * vis * wk;
+      lit[j] += c * (core * (1.0 + pulse * 1.4 + head) + glow * (0.32 + pulse * 0.4 + head * 0.35)) * vis * b * wk;
+    }
   }
   // Over/under: a nearer strand hides what passes behind it — that is what
   // makes the crossings read as a knot instead of overlapping lines.
