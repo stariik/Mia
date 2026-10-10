@@ -34,24 +34,24 @@ import { GradientButton } from '@/components/auth/GradientButton';
 import { ArrowIcon, SparkIcon } from '@/components/auth/icons';
 import { IslandOrb } from '@/components/auth/IslandOrb';
 import { PasswordStrength } from '@/components/auth/PasswordStrength';
-import { SuccessBurst } from '@/components/auth/SuccessBurst';
 import { MiaWordmark } from '@/components/MiaWordmark';
+import { IconButton } from '@/components/ui/IconButton';
 import { userErrorMessage } from '@/lib/errorMessages';
 import { haptics } from '@/lib/haptics';
 import { type AuthUser, useAuthStore } from '@/stores/authStore';
 import { colors, fonts, radius, spacing, typography } from '@/theme';
 
-// Auth flow: Sign in ↔ Create account (email step → password step) → a short
-// success moment before RootNavigator swaps to Home. Every mode change slides
+// Auth flow: Sign in and Create account both ask for the email first, then
+// the password. Sign-in shows no step counter, so it reads as one form that
+// moves on. On success RootNavigator swaps straight to Home. Every mode change slides
 // the card content in the direction of travel while the card itself springs
 // to its new height, so the flow reads as one continuous surface.
 
-type Mode = 'login' | 'email' | 'password' | 'done';
-type DoneKind = 'login' | 'register' | 'guest';
+// login → loginPassword signs in; email → password registers.
+type Mode = 'login' | 'loginPassword' | 'email' | 'password';
 
-const ORDER: Record<Mode, number> = { login: 0, email: 1, password: 2, done: 3 };
+const ORDER: Record<Mode, number> = { login: 0, loginPassword: 1, email: 2, password: 3 };
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const SUCCESS_HOLD_MS = 1300;
 // Tight, near-critically damped spring: settles in ~250ms with no wobble.
 const SNAPPY = { damping: 24, stiffness: 340, mass: 0.8 };
 // Launch entrance: a short, eased rise with no overshoot, as the splash
@@ -59,10 +59,15 @@ const SNAPPY = { damping: 24, stiffness: 340, mass: 0.8 };
 const EASE_OUT = Easing.bezier(0.22, 1, 0.36, 1);
 const ENTER_MS = 650;
 
-const COPY: Record<Exclude<Mode, 'done'>, { title: string; subtitle: string; cta: string }> = {
+const COPY: Record<Mode, { title: string; subtitle: string; cta: string }> = {
   login: {
     title: 'კეთილი იყოს შენი დაბრუნება',
     subtitle: 'შედი ანგარიშზე და განაგრძე საუბარი Mia-სთან',
+    cta: 'გაგრძელება',
+  },
+  loginPassword: {
+    title: 'შეიყვანე პაროლი',
+    subtitle: '',
     cta: 'შესვლა',
   },
   email: {
@@ -75,12 +80,6 @@ const COPY: Record<Exclude<Mode, 'done'>, { title: string; subtitle: string; cta
     subtitle: '',
     cta: 'ანგარიშის შექმნა',
   },
-};
-
-const DONE_COPY: Record<DoneKind, { title: string; subtitle: string }> = {
-  login: { title: 'მოგესალმები!', subtitle: 'Mia უკვე გელოდება…' },
-  register: { title: 'ანგარიში შეიქმნა!', subtitle: 'კეთილი იყოს შენი მობრძანება Mia-ში' },
-  guest: { title: 'სტუმრის რეჟიმი', subtitle: 'დეველოპერის სესია ჩაირთო' },
 };
 
 function authErrorMessage(err: unknown): string {
@@ -97,7 +96,6 @@ export function AuthScreen() {
   const loginStore = useAuthStore((s) => s.login);
 
   const [mode, setMode] = useState<Mode>('login');
-  const [doneKind, setDoneKind] = useState<DoneKind>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -131,20 +129,20 @@ export function AuthScreen() {
   const contentO = useSharedValue(1);
   const tabPos = useSharedValue(0);
   const step = useSharedValue(0);
-  const shake = useSharedValue(0);
   const pulse = useSharedValue(1);
 
   const isRegister = mode === 'email' || mode === 'password';
+  const emailStep = mode === 'login' || mode === 'email';
   const trimmedEmail = email.trim().toLowerCase();
   const emailValid = EMAIL_RE.test(trimmedEmail);
   const pwLongEnough = password.length >= 6;
   const pwMatch = confirm.length > 0 && confirm === password;
 
   const ready =
-    mode === 'login'
-      ? emailValid && password.length > 0
-      : mode === 'email'
-        ? emailValid
+    emailStep
+      ? emailValid
+      : mode === 'loginPassword'
+        ? password.length > 0
         : pwLongEnough && pwMatch;
 
   function later(fn: () => void, ms: number) {
@@ -244,7 +242,7 @@ export function AuthScreen() {
         go('email');
         return true;
       }
-      if (mode === 'email') {
+      if (mode === 'email' || mode === 'loginPassword') {
         go('login');
         return true;
       }
@@ -273,41 +271,32 @@ export function AuthScreen() {
   function showError(msg: string) {
     setError(msg);
     haptics.warn();
-    shake.value = withSequence(
-      withTiming(1, { duration: 45 }),
-      withTiming(-1, { duration: 45 }),
-      withTiming(0.6, { duration: 45 }),
-      withTiming(-0.6, { duration: 45 }),
-      withTiming(0, { duration: 45 }),
-    );
   }
 
-  function finish(kind: DoneKind, token: string, user: AuthUser) {
-    haptics.success();
+  // Saving the session flips RootNavigator to Home; the button keeps its
+  // spinner until then.
+  async function finish(token: string, user: AuthUser) {
     Keyboard.dismiss();
-    setDoneKind(kind);
-    go('done');
-    // Let the success moment land before RootNavigator fades to Home.
-    later(() => {
-      loginStore(token, user).catch(() => {
-        go('login');
-        showError('შენახვა ვერ მოხერხდა, სცადე კიდევ');
-      });
-    }, SUCCESS_HOLD_MS);
+    try {
+      await loginStore(token, user);
+      haptics.success();
+    } catch {
+      showError('შენახვა ვერ მოხერხდა, სცადე კიდევ');
+    }
   }
 
   async function submit() {
     if (loading) return;
     setError('');
 
-    if (mode === 'email') {
+    if (emailStep) {
       if (!emailValid) return showError('შეიყვანე სწორი ელ. ფოსტა');
       focusNext.current = pwRef;
-      go('password');
+      go(mode === 'login' ? 'loginPassword' : 'password');
       return;
     }
     if (!emailValid) return showError('შეიყვანე სწორი ელ. ფოსტა');
-    if (mode === 'login' && !password) return showError('შეიყვანე პაროლი');
+    if (mode === 'loginPassword' && !password) return showError('შეიყვანე პაროლი');
     if (mode === 'password') {
       if (!pwLongEnough) return showError('პაროლი მინიმუმ 6 სიმბოლო უნდა იყოს');
       if (!pwMatch) return showError('პაროლები არ ემთხვევა');
@@ -316,10 +305,10 @@ export function AuthScreen() {
     setLoading('submit');
     try {
       const { token, user } =
-        mode === 'login'
+        mode === 'loginPassword'
           ? await authApi.login(trimmedEmail, password)
           : await authApi.register(trimmedEmail, password);
-      finish(mode === 'login' ? 'login' : 'register', token, user);
+      await finish(token, user);
     } catch (err) {
       showError(authErrorMessage(err));
     } finally {
@@ -334,7 +323,7 @@ export function AuthScreen() {
     setLoading('guest');
     try {
       const { token, user } = await authApi.guest();
-      finish('guest', token, user);
+      await finish(token, user);
     } catch (err) {
       showError(authErrorMessage(err));
     } finally {
@@ -353,11 +342,8 @@ export function AuthScreen() {
   const stepFillStyle = useAnimatedStyle(() => ({
     transform: [{ scaleX: step.value }],
   }));
-  const shakeStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: shake.value * 9 }],
-  }));
 
-  const copy = mode === 'done' ? null : COPY[mode];
+  const copy = COPY[mode];
   const layoutSpring = LinearTransition.springify().damping(24).stiffness(340).mass(0.8);
 
   return (
@@ -430,188 +416,182 @@ export function AuthScreen() {
             pointerEvents="none"
           />
 
-          {mode !== 'done' ? (
-            <Reanimated.View exiting={FadeOut.duration(120)}>
-              {/* Segmented switch */}
-              <View style={styles.track} onLayout={(e) => setTrackW(e.nativeEvent.layout.width)}>
-                {trackW > 0 ? (
-                  <Reanimated.View style={[styles.pill, { width: (trackW - 8) / 2 }, pillStyle]}>
-                    <LinearGradient
-                      colors={['rgba(109,59,245,0.35)', 'rgba(255,77,139,0.28)']}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={StyleSheet.absoluteFill}
-                    />
-                  </Reanimated.View>
-                ) : null}
-                <Pressable
-                  style={styles.tabBtn}
-                  onPress={() => go('login')}
-                  accessibilityRole="tab"
-                  accessibilityState={{ selected: !isRegister }}
-                >
-                  <Text style={[styles.tabText, !isRegister && styles.tabTextOn]}>შესვლა</Text>
-                </Pressable>
-                <Pressable
-                  style={styles.tabBtn}
-                  onPress={() => !isRegister && go('email')}
-                  accessibilityRole="tab"
-                  accessibilityState={{ selected: isRegister }}
-                >
-                  <Text style={[styles.tabText, isRegister && styles.tabTextOn]}>რეგისტრაცია</Text>
-                </Pressable>
-              </View>
-
-              {/* Register progress */}
-              {isRegister ? (
-                <Reanimated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(100)} style={styles.progress}>
-                  <View style={styles.progressBars}>
-                    <View style={[styles.progressSeg, styles.progressSegOn]} />
-                    <View style={styles.progressSeg}>
-                      <Reanimated.View style={[styles.progressFill, stepFillStyle]} />
-                    </View>
-                  </View>
-                  <Text style={styles.progressText}>
-                    ნაბიჯი {mode === 'password' ? 2 : 1} / 2
-                  </Text>
+            {/* Segmented switch */}
+            <View style={styles.track} onLayout={(e) => setTrackW(e.nativeEvent.layout.width)}>
+              {trackW > 0 ? (
+                <Reanimated.View style={[styles.pill, { width: (trackW - 8) / 2 }, pillStyle]}>
+                  <LinearGradient
+                    colors={['rgba(109,59,245,0.35)', 'rgba(255,77,139,0.28)']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={StyleSheet.absoluteFill}
+                  />
                 </Reanimated.View>
               ) : null}
-            </Reanimated.View>
-          ) : null}
+              <Pressable
+                style={styles.tabBtn}
+                onPress={() => isRegister && go('login')}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: !isRegister }}
+              >
+                <Text style={[styles.tabText, !isRegister && styles.tabTextOn]}>შესვლა</Text>
+              </Pressable>
+              <Pressable
+                style={styles.tabBtn}
+                onPress={() => !isRegister && go('email')}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: isRegister }}
+              >
+                <Text style={[styles.tabText, isRegister && styles.tabTextOn]}>რეგისტრაცია</Text>
+              </Pressable>
+            </View>
+
+            {/* Register progress */}
+            {isRegister ? (
+              <Reanimated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(100)} style={styles.progress}>
+                <View style={styles.progressBars}>
+                  <View style={[styles.progressSeg, styles.progressSegOn]} />
+                  <View style={styles.progressSeg}>
+                    <Reanimated.View style={[styles.progressFill, stepFillStyle]} />
+                  </View>
+                </View>
+                <Text style={styles.progressText}>
+                  ნაბიჯი {mode === 'password' ? 2 : 1} / 2
+                </Text>
+              </Reanimated.View>
+            ) : null}
 
           <Reanimated.View style={contentStyle}>
-            {mode === 'done' ? (
-              <SuccessBurst {...DONE_COPY[doneKind]} />
+            {/* Fixed sizes: auto-fit shrank the title whenever the keyboard
+                opened. The sign-in welcome is the one title that needs a
+                smaller size to stay on one line. */}
+            <Text style={[styles.title, mode === 'login' && styles.titleLong]}>{copy.title}</Text>
+            {/* Sign-in's password step has no chip: the back arrow in the
+                top-left corner returns to the email. */}
+            {mode === 'loginPassword' ? null : mode === 'password' ? (
+              <Pressable onPress={() => go('email')} hitSlop={8} style={styles.emailChip}>
+                <ArrowIcon color={colors.textMuted} direction="left" size={14} />
+                <Text numberOfLines={1} style={styles.emailChipText}>{trimmedEmail}</Text>
+                <Text style={styles.emailChipEdit}>შეცვლა</Text>
+              </Pressable>
             ) : (
-              <>
-                <Text style={styles.title}>{copy!.title}</Text>
-                {mode === 'password' ? (
-                  <Pressable onPress={() => go('email')} hitSlop={8} style={styles.emailChip}>
-                    <ArrowIcon color={colors.textMuted} direction="left" size={14} />
-                    <Text numberOfLines={1} style={styles.emailChipText}>{trimmedEmail}</Text>
-                    <Text style={styles.emailChipEdit}>შეცვლა</Text>
-                  </Pressable>
-                ) : (
-                  <Text style={styles.subtitle}>{copy!.subtitle}</Text>
-                )}
-
-                <View style={styles.fields}>
-                  {mode !== 'password' ? (
-                    <AuthField
-                      ref={emailRef}
-                      onFocus={onFieldFocus}
-                      label="ელ. ფოსტა"
-                      icon="mail"
-                      value={email}
-                      valid={emailValid}
-                      invalid={!!error && !emailValid}
-                      onChangeText={(v) => {
-                        setEmail(v);
-                        bumpOrb();
-                      }}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      autoComplete="email"
-                      textContentType="emailAddress"
-                      keyboardType="email-address"
-                      returnKeyType={mode === 'login' ? 'next' : 'go'}
-                      submitBehavior={mode === 'login' ? 'submit' : 'blurAndSubmit'}
-                      onSubmitEditing={mode === 'login' ? () => pwRef.current?.focus() : submit}
-                    />
-                  ) : null}
-
-                  {mode !== 'email' ? (
-                    <AuthField
-                      ref={pwRef}
-                      onFocus={onFieldFocus}
-                      label={mode === 'login' ? 'პაროლი' : 'ახალი პაროლი'}
-                      icon="lock"
-                      secure
-                      value={password}
-                      invalid={!!error && mode === 'password' && !pwLongEnough}
-                      onChangeText={(v) => {
-                        setPassword(v);
-                        bumpOrb();
-                      }}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      autoComplete={mode === 'login' ? 'password' : 'new-password'}
-                      textContentType={mode === 'login' ? 'password' : 'newPassword'}
-                      returnKeyType={mode === 'login' ? 'go' : 'next'}
-                      submitBehavior={mode === 'login' ? 'blurAndSubmit' : 'submit'}
-                      onSubmitEditing={mode === 'login' ? submit : () => confirmRef.current?.focus()}
-                    />
-                  ) : null}
-
-                  {mode === 'password' ? (
-                    <>
-                      <PasswordStrength password={password} />
-                      {/* The green check inside this field doubles as the
-                          "passwords match" indicator. */}
-                      <AuthField
-                        ref={confirmRef}
-                        onFocus={onFieldFocus}
-                        label="გაიმეორე პაროლი"
-                        icon="shield"
-                        secure
-                        value={confirm}
-                        valid={pwMatch && pwLongEnough}
-                        invalid={!!error && !pwMatch}
-                        onChangeText={(v) => {
-                          setConfirm(v);
-                          bumpOrb();
-                        }}
-                        autoCapitalize="none"
-                        autoCorrect={false}
-                        autoComplete="new-password"
-                        textContentType="newPassword"
-                        returnKeyType="go"
-                        submitBehavior="blurAndSubmit"
-                        onSubmitEditing={submit}
-                      />
-                    </>
-                  ) : null}
-                </View>
-
-                {/* Enter/exit on the wrapper, shake on the box: both drive
-                    transform, so they can't share a view. */}
-                {error ? (
-                  <Reanimated.View
-                    entering={FadeInDown.springify().damping(16)}
-                    exiting={FadeOut.duration(120)}
-                  >
-                    <Reanimated.View style={[styles.errorBox, shakeStyle]}>
-                      <Text style={styles.errorText}>{error}</Text>
-                    </Reanimated.View>
-                  </Reanimated.View>
-                ) : null}
-
-                <GradientButton
-                  label={copy!.cta}
-                  onPress={submit}
-                  loading={loading === 'submit'}
-                  ready={ready}
-                />
-
-                <Pressable
-                  onPress={() => go(mode === 'login' ? 'email' : 'login')}
-                  hitSlop={8}
-                  style={styles.switchHint}
-                >
-                  <Text style={styles.switchHintText}>
-                    {mode === 'login' ? 'ჯერ არ გაქვს ანგარიში? ' : 'უკვე გაქვს ანგარიში? '}
-                    <Text style={styles.switchHintAccent}>
-                      {mode === 'login' ? 'შექმენი' : 'შედი'}
-                    </Text>
-                  </Text>
-                </Pressable>
-              </>
+              <Text style={styles.subtitle}>{copy.subtitle}</Text>
             )}
+
+            <View style={styles.fields}>
+              {emailStep ? (
+                <AuthField
+                  ref={emailRef}
+                  onFocus={onFieldFocus}
+                  label="ელ. ფოსტა"
+                  icon="mail"
+                  value={email}
+                  valid={emailValid}
+                  invalid={!!error && !emailValid}
+                  onChangeText={(v) => {
+                    setEmail(v);
+                    bumpOrb();
+                  }}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoComplete="email"
+                  // "username" lets iOS password managers pair this with the
+                  // password asked for on the next step.
+                  textContentType={mode === 'login' ? 'username' : 'emailAddress'}
+                  keyboardType="email-address"
+                  returnKeyType="go"
+                  submitBehavior="blurAndSubmit"
+                  onSubmitEditing={submit}
+                />
+              ) : null}
+
+              {!emailStep ? (
+                <AuthField
+                  ref={pwRef}
+                  onFocus={onFieldFocus}
+                  label={mode === 'loginPassword' ? 'პაროლი' : 'ახალი პაროლი'}
+                  icon="lock"
+                  secure
+                  value={password}
+                  invalid={!!error && mode === 'password' && !pwLongEnough}
+                  onChangeText={(v) => {
+                    setPassword(v);
+                    bumpOrb();
+                  }}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoComplete={mode === 'loginPassword' ? 'password' : 'new-password'}
+                  textContentType={mode === 'loginPassword' ? 'password' : 'newPassword'}
+                  returnKeyType={mode === 'loginPassword' ? 'go' : 'next'}
+                  submitBehavior={mode === 'loginPassword' ? 'blurAndSubmit' : 'submit'}
+                  onSubmitEditing={mode === 'loginPassword' ? submit : () => confirmRef.current?.focus()}
+                />
+              ) : null}
+
+              {mode === 'password' ? (
+                <>
+                  <PasswordStrength password={password} />
+                  {/* The green check inside this field doubles as the
+                      "passwords match" indicator. */}
+                  <AuthField
+                    ref={confirmRef}
+                    onFocus={onFieldFocus}
+                    label="გაიმეორე პაროლი"
+                    icon="shield"
+                    secure
+                    value={confirm}
+                    valid={pwMatch && pwLongEnough}
+                    invalid={!!error && !pwMatch}
+                    onChangeText={(v) => {
+                      setConfirm(v);
+                      bumpOrb();
+                    }}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    autoComplete="new-password"
+                    textContentType="newPassword"
+                    returnKeyType="go"
+                    submitBehavior="blurAndSubmit"
+                    onSubmitEditing={submit}
+                  />
+                </>
+              ) : null}
+            </View>
+
+            {error ? (
+              <Reanimated.View
+                entering={FadeIn.duration(150)}
+                exiting={FadeOut.duration(120)}
+                style={styles.errorBox}
+              >
+                <Text style={styles.errorText}>{error}</Text>
+              </Reanimated.View>
+            ) : null}
+
+            <GradientButton
+              label={copy.cta}
+              onPress={submit}
+              loading={loading === 'submit'}
+              ready={ready}
+            />
+
+            <Pressable
+              onPress={() => go(isRegister ? 'login' : 'email')}
+              hitSlop={8}
+              style={styles.switchHint}
+            >
+              <Text style={styles.switchHintText}>
+                {!isRegister ? 'ჯერ არ გაქვს ანგარიში? ' : 'უკვე გაქვს ანგარიში? '}
+                <Text style={styles.switchHintAccent}>
+                  {!isRegister ? 'შექმენი' : 'შედი'}
+                </Text>
+              </Text>
+            </Pressable>
           </Reanimated.View>
         </Reanimated.View>
 
         {/* ── Dev-only guest session ───────────────────────── */}
-        {__DEV__ && (mode === 'login' || mode === 'email') ? (
+        {__DEV__ && emailStep ? (
           <Reanimated.View
             entering={FadeIn.delay(320).duration(ENTER_MS).easing(EASE_OUT)}
             exiting={FadeOut.duration(120)}
@@ -636,6 +616,21 @@ export function AuthScreen() {
         ) : null}
       </ScrollView>
 
+      {mode === 'loginPassword' ? (
+        <Reanimated.View
+          entering={FadeIn.duration(160)}
+          exiting={FadeOut.duration(120)}
+          style={[styles.back, { top: insets.top + 10 }]}
+        >
+          <IconButton
+            icon="chevronLeft"
+            label="ელ. ფოსტის შეცვლა"
+            color={colors.text}
+            onPress={() => go('login')}
+          />
+        </Reanimated.View>
+      ) : null}
+
       {/* Status-bar orb beside the Dynamic Island; above the scroll view so it
           draws over the status bar. iOS only — Android has no orb. */}
       {Platform.OS === 'ios' && <IslandOrb pulse={pulse} />}
@@ -655,6 +650,12 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: 'center',
     paddingHorizontal: spacing.xl,
+  },
+
+  // Same spot as the Settings back chevron: its glyph on the 24pt gutter.
+  back: {
+    position: 'absolute',
+    left: spacing.xl - 14,
   },
 
   // ── Brand ─────────────────────────────────────────────────
@@ -772,6 +773,10 @@ const styles = StyleSheet.create({
     lineHeight: 28,
     color: colors.text,
     marginTop: spacing.lg,
+  },
+  titleLong: {
+    fontSize: 17,
+    lineHeight: 24,
   },
   subtitle: {
     ...typography.bodySmall,
