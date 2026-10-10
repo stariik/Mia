@@ -461,11 +461,10 @@ export function AuthScreen() {
             ) : null}
 
           <Reanimated.View style={contentStyle}>
-            {/* Always one line: short titles keep the full size, and only a
-                title too long for the card (the sign-in welcome) shrinks. */}
-            <Text style={styles.title} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
-              {copy.title}
-            </Text>
+            {/* Fixed sizes: auto-fit shrank the title whenever the keyboard
+                opened. The sign-in welcome is the one title that needs a
+                smaller size to stay on one line. */}
+            <Text style={[styles.title, mode === 'login' && styles.titleLong]}>{copy.title}</Text>
             {!emailStep ? (
               <Pressable
                 onPress={() => go(isRegister ? 'email' : 'login')}
@@ -754,6 +753,10 @@ const styles = StyleSheet.create({
     lineHeight: 28,
     color: colors.text,
     marginTop: spacing.lg,
+  },
+  titleLong: {
+    fontSize: 17,
+    lineHeight: 24,
   },
   subtitle: {
     ...typography.bodySmall,
