@@ -461,9 +461,9 @@ export function AuthScreen() {
             ) : null}
 
           <Reanimated.View style={contentStyle}>
-            {/* Always one line: shrinks further on narrow screens or large
-                system font sizes rather than wrapping. */}
-            <Text style={styles.title} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
+            {/* Always one line: short titles keep the full size, and only a
+                title too long for the card (the sign-in welcome) shrinks. */}
+            <Text style={styles.title} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
               {copy.title}
             </Text>
             {!emailStep ? (
@@ -750,8 +750,8 @@ const styles = StyleSheet.create({
   // ── Content ───────────────────────────────────────────────
   title: {
     ...typography.title,
-    fontSize: 17,
-    lineHeight: 24,
+    fontSize: 21,
+    lineHeight: 28,
     color: colors.text,
     marginTop: spacing.lg,
   },
