@@ -453,7 +453,11 @@ export function AuthScreen() {
             ) : null}
 
           <Reanimated.View style={contentStyle}>
-            <Text style={styles.title}>{copy.title}</Text>
+            {/* Always one line: shrinks further on narrow screens or large
+                system font sizes rather than wrapping. */}
+            <Text style={styles.title} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
+              {copy.title}
+            </Text>
             {mode === 'password' ? (
               <Pressable onPress={() => go('email')} hitSlop={8} style={styles.emailChip}>
                 <ArrowIcon color={colors.textMuted} direction="left" size={14} />
@@ -732,8 +736,8 @@ const styles = StyleSheet.create({
   // ── Content ───────────────────────────────────────────────
   title: {
     ...typography.title,
-    fontSize: 21,
-    lineHeight: 28,
+    fontSize: 17,
+    lineHeight: 24,
     color: colors.text,
     marginTop: spacing.lg,
   },
