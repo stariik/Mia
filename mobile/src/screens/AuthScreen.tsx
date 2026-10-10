@@ -35,6 +35,7 @@ import { ArrowIcon, SparkIcon } from '@/components/auth/icons';
 import { IslandOrb } from '@/components/auth/IslandOrb';
 import { PasswordStrength } from '@/components/auth/PasswordStrength';
 import { MiaWordmark } from '@/components/MiaWordmark';
+import { IconButton } from '@/components/ui/IconButton';
 import { userErrorMessage } from '@/lib/errorMessages';
 import { haptics } from '@/lib/haptics';
 import { type AuthUser, useAuthStore } from '@/stores/authStore';
@@ -465,12 +466,10 @@ export function AuthScreen() {
                 opened. The sign-in welcome is the one title that needs a
                 smaller size to stay on one line. */}
             <Text style={[styles.title, mode === 'login' && styles.titleLong]}>{copy.title}</Text>
-            {!emailStep ? (
-              <Pressable
-                onPress={() => go(isRegister ? 'email' : 'login')}
-                hitSlop={8}
-                style={styles.emailChip}
-              >
+            {/* Sign-in's password step has no chip: the back arrow in the
+                top-left corner returns to the email. */}
+            {mode === 'loginPassword' ? null : mode === 'password' ? (
+              <Pressable onPress={() => go('email')} hitSlop={8} style={styles.emailChip}>
                 <ArrowIcon color={colors.textMuted} direction="left" size={14} />
                 <Text numberOfLines={1} style={styles.emailChipText}>{trimmedEmail}</Text>
                 <Text style={styles.emailChipEdit}>შეცვლა</Text>
@@ -617,6 +616,21 @@ export function AuthScreen() {
         ) : null}
       </ScrollView>
 
+      {mode === 'loginPassword' ? (
+        <Reanimated.View
+          entering={FadeIn.duration(160)}
+          exiting={FadeOut.duration(120)}
+          style={[styles.back, { top: insets.top + 10 }]}
+        >
+          <IconButton
+            icon="chevronLeft"
+            label="ელ. ფოსტის შეცვლა"
+            color={colors.text}
+            onPress={() => go('login')}
+          />
+        </Reanimated.View>
+      ) : null}
+
       {/* Status-bar orb beside the Dynamic Island; above the scroll view so it
           draws over the status bar. iOS only — Android has no orb. */}
       {Platform.OS === 'ios' && <IslandOrb pulse={pulse} />}
@@ -636,6 +650,12 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: 'center',
     paddingHorizontal: spacing.xl,
+  },
+
+  // Same spot as the Settings back chevron: its glyph on the 24pt gutter.
+  back: {
+    position: 'absolute',
+    left: spacing.xl - 14,
   },
 
   // ── Brand ─────────────────────────────────────────────────
