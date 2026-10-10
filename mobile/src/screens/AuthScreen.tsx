@@ -40,14 +40,16 @@ import { haptics } from '@/lib/haptics';
 import { type AuthUser, useAuthStore } from '@/stores/authStore';
 import { colors, fonts, radius, spacing, typography } from '@/theme';
 
-// Auth flow: Sign in ↔ Create account (email step → password step). On
-// success RootNavigator swaps straight to Home. Every mode change slides
+// Auth flow: Sign in and Create account both ask for the email first, then
+// the password. Sign-in shows no step counter, so it reads as one form that
+// moves on. On success RootNavigator swaps straight to Home. Every mode change slides
 // the card content in the direction of travel while the card itself springs
 // to its new height, so the flow reads as one continuous surface.
 
-type Mode = 'login' | 'email' | 'password';
+// login → loginPassword signs in; email → password registers.
+type Mode = 'login' | 'loginPassword' | 'email' | 'password';
 
-const ORDER: Record<Mode, number> = { login: 0, email: 1, password: 2 };
+const ORDER: Record<Mode, number> = { login: 0, loginPassword: 1, email: 2, password: 3 };
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // Tight, near-critically damped spring: settles in ~250ms with no wobble.
 const SNAPPY = { damping: 24, stiffness: 340, mass: 0.8 };
@@ -60,6 +62,11 @@ const COPY: Record<Mode, { title: string; subtitle: string; cta: string }> = {
   login: {
     title: 'კეთილი იყოს შენი დაბრუნება',
     subtitle: 'შედი ანგარიშზე და განაგრძე საუბარი Mia-სთან',
+    cta: 'გაგრძელება',
+  },
+  loginPassword: {
+    title: 'შეიყვანე პაროლი',
+    subtitle: '',
     cta: 'შესვლა',
   },
   email: {
@@ -124,16 +131,17 @@ export function AuthScreen() {
   const pulse = useSharedValue(1);
 
   const isRegister = mode === 'email' || mode === 'password';
+  const emailStep = mode === 'login' || mode === 'email';
   const trimmedEmail = email.trim().toLowerCase();
   const emailValid = EMAIL_RE.test(trimmedEmail);
   const pwLongEnough = password.length >= 6;
   const pwMatch = confirm.length > 0 && confirm === password;
 
   const ready =
-    mode === 'login'
-      ? emailValid && password.length > 0
-      : mode === 'email'
-        ? emailValid
+    emailStep
+      ? emailValid
+      : mode === 'loginPassword'
+        ? password.length > 0
         : pwLongEnough && pwMatch;
 
   function later(fn: () => void, ms: number) {
@@ -233,7 +241,7 @@ export function AuthScreen() {
         go('email');
         return true;
       }
-      if (mode === 'email') {
+      if (mode === 'email' || mode === 'loginPassword') {
         go('login');
         return true;
       }
@@ -280,14 +288,14 @@ export function AuthScreen() {
     if (loading) return;
     setError('');
 
-    if (mode === 'email') {
+    if (emailStep) {
       if (!emailValid) return showError('შეიყვანე სწორი ელ. ფოსტა');
       focusNext.current = pwRef;
-      go('password');
+      go(mode === 'login' ? 'loginPassword' : 'password');
       return;
     }
     if (!emailValid) return showError('შეიყვანე სწორი ელ. ფოსტა');
-    if (mode === 'login' && !password) return showError('შეიყვანე პაროლი');
+    if (mode === 'loginPassword' && !password) return showError('შეიყვანე პაროლი');
     if (mode === 'password') {
       if (!pwLongEnough) return showError('პაროლი მინიმუმ 6 სიმბოლო უნდა იყოს');
       if (!pwMatch) return showError('პაროლები არ ემთხვევა');
@@ -296,7 +304,7 @@ export function AuthScreen() {
     setLoading('submit');
     try {
       const { token, user } =
-        mode === 'login'
+        mode === 'loginPassword'
           ? await authApi.login(trimmedEmail, password)
           : await authApi.register(trimmedEmail, password);
       await finish(token, user);
@@ -421,7 +429,7 @@ export function AuthScreen() {
               ) : null}
               <Pressable
                 style={styles.tabBtn}
-                onPress={() => go('login')}
+                onPress={() => isRegister && go('login')}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: !isRegister }}
               >
@@ -458,8 +466,12 @@ export function AuthScreen() {
             <Text style={styles.title} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
               {copy.title}
             </Text>
-            {mode === 'password' ? (
-              <Pressable onPress={() => go('email')} hitSlop={8} style={styles.emailChip}>
+            {!emailStep ? (
+              <Pressable
+                onPress={() => go(isRegister ? 'email' : 'login')}
+                hitSlop={8}
+                style={styles.emailChip}
+              >
                 <ArrowIcon color={colors.textMuted} direction="left" size={14} />
                 <Text numberOfLines={1} style={styles.emailChipText}>{trimmedEmail}</Text>
                 <Text style={styles.emailChipEdit}>შეცვლა</Text>
@@ -469,7 +481,7 @@ export function AuthScreen() {
             )}
 
             <View style={styles.fields}>
-              {mode !== 'password' ? (
+              {emailStep ? (
                 <AuthField
                   ref={emailRef}
                   onFocus={onFieldFocus}
@@ -485,19 +497,21 @@ export function AuthScreen() {
                   autoCapitalize="none"
                   autoCorrect={false}
                   autoComplete="email"
-                  textContentType="emailAddress"
+                  // "username" lets iOS password managers pair this with the
+                  // password asked for on the next step.
+                  textContentType={mode === 'login' ? 'username' : 'emailAddress'}
                   keyboardType="email-address"
-                  returnKeyType={mode === 'login' ? 'next' : 'go'}
-                  submitBehavior={mode === 'login' ? 'submit' : 'blurAndSubmit'}
-                  onSubmitEditing={mode === 'login' ? () => pwRef.current?.focus() : submit}
+                  returnKeyType="go"
+                  submitBehavior="blurAndSubmit"
+                  onSubmitEditing={submit}
                 />
               ) : null}
 
-              {mode !== 'email' ? (
+              {!emailStep ? (
                 <AuthField
                   ref={pwRef}
                   onFocus={onFieldFocus}
-                  label={mode === 'login' ? 'პაროლი' : 'ახალი პაროლი'}
+                  label={mode === 'loginPassword' ? 'პაროლი' : 'ახალი პაროლი'}
                   icon="lock"
                   secure
                   value={password}
@@ -508,11 +522,11 @@ export function AuthScreen() {
                   }}
                   autoCapitalize="none"
                   autoCorrect={false}
-                  autoComplete={mode === 'login' ? 'password' : 'new-password'}
-                  textContentType={mode === 'login' ? 'password' : 'newPassword'}
-                  returnKeyType={mode === 'login' ? 'go' : 'next'}
-                  submitBehavior={mode === 'login' ? 'blurAndSubmit' : 'submit'}
-                  onSubmitEditing={mode === 'login' ? submit : () => confirmRef.current?.focus()}
+                  autoComplete={mode === 'loginPassword' ? 'password' : 'new-password'}
+                  textContentType={mode === 'loginPassword' ? 'password' : 'newPassword'}
+                  returnKeyType={mode === 'loginPassword' ? 'go' : 'next'}
+                  submitBehavior={mode === 'loginPassword' ? 'blurAndSubmit' : 'submit'}
+                  onSubmitEditing={mode === 'loginPassword' ? submit : () => confirmRef.current?.focus()}
                 />
               ) : null}
 
@@ -564,14 +578,14 @@ export function AuthScreen() {
             />
 
             <Pressable
-              onPress={() => go(mode === 'login' ? 'email' : 'login')}
+              onPress={() => go(isRegister ? 'login' : 'email')}
               hitSlop={8}
               style={styles.switchHint}
             >
               <Text style={styles.switchHintText}>
-                {mode === 'login' ? 'ჯერ არ გაქვს ანგარიში? ' : 'უკვე გაქვს ანგარიში? '}
+                {!isRegister ? 'ჯერ არ გაქვს ანგარიში? ' : 'უკვე გაქვს ანგარიში? '}
                 <Text style={styles.switchHintAccent}>
-                  {mode === 'login' ? 'შექმენი' : 'შედი'}
+                  {!isRegister ? 'შექმენი' : 'შედი'}
                 </Text>
               </Text>
             </Pressable>
@@ -579,7 +593,7 @@ export function AuthScreen() {
         </Reanimated.View>
 
         {/* ── Dev-only guest session ───────────────────────── */}
-        {__DEV__ && (mode === 'login' || mode === 'email') ? (
+        {__DEV__ && emailStep ? (
           <Reanimated.View
             entering={FadeIn.delay(320).duration(ENTER_MS).easing(EASE_OUT)}
             exiting={FadeOut.duration(120)}
